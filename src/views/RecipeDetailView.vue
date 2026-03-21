@@ -1,21 +1,37 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { useRecipeStore } from '@/stores/recipeStore'
-import { storeToRefs } from 'pinia'
+import { useRecipe } from '@/composables/useRecipeQueries'
 import RecipeDetail from '@/components/organisms/RecipeDetail.vue'
+import AppLoader from '@/components/atoms/AppLoader.vue'
 
 const route = useRoute()
-const recipeStore = useRecipeStore()
-const { getRecipeById } = storeToRefs(recipeStore)
+const recipeUuid = computed(() => route.params.id as string)
 
-const recipeId = computed(() => route.params.id as string)
-const recipe = computed(() => getRecipeById.value(recipeId.value))
+// Vue Query - Récupération de la recette
+const { data: recipe, isLoading, isError, error } = useRecipe(recipeUuid)
 </script>
 
 <template>
   <main class="recipe-detail-view">
-    <div v-if="!recipe" class="recipe-detail-view__not-found">
+    <!-- État de chargement -->
+    <div v-if="isLoading" class="recipe-detail-view__loading">
+      <AppLoader variant="spinner" size="large" />
+    </div>
+
+    <!-- État d'erreur -->
+    <div v-else-if="isError" class="recipe-detail-view__not-found">
+      <h1 class="recipe-detail-view__not-found-title">Erreur</h1>
+      <p class="recipe-detail-view__not-found-text">
+        {{ error?.message || 'Impossible de charger la recette' }}
+      </p>
+      <router-link to="/" class="recipe-detail-view__link">
+        Retour à la liste
+      </router-link>
+    </div>
+
+    <!-- Recette introuvable -->
+    <div v-else-if="!recipe" class="recipe-detail-view__not-found">
       <h1 class="recipe-detail-view__not-found-title">Recette introuvable</h1>
       <p class="recipe-detail-view__not-found-text">
         La recette que vous recherchez n'existe pas ou a été supprimée.
@@ -25,6 +41,7 @@ const recipe = computed(() => getRecipeById.value(recipeId.value))
       </router-link>
     </div>
 
+    <!-- Affichage de la recette -->
     <RecipeDetail v-else :recipe="recipe" />
   </main>
 </template>
@@ -33,6 +50,13 @@ const recipe = computed(() => getRecipeById.value(recipeId.value))
 .recipe-detail-view {
   min-height: 100vh;
   background-color: var(--color-background, #f7fafc);
+}
+
+.recipe-detail-view__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
 }
 
 .recipe-detail-view__not-found {

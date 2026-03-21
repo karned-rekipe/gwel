@@ -12,7 +12,7 @@ const props = defineProps<{
 const router = useRouter()
 const { formatTime } = useTimeFormatter()
 
-const totalTime = computed(() => props.recipe.prepTime + props.recipe.cookTime)
+const totalTime = computed(() => (props.recipe.prepTime ?? 0) + (props.recipe.cookTime ?? 0))
 
 const handleBack = (): void => {
   router.push({ name: 'home' })
@@ -31,25 +31,25 @@ const handleBack = (): void => {
     <!-- En-tête avec image -->
     <header class="recipe-detail__header">
       <div v-if="recipe.imageUrl" class="recipe-detail__image-wrapper">
-        <img :src="recipe.imageUrl" :alt="recipe.title" class="recipe-detail__image" />
+        <img :src="recipe.imageUrl" :alt="recipe.name" class="recipe-detail__image" />
       </div>
       <div v-else class="recipe-detail__image-placeholder">
         <span class="recipe-detail__image-icon">🍽️</span>
       </div>
 
       <div class="recipe-detail__header-content">
-        <h1 class="recipe-detail__title">{{ recipe.title }}</h1>
+        <h1 class="recipe-detail__title">{{ recipe.name }}</h1>
         <p class="recipe-detail__description">{{ recipe.description }}</p>
 
         <!-- Métadonnées -->
         <div class="recipe-detail__meta">
           <div class="recipe-detail__meta-item">
             <span class="recipe-detail__meta-label">Préparation</span>
-            <span class="recipe-detail__meta-value">{{ formatTime(recipe.prepTime) }}</span>
+            <span class="recipe-detail__meta-value">{{ formatTime(recipe.prepTime ?? 0) }}</span>
           </div>
           <div class="recipe-detail__meta-item">
             <span class="recipe-detail__meta-label">Cuisson</span>
-            <span class="recipe-detail__meta-value">{{ formatTime(recipe.cookTime) }}</span>
+            <span class="recipe-detail__meta-value">{{ formatTime(recipe.cookTime ?? 0) }}</span>
           </div>
           <div class="recipe-detail__meta-item">
             <span class="recipe-detail__meta-label">Total</span>
@@ -69,9 +69,9 @@ const handleBack = (): void => {
       <section class="recipe-detail__section">
         <h2 class="recipe-detail__section-title">Ingrédients</h2>
         <ul class="recipe-detail__ingredients">
-          <li v-for="ingredient in recipe.ingredients" :key="ingredient.id" class="recipe-detail__ingredient">
+          <li v-for="ingredient in recipe.ingredients" :key="ingredient.uuid" class="recipe-detail__ingredient">
             <span class="recipe-detail__ingredient-quantity">
-              {{ ingredient.quantity }} {{ ingredient.unit }}
+              {{ ingredient.unit }}
             </span>
             <span class="recipe-detail__ingredient-name">{{ ingredient.name }}</span>
           </li>
@@ -79,10 +79,10 @@ const handleBack = (): void => {
       </section>
 
       <!-- Ustensiles -->
-      <section v-if="recipe.utensils.length > 0" class="recipe-detail__section">
+      <section v-if="recipe.utensils && recipe.utensils.length > 0" class="recipe-detail__section">
         <h2 class="recipe-detail__section-title">Ustensiles nécessaires</h2>
         <ul class="recipe-detail__utensils">
-          <li v-for="utensil in recipe.utensils" :key="utensil.id" class="recipe-detail__utensil">
+          <li v-for="utensil in recipe.utensils" :key="utensil.uuid" class="recipe-detail__utensil">
             🔧 {{ utensil.name }}
           </li>
         </ul>
@@ -92,13 +92,11 @@ const handleBack = (): void => {
       <section class="recipe-detail__section recipe-detail__section--full">
         <h2 class="recipe-detail__section-title">Préparation</h2>
         <ol class="recipe-detail__steps">
-          <li v-for="step in recipe.steps" :key="step.id" class="recipe-detail__step">
-            <div class="recipe-detail__step-number">{{ step.order }}</div>
+          <li v-for="(step, index) in recipe.steps" :key="step.uuid" class="recipe-detail__step">
+            <div class="recipe-detail__step-number">{{ step.order ?? index + 1 }}</div>
             <div class="recipe-detail__step-content">
+              <h3 v-if="step.name" class="recipe-detail__step-title">{{ step.name }}</h3>
               <p class="recipe-detail__step-description">{{ step.description }}</p>
-              <span v-if="step.duration" class="recipe-detail__step-duration">
-                ⏱️ {{ formatTime(step.duration) }}
-              </span>
             </div>
           </li>
         </ol>
@@ -314,12 +312,6 @@ const handleBack = (): void => {
   margin: 0;
   color: var(--color-text-primary, #2c3e50);
   line-height: 1.6;
-}
-
-.recipe-detail__step-duration {
-  font-size: 0.875rem;
-  color: var(--color-text-secondary, #718096);
-  font-weight: 600;
 }
 
 /* Responsive */

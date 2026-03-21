@@ -1,27 +1,29 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { useRecipeStore } from '@/stores/recipeStore'
+import { useCreateRecipe } from '@/composables/useRecipeQueries'
 import { useRecipeValidation, useRecipeFormatter } from '@/composables/useRecipe'
 import type { RecipeFormData } from '@/types/recipe'
 import AppInput from '@/components/atoms/AppInput.vue'
 import AppButton from '@/components/atoms/AppButton.vue'
 
 const router = useRouter()
-const recipeStore = useRecipeStore()
 const { normalizeFormData } = useRecipeFormatter()
+
+// Vue Query - Mutation pour créer une recette
+const { mutate: createRecipe, isPending, isError, error } = useCreateRecipe()
 
 // État du formulaire
 const formData = reactive<RecipeFormData>({
-  title: '',
+  name: '',
   shortDescription: '',
   description: '',
   prepTime: 0,
   cookTime: 0,
   servings: 1,
   imageUrl: '',
-  ingredients: [{ name: '', quantity: '', unit: '' }],
-  steps: [{ order: 1, description: '', duration: undefined }],
+  ingredients: [{ name: '', unit: '' }],
+  steps: [{ name: '', description: '' }],
   utensils: [{ name: '' }]
 })
 
@@ -29,7 +31,7 @@ const { isFormValid } = useRecipeValidation(ref(formData))
 
 // Gestion des ingrédients
 const addIngredient = (): void => {
-  formData.ingredients.push({ name: '', quantity: '', unit: '' })
+  formData.ingredients.push({ name: '', unit: '' })
 }
 
 const removeIngredient = (index: number): void => {
@@ -41,19 +43,14 @@ const removeIngredient = (index: number): void => {
 // Gestion des étapes
 const addStep = (): void => {
   formData.steps.push({
-    order: formData.steps.length + 1,
-    description: '',
-    duration: undefined
+    name: '',
+    description: ''
   })
 }
 
 const removeStep = (index: number): void => {
   if (formData.steps.length > 1) {
     formData.steps.splice(index, 1)
-    // Réorganiser les numéros d'ordre
-    formData.steps.forEach((step, i) => {
-      step.order = i + 1
-    })
   }
 }
 
@@ -66,15 +63,36 @@ const removeUtensil = (index: number): void => {
   formData.utensils.splice(index, 1)
 }
 
-// Soumission du formulaire
+// Soumission du formulaire avec Vue Query
 const handleSubmit = (): void => {
   if (!isFormValid.value) {
     return
   }
 
   const normalizedData = normalizeFormData(formData)
-  recipeStore.addRecipe(normalizedData)
-  router.push({ name: 'home' })
+
+  createRecipe(
+    {
+      recipe: {
+        name: normalizedData.name,
+        description: normalizedData.description,
+        shortDescription: normalizedData.shortDescription,
+        prepTime: normalizedData.prepTime,
+        cookTime: normalizedData.cookTime,
+        servings: normalizedData.servings,
+        imageUrl: normalizedData.imageUrl
+      },
+      ingredients: normalizedData.ingredients,
+      steps: normalizedData.steps,
+      utensils: normalizedData.utensils
+    },
+    {
+      onSuccess: () => {
+        // Redirection après succès
+        router.push({ name: 'home' })
+      }
+    }
+  )
 }
 
 const handleCancel = (): void => {
@@ -95,9 +113,9 @@ const handleCancel = (): void => {
         <h2 class="recipe-form__section-title">Informations générales</h2>
 
         <AppInput
-          id="recipe-title"
-          v-model="formData.title"
-          label="Titre de la recette"
+          id="recipe-name"
+          v-model="formData.name"
+          label="Nom de la recette"
           placeholder="Ex: Pâtes Carbonara"
           required
         />
@@ -188,18 +206,10 @@ const handleCancel = (): void => {
             />
 
             <AppInput
-              :id="`ingredient-quantity-${index}`"
-              v-model="ingredient.quantity"
-              label="Quantité"
-              placeholder="Ex: 400"
-              required
-            />
-
-            <AppInput
               :id="`ingredient-unit-${index}`"
               v-model="ingredient.unit"
-              label="Unité"
-              placeholder="Ex: g"
+              label="Unité (quantité + unité)"
+              placeholder="Ex: 400g"
               required
             />
           </div>
@@ -225,8 +235,16 @@ const handleCancel = (): void => {
 
         <div v-for="(step, index) in formData.steps" :key="index" class="recipe-form__dynamic-item">
           <div class="recipe-form__step">
-            <div class="recipe-form__step-number">{{ step.order }}</div>
+            <div class="recipe-form__step-number">{{ index + 1 }}</div>
             <div class="recipe-form__step-fields">
+              <AppInput
+                :id="`step-name-${index}`"
+                v-model="step.name"
+                label="Titre de l'étape"
+                placeholder="Ex: Préparer la pâte"
+                required
+              />
+
               <div class="recipe-form__field">
                 <label :for="`step-description-${index}`" class="recipe-form__label">
                   Description
@@ -241,14 +259,6 @@ const handleCancel = (): void => {
                   required
                 ></textarea>
               </div>
-
-              <AppInput
-                :id="`step-duration-${index}`"
-                :model-value="step.duration !== undefined ? String(step.duration) : ''"
-                label="Durée (min, optionnel)"
-                type="number"
-                @update:model-value="step.duration = $event ? Number($event) : undefined"
-              />
             </div>
           </div>
 
@@ -297,13 +307,20 @@ const handleCancel = (): void => {
         </AppButton>
       </section>
 
+      <!-- Affichage des erreurs de mutation -->
+      <div v-if="isError" class="recipe-form__error" role="alert">
+        <p class="recipe-form__error-message">
+          ❌ {{ error?.message || 'Erreur lors de la création de la recette' }}
+        </p>
+      </div>
+
       <!-- Actions -->
       <div class="recipe-form__actions">
-        <AppButton type="button" variant="secondary" @click="handleCancel">
+        <AppButton type="button" variant="secondary" :disabled="isPending" @click="handleCancel">
           Annuler
         </AppButton>
-        <AppButton type="submit" variant="primary" :disabled="!isFormValid">
-          Créer la recette
+        <AppButton type="submit" variant="primary" :disabled="!isFormValid || isPending">
+          {{ isPending ? 'Création en cours...' : 'Créer la recette' }}
         </AppButton>
       </div>
     </form>
@@ -457,6 +474,20 @@ const handleCancel = (): void => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Erreur de mutation */
+.recipe-form__error {
+  background-color: #fee;
+  border: 1px solid var(--color-danger, #dc3545);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.recipe-form__error-message {
+  font-size: 1rem;
+  color: var(--color-danger, #dc3545);
+  margin: 0;
 }
 
 /* Actions */

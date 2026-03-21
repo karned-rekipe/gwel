@@ -1,26 +1,41 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useRecipeStore } from '@/stores/recipeStore'
-import { storeToRefs } from 'pinia'
+import { useRecipes, useSearchRecipes } from '@/composables/useRecipeQueries'
 import RecipeCard from '@/components/molecules/RecipeCard.vue'
 import AppInput from '@/components/atoms/AppInput.vue'
 import AppButton from '@/components/atoms/AppButton.vue'
 import AppLoader from '@/components/atoms/AppLoader.vue'
 
 const router = useRouter()
-const recipeStore = useRecipeStore()
-const { filteredRecipes, loading, error, isEmpty, searchTerm } = storeToRefs(recipeStore)
+const searchTerm = ref<string>('')
 
-const localSearchTerm = ref<string>(searchTerm.value)
+// Vue Query - Récupération de toutes les recettes
+const { data: allRecipes, isLoading, isError, error, isFetching } = useRecipes()
+
+// Vue Query - Recherche (s'active seulement si searchTerm n'est pas vide)
+const { data: searchResults } = useSearchRecipes(searchTerm)
+
+// Computed pour déterminer quelles recettes afficher
+const displayedRecipes = computed(() => {
+  if (searchTerm.value.trim()) {
+    return searchResults.value ?? []
+  }
+  return allRecipes.value ?? []
+})
+
+const isEmpty = computed(() => displayedRecipes.value.length === 0)
 
 const handleSearch = (value: string): void => {
-  localSearchTerm.value = value
-  recipeStore.setSearchTerm(value)
+  searchTerm.value = value
 }
 
-const handleRecipeClick = (id: string): void => {
-  router.push({ name: 'recipe-detail', params: { id } })
+const clearSearch = (): void => {
+  searchTerm.value = ''
+}
+
+const handleRecipeClick = (uuid: string): void => {
+  router.push({ name: 'recipe-detail', params: { id: uuid } })
 }
 
 const handleAddRecipe = (): void => {
@@ -42,7 +57,7 @@ const handleAddRecipe = (): void => {
         <div class="recipe-list__search">
           <AppInput
             id="recipe-search"
-            :model-value="localSearchTerm"
+            :model-value="searchTerm"
             type="search"
             label="Rechercher"
             placeholder="Rechercher par titre ou ingrédient..."
@@ -63,22 +78,24 @@ const handleAddRecipe = (): void => {
     </header>
 
     <!-- État de chargement -->
-    <div v-if="loading" class="recipe-list__loading">
+    <div v-if="isLoading" class="recipe-list__loading">
       <AppLoader variant="skeleton" />
       <AppLoader variant="skeleton" />
       <AppLoader variant="skeleton" />
     </div>
 
     <!-- État d'erreur -->
-    <div v-else-if="error" class="recipe-list__error" role="alert">
-      <p class="recipe-list__error-message">❌ {{ error }}</p>
-      <AppButton variant="secondary" @click="recipeStore.fetchRecipes()">
+    <div v-else-if="isError" class="recipe-list__error" role="alert">
+      <p class="recipe-list__error-message">
+        ❌ {{ error?.message || 'Erreur lors du chargement des recettes' }}
+      </p>
+      <AppButton variant="secondary" @click="() => window.location.reload()">
         Réessayer
       </AppButton>
     </div>
 
     <!-- État vide (aucune recette) -->
-    <div v-else-if="isEmpty" class="recipe-list__empty">
+    <div v-else-if="isEmpty && !searchTerm" class="recipe-list__empty">
       <div class="recipe-list__empty-icon">🍽️</div>
       <h2 class="recipe-list__empty-title">Aucune recette</h2>
       <p class="recipe-list__empty-text">Commencez par ajouter votre première recette !</p>
@@ -88,22 +105,27 @@ const handleAddRecipe = (): void => {
     </div>
 
     <!-- État vide (résultat de recherche) -->
-    <div v-else-if="filteredRecipes.length === 0" class="recipe-list__empty">
+    <div v-else-if="isEmpty && searchTerm" class="recipe-list__empty">
       <div class="recipe-list__empty-icon">🔍</div>
       <h2 class="recipe-list__empty-title">Aucun résultat</h2>
       <p class="recipe-list__empty-text">
         Aucune recette ne correspond à votre recherche "{{ searchTerm }}"
       </p>
-      <AppButton variant="secondary" @click="recipeStore.clearSearch()">
+      <AppButton variant="secondary" @click="clearSearch">
         Effacer la recherche
       </AppButton>
     </div>
 
     <!-- Grille de recettes -->
     <div v-else class="recipe-list__grid">
+      <!-- Indicateur de chargement pendant le fetch -->
+      <div v-if="isFetching" class="recipe-list__fetching">
+        Mise à jour...
+      </div>
+
       <RecipeCard
-        v-for="recipe in filteredRecipes"
-        :key="recipe.id"
+        v-for="recipe in displayedRecipes"
+        :key="recipe.uuid"
         :recipe="recipe"
         @click="handleRecipeClick"
       />

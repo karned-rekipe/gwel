@@ -111,6 +111,7 @@ Organisation des composants en 3 niveaux :
 ### Prérequis
 - Node.js ≥ 18.x
 - npm ≥ 9.x
+- **Backend API** : L'application nécessite un backend REST API pour fonctionner
 
 ### Étapes
 
@@ -125,12 +126,28 @@ cd gwel
 npm install
 ```
 
-3. **Lancer le serveur de développement**
+3. **Configuration des variables d'environnement**
+
+Créer un fichier `.env` à la racine du projet (un `.env.example` est fourni) :
+
+```env
+VITE_API_BASE_URL=http://localhost:8000
+VITE_TENANT_URI=default
+```
+
+- `VITE_API_BASE_URL` : URL de base de votre API backend
+- `VITE_TENANT_URI` : Identifiant du tenant (multi-tenancy)
+
+4. **Lancer le serveur de développement**
 ```bash
 npm run dev
 ```
 
 L'application sera accessible sur `http://localhost:5173`
+
+### ⚠️ Important : Backend requis
+
+L'application communique avec une API REST backend. Assurez-vous que votre API est démarrée et accessible avant de lancer l'application frontend.
 
 ## 🧪 Scripts Disponibles
 
@@ -151,29 +168,54 @@ npm run lint         # Linter le code avec ESLint
 
 ## 🗂️ Structure des Données
 
-### Interface Recipe
+### Interface Recipe (API)
 ```typescript
 interface Recipe {
-  id: string
-  title: string
-  description: string
-  shortDescription: string
-  ingredients: Ingredient[]
-  steps: Step[]
-  utensils: Utensil[]
-  prepTime: number        // en minutes
-  cookTime: number        // en minutes
-  servings: number
+  uuid: string            // UUID v6 généré par l'API
+  name: string
+  description?: string
+  shortDescription?: string
+  prepTime?: number        // en minutes
+  cookTime?: number        // en minutes
+  servings?: number
   imageUrl?: string
-  createdAt: string
+  createdAt?: string
+  ingredients?: Ingredient[]
+  steps?: Step[]
+  utensils?: Utensil[]
+}
+
+interface Ingredient {
+  uuid: string
+  name: string
+  unit: string            // Quantité + unité (ex: "400g")
+}
+
+interface Step {
+  uuid: string
+  name: string            // Titre de l'étape
+  description: string
+  order?: number
+}
+
+interface Utensil {
+  uuid: string
+  name: string
 }
 ```
 
-Les données mockées se trouvent dans `src/data/recipes.json` et comprennent 4 recettes complètes :
-- Pâtes Carbonara Authentiques
-- Tarte Tatin aux Pommes
-- Poulet Rôti aux Herbes et Citron
-- Salade Buddha Bowl Végétarienne
+### API Backend
+
+L'application communique avec une API REST via le service `apiService` (singleton).
+
+**Routes principales** :
+- `GET /v1/recipes/` - Liste toutes les recettes
+- `GET /v1/recipes/{uuid}` - Récupère une recette par UUID
+- `POST /v1/recipes/` - Crée une nouvelle recette
+- `PATCH /v1/recipes/{uuid}` - Modifie une recette
+- `DELETE /v1/recipes/{uuid}` - Supprime une recette (soft delete)
+
+Consultez `src/services/api.ts` pour la liste complète des endpoints disponibles.
 
 ## 🎨 Variables CSS
 
@@ -212,13 +254,7 @@ La recherche filtre simultanément sur :
 - Noms des ingrédients
 
 ### 3. Lazy Loading des Routes
-Toutes les vues sont chargées dynamiquement pour optimiser les performances :
-```typescript
-{
-  path: '/recipe/:id',
-  component: () => import('./views/RecipeDetailView.vue')
-}
-```
+Toutes les vues sont chargées dynamiquement pour optimiser les performances
 
 ### 4. Gestion des États UI
 Chaque liste affiche les états appropriés :

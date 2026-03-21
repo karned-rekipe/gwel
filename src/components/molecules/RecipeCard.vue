@@ -1,34 +1,40 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useTimeFormatter } from '@/composables/useRecipe'
 import type { Recipe } from '@/types/recipe'
 
-defineProps<{
+const props = defineProps<{
   recipe: Recipe
 }>()
 
 defineEmits<{
-  click: [id: string]
+  click: [uuid: string]
 }>()
 
 const { formatTime } = useTimeFormatter()
+
+const totalTime = computed(() => {
+  const prep = props.recipe.prepTime ?? 0
+  const cook = props.recipe.cookTime ?? 0
+  return prep + cook
+})
 </script>
 
 <template>
   <article
     class="recipe-card"
-    role="button"
     tabindex="0"
-    :aria-label="`Voir la recette ${recipe.title}`"
-    @click="$emit('click', recipe.id)"
-    @keydown.enter="$emit('click', recipe.id)"
-    @keydown.space.prevent="$emit('click', recipe.id)"
+    :aria-label="`Voir la recette ${recipe.name}`"
+    @click="$emit('click', recipe.uuid)"
+    @keydown.enter="$emit('click', recipe.uuid)"
+    @keydown.space.prevent="$emit('click', recipe.uuid)"
   >
     <!-- Image de la recette -->
     <div class="recipe-card__image-wrapper">
       <img
         v-if="recipe.imageUrl"
         :src="recipe.imageUrl"
-        :alt="recipe.title"
+        :alt="recipe.name"
         class="recipe-card__image"
         loading="lazy"
       />
@@ -39,15 +45,15 @@ const { formatTime } = useTimeFormatter()
 
     <!-- Contenu de la carte -->
     <div class="recipe-card__content">
-      <h3 class="recipe-card__title">{{ recipe.title }}</h3>
-      <p class="recipe-card__description">{{ recipe.shortDescription }}</p>
+      <h3 class="recipe-card__title">{{ recipe.name }}</h3>
+      <p class="recipe-card__description">{{ recipe.shortDescription ?? recipe.description }}</p>
 
       <!-- Métadonnées -->
-      <div class="recipe-card__meta">
-        <span class="recipe-card__meta-item" :aria-label="`Temps total : ${formatTime(recipe.prepTime + recipe.cookTime)}`">
-          ⏱️ {{ formatTime(recipe.prepTime + recipe.cookTime) }}
+      <div v-if="totalTime > 0 || recipe.servings" class="recipe-card__meta">
+        <span v-if="totalTime > 0" class="recipe-card__meta-item" :aria-label="`Temps total : ${formatTime(totalTime)}`">
+          ⏱️ {{ formatTime(totalTime) }}
         </span>
-        <span class="recipe-card__meta-item" :aria-label="`${recipe.servings} portions`">
+        <span v-if="recipe.servings" class="recipe-card__meta-item" :aria-label="`${recipe.servings} portions`">
           👥 {{ recipe.servings }} {{ recipe.servings > 1 ? 'portions' : 'portion' }}
         </span>
       </div>

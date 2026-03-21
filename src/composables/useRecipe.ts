@@ -10,29 +10,26 @@ export function useRecipeValidation(formData: Ref<RecipeFormData>) {
    * Vérifie si le formulaire est valide
    */
   const isFormValid = computed(() => {
-    const { title, shortDescription, description, ingredients, steps, servings, prepTime, cookTime } = formData.value
+    const { name, shortDescription, description, ingredients, steps, servings, prepTime, cookTime } = formData.value
 
     // Vérifications basiques
-    if (!title.trim() || title.trim().length < 3) return false
+    if (!name.trim() || name.trim().length < 3) return false
     if (!shortDescription.trim() || shortDescription.trim().length < 10) return false
     if (!description.trim() || description.trim().length < 20) return false
 
     // Vérifications des ingrédients
     if (ingredients.length === 0) return false
     const hasInvalidIngredient = ingredients.some(
-      (ing) => !ing.name.trim() || !ing.quantity.trim() || !ing.unit.trim()
+      (ing) => !ing.name.trim() || !ing.unit.trim()
     )
     if (hasInvalidIngredient) return false
 
     // Vérifications des étapes
     if (steps.length === 0) return false
-    const hasInvalidStep = steps.some((step) => !step.description.trim() || step.description.trim().length < 10)
-    if (hasInvalidStep) return false
+    if (steps.some((step) => !step.name.trim() || !step.description.trim() || step.description.trim().length < 10)) return false
 
     // Vérifications numériques
-    if (servings <= 0 || prepTime <= 0 || cookTime <= 0) return false
-
-    return true
+    return !(servings <= 0 || prepTime <= 0 || cookTime <= 0)
   })
 
   /**
@@ -79,17 +76,15 @@ export function useRecipeFormatter() {
   const normalizeFormData = (formData: RecipeFormData): RecipeFormData => {
     return {
       ...formData,
-      title: formData.title.trim(),
+      name: formData.name.trim(),
       description: formData.description.trim(),
       shortDescription: formData.shortDescription.trim(),
       ingredients: formData.ingredients.map((ing) => ({
         name: ing.name.trim(),
-        quantity: ing.quantity.trim(),
         unit: ing.unit.trim()
       })),
-      steps: formData.steps.map((step, index) => ({
-        ...step,
-        order: index + 1,
+      steps: formData.steps.map((step) => ({
+        name: step.name.trim(),
         description: step.description.trim()
       })),
       utensils: formData.utensils

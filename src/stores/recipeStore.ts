@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Recipe, RecipeFormData } from '@/types/recipe'
-import recipesData from '@/data/recipes.json'
+import { apiService } from '@/services/api'
 
 export const useRecipeStore = defineStore('recipe', () => {
   // State
@@ -11,9 +11,9 @@ export const useRecipeStore = defineStore('recipe', () => {
   const searchTerm = ref<string>('')
 
   // Getters
-  const getRecipeById = computed(() => {
-    return (id: string): Recipe | undefined => {
-      return recipes.value.find((recipe) => recipe.id === id)
+  const getRecipeByUuid = computed(() => {
+    return (uuid: string): Recipe | undefined => {
+      return recipes.value.find((recipe) => recipe.uuid === uuid)
     }
   })
 
@@ -25,20 +25,24 @@ export const useRecipeStore = defineStore('recipe', () => {
     const term = searchTerm.value.toLowerCase().trim()
 
     return recipes.value.filter((recipe) => {
-      // Recherche dans le titre
-      if (recipe.title.toLowerCase().includes(term)) {
+      // Recherche dans le nom
+      if (recipe.name.toLowerCase().includes(term)) {
         return true
       }
 
       // Recherche dans la description courte
-      if (recipe.shortDescription.toLowerCase().includes(term)) {
+      if (recipe.shortDescription?.toLowerCase().includes(term)) {
         return true
       }
 
       // Recherche dans les ingrédients
-      return recipe.ingredients.some((ingredient) =>
-        ingredient.name.toLowerCase().includes(term)
-      )
+      if (recipe.ingredients) {
+        return recipe.ingredients.some((ingredient) =>
+          ingredient.name.toLowerCase().includes(term)
+        )
+      }
+
+      return false
     })
   })
 
@@ -52,10 +56,7 @@ export const useRecipeStore = defineStore('recipe', () => {
     error.value = null
 
     try {
-      // Simulation d'une requête API avec un délai
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      recipes.value = recipesData as Recipe[]
+      recipes.value = await apiService.getRecipes()
     } catch (e) {
       error.value = 'Erreur lors du chargement des recettes'
       console.error('Fetch recipes error:', e)
@@ -64,26 +65,126 @@ export const useRecipeStore = defineStore('recipe', () => {
     }
   }
 
-  const addRecipe = (formData: RecipeFormData): void => {
-    const newRecipe: Recipe = {
-      id: Date.now().toString(),
-      ...formData,
-      ingredients: formData.ingredients.map((ing, index) => ({
-        ...ing,
-        id: `${Date.now()}-ing-${index}`
-      })),
-      steps: formData.steps.map((step, index) => ({
-        ...step,
-        id: `${Date.now()}-step-${index}`
-      })),
-      utensils: formData.utensils.map((utensil, index) => ({
-        ...utensil,
-        id: `${Date.now()}-utensil-${index}`
-      })),
-      createdAt: new Date().toISOString()
+  const fetchRecipeByUuid = async (uuid: string): Promise<Recipe | null> => {
+    loading.value = true
+    error.value = null
+
+    try {
+      const recipe = await apiService.getRecipeByUuid(uuid)
+      // Mettre à jour dans le cache local si nécessaire
+      const index = recipes.value.findIndex((r) => r.uuid === uuid)
+      if (index !== -1) {
+        recipes.value[index] = recipe
+      }
+      return recipe
+    } catch (e) {
+      error.value = 'Erreur lors du chargement de la recette'
+      console.error('Fetch recipe error:', e)
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const addRecipe = async (formData: RecipeFormData): Promise<boolean> => {
+    loading.value = true
+    error.value = null
+
+    try {
+      // 1. Créer la recette
+      const recipeResponse = await apiService.createRecipe({
+        name: formData.name,
+        description: formData.description,
+        shortDescription: formData.shortDescription,
+        prepTime: formData.prepTime,
+        cookTime: formData.cookTime,
+        servings: formData.servings,
+        imageUrl: formData.imageUrl
+      })
+
+      const recipeUuid = recipeResponse.uuid
+
+      // 2. Créer les ingrédients
+      const ingredientPromises = formData.ingredients.map((ing) =>
+        apiService.createIngredient(ing)
+      )
+      await Promise.all(ingredientPromises)
+
+      // 3. Créer les étapes
+      const stepPromises = formData.steps.map((step) => apiService.createStep(recipeUuid, step))
+      await Promise.all(stepPromises)
+
+      // 4. Créer les ustensiles
+      const utensilPromises = formData.utensils.map((utensil) =>
+        apiService.createUtensil(utensil)
+      )
+      await Promise.all(utensilPromises)
+
+      // 5. Rafraîchir la liste des recettes
+      await fetchRecipes()
+
+      return true
+    } catch (e) {
+      error.value = 'Erreur lors de la création de la recette'
+      console.error('Add recipe error:', e)
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const updateRecipe = async (uuid: string, data: Partial<Recipe>): Promise<boolean> => {
+    loading.value = true
+    error.value = null
+
+    try {
+      await apiService.updateRecipe(uuid, data)
+      await fetchRecipes()
+      return true
+    } catch (e) {
+      error.value = 'Erreur lors de la mise à jour de la recette'
+      console.error('Update recipe error:', e)
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const deleteRecipe = async (uuid: string): Promise<boolean> => {
+    loading.value = true
+    error.value = null
+
+    try {
+      await apiService.deleteRecipe(uuid)
+      // Retirer de la liste locale
+      recipes.value = recipes.value.filter((r) => r.uuid !== uuid)
+      return true
+    } catch (e) {
+      error.value = 'Erreur lors de la suppression de la recette'
+      console.error('Delete recipe error:', e)
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const searchRecipes = async (term: string): Promise<void> => {
+    if (!term.trim()) {
+      await fetchRecipes()
+      return
     }
 
-    recipes.value.unshift(newRecipe) // Ajouter en début de liste
+    loading.value = true
+    error.value = null
+
+    try {
+      recipes.value = await apiService.searchRecipesByName(term)
+    } catch (e) {
+      error.value = 'Erreur lors de la recherche de recettes'
+      console.error('Search recipes error:', e)
+    } finally {
+      loading.value = false
+    }
   }
 
   const setSearchTerm = (term: string): void => {
@@ -92,6 +193,7 @@ export const useRecipeStore = defineStore('recipe', () => {
 
   const clearSearch = (): void => {
     searchTerm.value = ''
+    fetchRecipes()
   }
 
   return {
@@ -101,13 +203,17 @@ export const useRecipeStore = defineStore('recipe', () => {
     error,
     searchTerm,
     // Getters
-    getRecipeById,
+    getRecipeByUuid,
     filteredRecipes,
     recipesCount,
     isEmpty,
     // Actions
     fetchRecipes,
+    fetchRecipeByUuid,
     addRecipe,
+    updateRecipe,
+    deleteRecipe,
+    searchRecipes,
     setSearchTerm,
     clearSearch
   }

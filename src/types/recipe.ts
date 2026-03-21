@@ -35,7 +35,7 @@ export interface Recipe {
   createdAt?: string
   ingredients?: Ingredient[]
   steps?: Step[]
-  utensils?: Utensil[]
+  ustensils?: Utensil[]
 }
 
 // Types pour la création (sans UUID)

@@ -79,10 +79,10 @@ const handleBack = (): void => {
       </section>
 
       <!-- Ustensiles -->
-      <section v-if="recipe.utensils && recipe.utensils.length > 0" class="recipe-detail__section">
+      <section v-if="recipe.ustensils && recipe.ustensils.length > 0" class="recipe-detail__section">
         <h2 class="recipe-detail__section-title">Ustensiles nécessaires</h2>
         <ul class="recipe-detail__utensils">
-          <li v-for="utensil in recipe.utensils" :key="utensil.uuid" class="recipe-detail__utensil">
+          <li v-for="utensil in recipe.ustensils" :key="utensil.uuid" class="recipe-detail__utensil">
             🔧 {{ utensil.name }}
           </li>
         </ul>
@@ -306,6 +306,13 @@ const handleBack = (): void => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.recipe-detail__step-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-primary, #2c3e50);
 }
 
 .recipe-detail__step-description {

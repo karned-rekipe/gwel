@@ -1,0 +1,137 @@
+@import './base.css';
+
+/**
+ * Styles globaux pour l'application Recipe
+ * Approche Mobile-First avec grille de spacing 8px
+ * Respect des normes WCAG pour l'accessibilité
+ */
+
+/* Variables CSS pour l'accessibilité et la cohérence */
+:root {
+  /* Couleurs primaires - Respect du contraste WCAG 4.5:1 minimum */
+  --color-primary: #4a90e2;
+  --color-primary-dark: #357abd;
+  --color-secondary: #6c757d;
+  --color-secondary-dark: #5a6268;
+  --color-danger: #dc3545;
+  --color-danger-dark: #c82333;
+  --color-success: #28a745;
+
+  /* Couleurs de texte - Contrastes optimisés */
+  --color-text-primary: #2c3e50;
+  --color-text-secondary: #718096;
+
+  /* Couleurs de fond */
+  --color-background: #ffffff;
+  --color-background-alt: #f7fafc;
+  --color-background-disabled: #e2e8f0;
+
+  /* Couleurs de bordure */
+  --color-border: #e2e8f0;
+  --color-border-hover: #cbd5e0;
+
+  /* Couleur de focus (accessibilité) */
+  --color-focus: #4a90e2;
+
+  /* Spacing (grille 8px) */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+  --spacing-3xl: 64px;
+
+  /* Tailles de police */
+  --font-size-xs: 0.75rem;   /* 12px */
+  --font-size-sm: 0.875rem;  /* 14px */
+  --font-size-base: 1rem;    /* 16px */
+  --font-size-lg: 1.125rem;  /* 18px */
+  --font-size-xl: 1.25rem;   /* 20px */
+  --font-size-2xl: 1.5rem;   /* 24px */
+  --font-size-3xl: 1.875rem; /* 30px */
+  --font-size-4xl: 2.25rem;  /* 36px */
+
+  /* Transitions */
+  --transition-fast: 0.15s ease-in-out;
+  --transition-base: 0.2s ease-in-out;
+  --transition-slow: 0.3s ease-in-out;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.15);
+  --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.2);
+}
+
+/* Reset et base */
+* {
+  box-sizing: border-box;
+}
+
+#app {
+  margin: 0;
+  padding: 0;
+  font-weight: normal;
+  min-height: 100vh;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+/* Accessibilité : focus visible sur tous les éléments interactifs */
+*:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Classe utilitaire pour masquer visuellement mais garder accessible */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Liens */
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+  transition: var(--transition-base);
+}
+
+a:hover {
+  color: var(--color-primary-dark);
+  text-decoration: underline;
+}
+
+/* Responsive - Mobile First */
+@media (min-width: 640px) {
+  /* Breakpoint sm */
+}
+
+@media (min-width: 768px) {
+  /* Breakpoint md */
+}
+
+@media (min-width: 1024px) {
+  /* Breakpoint lg */
+}
+
+@media (min-width: 1280px) {
+  /* Breakpoint xl */
+}

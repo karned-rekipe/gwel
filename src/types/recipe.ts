@@ -90,3 +90,12 @@ export interface CreateResponse {
 export interface PurgeResponse {
   purged: number
 }
+
+// Types pour la création avec IA
+export interface CreateRecipeWithAIDTO {
+  raw_text: string
+}
+
+export interface AICreateResponse {
+  uuid: string
+}

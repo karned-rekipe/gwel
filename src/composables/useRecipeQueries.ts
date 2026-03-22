@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient, type MaybeRefOrGetter } from '@tanstack/vue-query'
 import { recipeService } from '@/services/recipeService'
+import { aiRecipeService } from '@/services/aiRecipeService'
 import type { Recipe, CreateRecipeDTO, CreateIngredientDTO, CreateStepDTO, CreateUtensilDTO } from '@/types/recipe'
 import { toValue } from 'vue'
 
@@ -122,6 +123,22 @@ export function useDuplicateRecipe() {
     onSuccess: () => {
       // Invalide toutes les listes pour afficher la nouvelle recette
       queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
+    }
+  })
+}
+
+/**
+ * Hook pour créer une recette avec l'IA à partir d'un texte brut
+ */
+export function useCreateRecipeWithAI() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (rawText: string) => aiRecipeService.createRecipeWithAI(rawText),
+    onSuccess: () => {
+      // Invalide le cache des listes pour forcer un rafraîchissement
+      queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
+      queryClient.invalidateQueries({ queryKey: recipeKeys.all })
     }
   })
 }

@@ -20,6 +20,11 @@ export default defineConfig({
       '/v1': {
         target: 'http://127.0.0.1:8301',
         changeOrigin: true,
+      },
+      '/ai-agent': {
+        target: 'http://127.0.0.1:8006',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/ai-agent/, '')
       }
     }
   }

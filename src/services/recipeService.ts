@@ -25,7 +25,19 @@ export const recipeService = {
    * Récupère une recette par UUID
    */
   async getByUuid(uuid: string): Promise<Recipe> {
-    return apiService.getRecipeByUuid(uuid)
+    const [recipe, ingredients, steps, ustensils] = await Promise.all([
+      apiService.getRecipeByUuid(uuid),
+      apiService.getRecipeIngredients(uuid),
+      apiService.getSteps(uuid),
+      apiService.getRecipeUtensils(uuid)
+    ])
+
+    return {
+      ...recipe,
+      ingredients,
+      steps,
+      ustensils
+    }
   },
 
   /**

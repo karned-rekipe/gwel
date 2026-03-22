@@ -62,6 +62,16 @@ class ApiService {
     return response.data
   }
 
+  async getRecipeIngredients(recipeUuid: string): Promise<Ingredient[]> {
+    const response = await this.api.get<Ingredient[]>(`/recipes/${recipeUuid}/ingredients/`)
+    return response.data
+  }
+
+  async getRecipeUtensils(recipeUuid: string): Promise<Utensil[]> {
+    const response = await this.api.get<Utensil[]>(`/recipes/${recipeUuid}/ustensils/`)
+    return response.data
+  }
+
   async searchRecipesByName(name: string): Promise<Recipe[]> {
     const response = await this.api.get<Recipe[]>(`/recipes/${name}`)
     return response.data

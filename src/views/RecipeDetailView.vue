@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { useRecipes } from '@/composables/useRecipeQueries'
+import { useRecipe } from '@/composables/useRecipeQueries'
 import RecipeDetail from '@/components/organisms/RecipeDetail.vue'
 import AppLoader from '@/components/atoms/AppLoader.vue'
 
 const route = useRoute()
 const recipeUuid = computed(() => route.params.id as string)
 
-// On utilise la liste (qui contient les données imbriquées) plutôt que l'endpoint de détail
-const { data: recipes, isLoading, isError, error } = useRecipes()
-const recipe = computed(() => recipes.value?.find((r) => r.uuid === recipeUuid.value))
+const { data: recipe, isLoading, isError, error } = useRecipe(recipeUuid)
 </script>
 
 <template>

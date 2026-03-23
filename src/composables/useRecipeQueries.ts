@@ -1,8 +1,8 @@
-import { useQuery, useMutation, useQueryClient, type MaybeRefOrGetter } from '@tanstack/vue-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { recipeService } from '@/services/recipeService'
 import { aiRecipeService } from '@/services/aiRecipeService'
 import type { Recipe, CreateRecipeDTO, CreateIngredientDTO, CreateStepDTO, CreateUtensilDTO } from '@/types/recipe'
-import { toValue } from 'vue'
+import { toValue, type MaybeRefOrGetter } from 'vue'
 
 /**
  * Composables Vue Query pour les recettes

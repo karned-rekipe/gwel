@@ -16,12 +16,7 @@ const { mutate: createRecipe, isPending, isError, error } = useCreateRecipe()
 // État du formulaire
 const formData = reactive<RecipeFormData>({
   name: '',
-  shortDescription: '',
   description: '',
-  prepTime: 0,
-  cookTime: 0,
-  servings: 1,
-  imageUrl: '',
   ingredients: [{ name: '', unit: '' }],
   steps: [{ name: '', description: '' }],
   utensils: [{ name: '' }]
@@ -65,9 +60,7 @@ const removeUtensil = (index: number): void => {
 
 // Soumission du formulaire avec Vue Query
 const handleSubmit = (): void => {
-  if (!isFormValid.value) {
-    return
-  }
+  if (!isFormValid.value) return
 
   const normalizedData = normalizeFormData(formData)
 
@@ -75,12 +68,7 @@ const handleSubmit = (): void => {
     {
       recipe: {
         name: normalizedData.name,
-        description: normalizedData.description,
-        shortDescription: normalizedData.shortDescription,
-        prepTime: normalizedData.prepTime,
-        cookTime: normalizedData.cookTime,
-        servings: normalizedData.servings,
-        imageUrl: normalizedData.imageUrl
+        description: normalizedData.description
       },
       ingredients: normalizedData.ingredients,
       steps: normalizedData.steps,
@@ -120,17 +108,9 @@ const handleCancel = (): void => {
           required
         />
 
-        <AppInput
-          id="recipe-short-description"
-          v-model="formData.shortDescription"
-          label="Description courte"
-          placeholder="Ex: Pâtes italiennes crémeuses aux œufs et guanciale"
-          required
-        />
-
         <div class="recipe-form__field">
           <label for="recipe-description" class="recipe-form__label">
-            Description détaillée
+            Description
             <span class="recipe-form__required" aria-label="Champ requis">*</span>
           </label>
           <textarea
@@ -141,49 +121,6 @@ const handleCancel = (): void => {
             rows="4"
             required
           ></textarea>
-        </div>
-
-        <AppInput
-          id="recipe-image"
-          :model-value="formData.imageUrl ?? ''"
-          label="URL de l'image (optionnel)"
-          type="text"
-          placeholder="https://example.com/image.jpg"
-          @update:model-value="formData.imageUrl = $event || undefined"
-        />
-      </section>
-
-      <!-- Temps et portions -->
-      <section class="recipe-form__section">
-        <h2 class="recipe-form__section-title">Temps et portions</h2>
-
-        <div class="recipe-form__row">
-          <AppInput
-            id="recipe-prep-time"
-            :model-value="String(formData.prepTime)"
-            label="Temps de préparation (min)"
-            type="number"
-            required
-            @update:model-value="formData.prepTime = Number($event)"
-          />
-
-          <AppInput
-            id="recipe-cook-time"
-            :model-value="String(formData.cookTime)"
-            label="Temps de cuisson (min)"
-            type="number"
-            required
-            @update:model-value="formData.cookTime = Number($event)"
-          />
-
-          <AppInput
-            id="recipe-servings"
-            :model-value="String(formData.servings)"
-            label="Nombre de portions"
-            type="number"
-            required
-            @update:model-value="formData.servings = Number($event)"
-          />
         </div>
       </section>
 

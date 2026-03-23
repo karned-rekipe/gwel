@@ -25,23 +25,13 @@ export const useRecipeStore = defineStore('recipe', () => {
     const term = searchTerm.value.toLowerCase().trim()
 
     return recipes.value.filter((recipe) => {
-      // Recherche dans le nom
-      if (recipe.name.toLowerCase().includes(term)) {
-        return true
-      }
-
-      // Recherche dans la description courte
-      if (recipe.shortDescription?.toLowerCase().includes(term)) {
-        return true
-      }
-
-      // Recherche dans les ingrédients
+      if (recipe.name.toLowerCase().includes(term)) return true
+      if (recipe.description?.toLowerCase().includes(term)) return true
       if (recipe.ingredients) {
         return recipe.ingredients.some((ingredient) =>
           ingredient.name.toLowerCase().includes(term)
         )
       }
-
       return false
     })
   })
@@ -91,15 +81,9 @@ export const useRecipeStore = defineStore('recipe', () => {
     error.value = null
 
     try {
-      // 1. Créer la recette
       const recipeResponse = await apiService.createRecipe({
         name: formData.name,
-        description: formData.description,
-        shortDescription: formData.shortDescription,
-        prepTime: formData.prepTime,
-        cookTime: formData.cookTime,
-        servings: formData.servings,
-        imageUrl: formData.imageUrl
+        description: formData.description
       })
 
       const recipeUuid = recipeResponse.uuid

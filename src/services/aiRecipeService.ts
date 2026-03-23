@@ -9,12 +9,9 @@ class AIRecipeService {
   private api: AxiosInstance
 
   constructor() {
-    // Récupération de l'URL de l'API Agent depuis les variables d'environnement
-    const baseURL = import.meta.env.VITE_API_AGENT_URL || 'http://localhost:8006'
-
-    // Configuration axios pour l'API Agent
+    // Configuration axios pour l'API Agent (via proxy Vite → /agent → http://127.0.0.1:8303)
     this.api = axios.create({
-      baseURL,
+      baseURL: '/v1/recipes',
       headers: {
         'Content-Type': 'application/json'
       },

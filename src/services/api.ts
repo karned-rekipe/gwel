@@ -22,7 +22,7 @@ class ApiService {
 
   constructor() {
     // Récupération des variables d'environnement
-    const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+    const baseURL = import.meta.env.VITE_API_BASE_URL || ''
     this.tenantUri = import.meta.env.VITE_TENANT_URI || 'default'
 
     // Configuration axios

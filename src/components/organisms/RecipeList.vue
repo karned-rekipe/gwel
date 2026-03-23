@@ -41,6 +41,10 @@ const handleRecipeClick = (uuid: string): void => {
 const handleAddRecipe = (): void => {
   router.push({ name: 'recipe-add' })
 }
+
+const handleReload = (): void => {
+  window.location.reload()
+}
 </script>
 
 <template>
@@ -89,7 +93,7 @@ const handleAddRecipe = (): void => {
       <p class="recipe-list__error-message">
         ❌ {{ error?.message || 'Erreur lors du chargement des recettes' }}
       </p>
-      <AppButton variant="secondary" @click="() => window.location.reload()">
+      <AppButton variant="secondary" @click="handleReload">
         Réessayer
       </AppButton>
     </div>

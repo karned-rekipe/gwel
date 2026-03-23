@@ -10,12 +10,11 @@ export function useRecipeValidation(formData: Ref<RecipeFormData>) {
    * Vérifie si le formulaire est valide
    */
   const isFormValid = computed(() => {
-    const { name, shortDescription, description, ingredients, steps, servings, prepTime, cookTime } = formData.value
+    const { name, description, ingredients, steps } = formData.value
 
     // Vérifications basiques
     if (!name.trim() || name.trim().length < 3) return false
-    if (!shortDescription.trim() || shortDescription.trim().length < 10) return false
-    if (!description.trim() || description.trim().length < 20) return false
+    if (!description.trim() || description.trim().length < 10) return false
 
     // Vérifications des ingrédients
     if (ingredients.length === 0) return false
@@ -26,46 +25,13 @@ export function useRecipeValidation(formData: Ref<RecipeFormData>) {
 
     // Vérifications des étapes
     if (steps.length === 0) return false
-    if (steps.some((step) => !step.name.trim() || !step.description.trim() || step.description.trim().length < 10)) return false
-
-    // Vérifications numériques
-    return !(servings <= 0 || prepTime <= 0 || cookTime <= 0)
-  })
-
-  /**
-   * Calcule le temps total de préparation
-   */
-  const totalTime = computed(() => {
-    return formData.value.prepTime + formData.value.cookTime
+    return !steps.some(
+      (step) => !step.name.trim() || !step.description.trim() || step.description.trim().length < 10
+    )
   })
 
   return {
-    isFormValid,
-    totalTime
-  }
-}
-
-/**
- * Formatte le temps en heures et minutes
- */
-export function useTimeFormatter() {
-  const formatTime = (minutes: number): string => {
-    if (minutes < 60) {
-      return `${minutes} min`
-    }
-
-    const hours = Math.floor(minutes / 60)
-    const remainingMinutes = minutes % 60
-
-    if (remainingMinutes === 0) {
-      return `${hours}h`
-    }
-
-    return `${hours}h${remainingMinutes.toString().padStart(2, '0')}`
-  }
-
-  return {
-    formatTime
+    isFormValid
   }
 }
 
@@ -78,7 +44,6 @@ export function useRecipeFormatter() {
       ...formData,
       name: formData.name.trim(),
       description: formData.description.trim(),
-      shortDescription: formData.shortDescription.trim(),
       ingredients: formData.ingredients.map((ing) => ({
         name: ing.name.trim(),
         unit: ing.unit.trim()

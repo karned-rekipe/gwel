@@ -8,14 +8,14 @@
 export interface Ingredient {
   uuid: string
   name: string
-  unit: string
+  unit: string | null
 }
 
 export interface Step {
   uuid: string
+  recipe_uuid: string
   name: string
   description: string
-  order?: number
 }
 
 export interface Utensil {
@@ -27,12 +27,7 @@ export interface Recipe {
   uuid: string
   name: string
   description?: string
-  shortDescription?: string
-  prepTime?: number // en minutes
-  cookTime?: number // en minutes
-  servings?: number
-  imageUrl?: string
-  createdAt?: string
+  nutriscore?: string | null
   ingredients?: Ingredient[]
   steps?: Step[]
   ustensils?: Utensil[]
@@ -56,24 +51,14 @@ export interface CreateUtensilDTO {
 export interface CreateRecipeDTO {
   name: string
   description?: string
-  shortDescription?: string
-  prepTime?: number
-  cookTime?: number
-  servings?: number
-  imageUrl?: string
 }
 
 export interface RecipeFormData {
   name: string
   description: string
-  shortDescription: string
   ingredients: CreateIngredientDTO[]
   steps: CreateStepDTO[]
   utensils: CreateUtensilDTO[]
-  prepTime: number
-  cookTime: number
-  servings: number
-  imageUrl?: string
 }
 
 // Réponses API

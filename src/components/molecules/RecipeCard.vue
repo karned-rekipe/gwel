@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useTimeFormatter } from '@/composables/useRecipe'
 import type { Recipe } from '@/types/recipe'
 
 const props = defineProps<{
@@ -10,14 +8,6 @@ const props = defineProps<{
 defineEmits<{
   click: [uuid: string]
 }>()
-
-const { formatTime } = useTimeFormatter()
-
-const totalTime = computed(() => {
-  const prep = props.recipe.prepTime ?? 0
-  const cook = props.recipe.cookTime ?? 0
-  return prep + cook
-})
 </script>
 
 <template>
@@ -31,14 +21,7 @@ const totalTime = computed(() => {
   >
     <!-- Image de la recette -->
     <div class="recipe-card__image-wrapper">
-      <img
-        v-if="recipe.imageUrl"
-        :src="recipe.imageUrl"
-        :alt="recipe.name"
-        class="recipe-card__image"
-        loading="lazy"
-      />
-      <div v-else class="recipe-card__image-placeholder">
+      <div class="recipe-card__image-placeholder">
         <span class="recipe-card__image-icon">🍽️</span>
       </div>
     </div>
@@ -46,16 +29,11 @@ const totalTime = computed(() => {
     <!-- Contenu de la carte -->
     <div class="recipe-card__content">
       <h3 class="recipe-card__title">{{ recipe.name }}</h3>
-      <p class="recipe-card__description">{{ recipe.shortDescription ?? recipe.description }}</p>
+      <p v-if="recipe.description" class="recipe-card__description">{{ recipe.description }}</p>
 
-      <!-- Métadonnées -->
-      <div v-if="totalTime > 0 || recipe.servings" class="recipe-card__meta">
-        <span v-if="totalTime > 0" class="recipe-card__meta-item" :aria-label="`Temps total : ${formatTime(totalTime)}`">
-          ⏱️ {{ formatTime(totalTime) }}
-        </span>
-        <span v-if="recipe.servings" class="recipe-card__meta-item" :aria-label="`${recipe.servings} portions`">
-          👥 {{ recipe.servings }} {{ recipe.servings > 1 ? 'portions' : 'portion' }}
-        </span>
+      <!-- Nutriscore -->
+      <div v-if="recipe.nutriscore" class="recipe-card__meta">
+        <span class="recipe-card__meta-item">🥗 Nutriscore {{ recipe.nutriscore }}</span>
       </div>
     </div>
   </article>
@@ -104,16 +82,6 @@ const totalTime = computed(() => {
   background-color: var(--color-background-alt, #f7fafc);
 }
 
-.recipe-card__image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.3s ease-in-out;
-}
-
-.recipe-card:hover .recipe-card__image {
-  transform: scale(1.05);
-}
 
 .recipe-card__image-placeholder {
   width: 100%;

@@ -17,15 +17,14 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/v1/recipes/ai-create': {
+        target: 'http://127.0.0.1:8303',
+        changeOrigin: true,
+      },
       '/v1': {
         target: 'http://127.0.0.1:8301',
         changeOrigin: true,
       },
-      '/ai-agent': {
-        target: 'http://127.0.0.1:8006',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/ai-agent/, '')
-      }
     }
   }
 })

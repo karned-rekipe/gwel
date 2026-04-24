@@ -32,6 +32,12 @@ export interface RecipeStep {
   total_time?: number
 }
 
+export type RecipeStatus = 'draft' | 'active' | 'archived'
+
+export type RecipeQualityStatus = 'minimal' | 'text_only' | 'structured' | 'validated'
+
+export type RecipeMigrationMetadata = Record<string, string | number | boolean | null>
+
 export interface Recipe {
   uuid: string
   version: number
@@ -45,6 +51,13 @@ export interface Recipe {
   price?: number | null
   main_image?: string | null
   secondary_images: string[]
+  favorite: boolean
+  status: RecipeStatus
+  quality_status: RecipeQualityStatus
+  legacy_id?: number | null
+  created_at_legacy?: string | null
+  updated_at_legacy?: string | null
+  migration_metadata: RecipeMigrationMetadata
   sources: RecipeSource[]
   ingredients: RecipeIngredient[]
   equipment: RecipeEquipment[]
@@ -102,6 +115,13 @@ export interface RecipeCreatePayload {
   servings: number
   main_image?: string | null
   secondary_images: string[]
+  favorite?: boolean
+  status?: RecipeStatus
+  quality_status?: RecipeQualityStatus
+  legacy_id?: number | null
+  created_at_legacy?: string | null
+  updated_at_legacy?: string | null
+  migration_metadata?: RecipeMigrationMetadata
   sources: RecipeSource[]
   ingredients: RecipeIngredient[]
   equipment: RecipeEquipment[]

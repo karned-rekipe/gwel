@@ -14,7 +14,14 @@ const setMode = (mode: CreationMode): void => {
 
 <template>
   <main class="recipe-add-view">
-    <!-- Tabs de sélection du mode -->
+    <header class="recipe-add-view__hero">
+      <p class="recipe-add-view__eyebrow">Volet 1</p>
+      <h1 class="recipe-add-view__title">Créer une fiche recette complète</h1>
+      <p class="recipe-add-view__subtitle">
+        Le formulaire manuel et le flux IA parlent désormais le même contrat agrégé côté backend.
+      </p>
+    </header>
+
     <div class="recipe-add-view__tabs" role="tablist" aria-label="Mode de création">
       <button
         class="recipe-add-view__tab"
@@ -23,10 +30,8 @@ const setMode = (mode: CreationMode): void => {
         :aria-selected="currentMode === 'manual'"
         :tabindex="currentMode === 'manual' ? 0 : -1"
         @click="setMode('manual')"
-        @keydown.enter="setMode('manual')"
-        @keydown.space.prevent="setMode('manual')"
       >
-        📝 Création manuelle
+        Création manuelle
       </button>
       <button
         class="recipe-add-view__tab"
@@ -35,89 +40,81 @@ const setMode = (mode: CreationMode): void => {
         :aria-selected="currentMode === 'ai'"
         :tabindex="currentMode === 'ai' ? 0 : -1"
         @click="setMode('ai')"
-        @keydown.enter="setMode('ai')"
-        @keydown.space.prevent="setMode('ai')"
       >
-        🤖 Création avec IA
+        Création avec IA
       </button>
     </div>
 
-    <!-- Contenu du tab actif -->
     <div class="recipe-add-view__content">
       <RecipeForm v-if="currentMode === 'manual'" />
-      <RecipeFormAI v-else-if="currentMode === 'ai'" />
+      <RecipeFormAI v-else />
     </div>
   </main>
 </template>
 
 <style scoped>
 .recipe-add-view {
-  min-height: 100vh;
-  background-color: var(--color-background, #f7fafc);
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px 24px 56px;
 }
 
-/* Tabs */
+.recipe-add-view__hero {
+  padding: 28px;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 214, 10, 0.18), transparent 32%),
+    linear-gradient(135deg, #fff8ec 0%, #fffdf8 100%);
+  border: 1px solid rgba(194, 154, 54, 0.18);
+}
+
+.recipe-add-view__eyebrow {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8c5e15;
+}
+
+.recipe-add-view__title {
+  margin: 0 0 10px;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  color: #2f2112;
+  font-weight: 800;
+}
+
+.recipe-add-view__subtitle {
+  margin: 0;
+  color: #6f5737;
+  line-height: 1.6;
+}
+
 .recipe-add-view__tabs {
   display: flex;
-  gap: 8px;
-  padding: 16px 24px 0;
-  max-width: 800px;
-  margin: 0 auto;
-  border-bottom: 2px solid var(--color-border, #e2e8f0);
+  gap: 12px;
+  margin-top: 22px;
+  padding-bottom: 12px;
 }
 
 .recipe-add-view__tab {
-  flex: 1;
-  padding: 12px 24px;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-text-secondary, #718096);
-  background-color: transparent;
-  border: none;
-  border-bottom: 3px solid transparent;
+  min-height: 46px;
+  padding: 10px 16px;
+  border: 1px solid rgba(111, 87, 55, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #6f5737;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-  bottom: -2px;
-  min-height: 44px;
-  border-radius: 8px 8px 0 0;
-}
-
-.recipe-add-view__tab:hover {
-  background-color: var(--color-background-soft, #f7fafc);
-  color: var(--color-text-primary, #2c3e50);
-}
-
-.recipe-add-view__tab:focus {
-  outline: 2px solid var(--color-primary, #3182ce);
-  outline-offset: 2px;
 }
 
 .recipe-add-view__tab--active {
-  color: var(--color-primary, #3182ce);
-  background-color: var(--color-background, #ffffff);
-  border-bottom-color: var(--color-primary, #3182ce);
+  color: #2f2112;
+  background: #ffeccd;
+  border-color: rgba(194, 120, 36, 0.18);
 }
 
-/* Content */
 .recipe-add-view__content {
-  background-color: var(--color-background, #ffffff);
-}
-
-/* Responsive */
-@media (min-width: 640px) {
-  .recipe-add-view__tabs {
-    padding: 24px 32px 0;
-  }
-
-  .recipe-add-view__tab {
-    font-size: 1.125rem;
-  }
-}
-
-@media (min-width: 768px) {
-  .recipe-add-view__tabs {
-    padding: 32px 40px 0;
-  }
+  margin-top: 6px;
 }
 </style>

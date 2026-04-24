@@ -1,90 +1,47 @@
-import { apiService } from './api'
-import type {
-  Recipe,
-  CreateRecipeDTO,
-  CreateIngredientDTO,
-  CreateStepDTO,
-  CreateUtensilDTO,
-  CreateResponse
-} from '@/types/recipe'
+import { appConfig } from '@/config/env'
+import { createHttpClient, unwrapApiResponse, unwrapPaginatedResponse } from '@/services/http'
+import type { ApiResponse, PaginatedResponse } from '@/types/api'
+import type { Recipe, RecipeCreatePayload, RecipeCreatedResponse } from '@/types/recipe'
 
-/**
- * Service Recipe - Couche d'abstraction pour les appels API
- * Isole la logique Axios des composants
- */
+const recipeApi = createHttpClient(`${appConfig.services.recipeApiBaseUrl}/v1`)
 
 export const recipeService = {
-  /**
-   * Récupère toutes les recettes
-   */
-  async getAll(): Promise<Recipe[]> {
-    return apiService.getRecipes()
+  async getAll(name?: string): Promise<Recipe[]> {
+    const response = await recipeApi.get<PaginatedResponse<Recipe>>('/recipes/', {
+      params: name ? { name } : undefined,
+    })
+
+    return unwrapPaginatedResponse(response.data)
   },
 
-  /**
-   * Récupère une recette par UUID
-   */
   async getByUuid(uuid: string): Promise<Recipe> {
-    return apiService.getRecipeByUuid(uuid)
+    const response = await recipeApi.get<ApiResponse<Recipe>>(`/recipes/${uuid}`)
+    return unwrapApiResponse(response.data)
   },
 
-  /**
-   * Recherche des recettes par nom
-   */
   async searchByName(name: string): Promise<Recipe[]> {
-    return apiService.searchRecipesByName(name)
+    return this.getAll(name)
   },
 
-  /**
-   * Crée une recette complète avec ingrédients, étapes et ustensiles
-   */
-  async create(data: {
-    recipe: CreateRecipeDTO
-    ingredients: CreateIngredientDTO[]
-    steps: CreateStepDTO[]
-    utensils: CreateUtensilDTO[]
-  }): Promise<CreateResponse> {
-    // 1. Créer la recette
-    const recipeResponse = await apiService.createRecipe(data.recipe)
-    const recipeUuid = recipeResponse.uuid
-
-    // 2. Créer les ingrédients en parallèle
-    await Promise.all(data.ingredients.map((ing) => apiService.createIngredient(ing)))
-
-    // 3. Créer les étapes en parallèle
-    await Promise.all(data.steps.map((step) => apiService.createStep(recipeUuid, step)))
-
-    // 4. Créer les ustensiles en parallèle
-    await Promise.all(data.utensils.map((utensil) => apiService.createUtensil(utensil)))
-
-    return recipeResponse
+  async create(payload: RecipeCreatePayload): Promise<RecipeCreatedResponse> {
+    const response = await recipeApi.post<ApiResponse<RecipeCreatedResponse>>('/recipes/', payload)
+    return unwrapApiResponse(response.data)
   },
 
-  /**
-   * Met à jour une recette (PATCH)
-   */
-  async update(uuid: string, data: Partial<Recipe>): Promise<void> {
-    return apiService.updateRecipe(uuid, data)
+  async update(uuid: string, payload: Partial<RecipeCreatePayload>): Promise<void> {
+    await recipeApi.patch(`/recipes/${uuid}`, payload)
   },
 
-  /**
-   * Remplace une recette complètement (PUT)
-   */
-  async replace(uuid: string, data: Recipe): Promise<void> {
-    return apiService.replaceRecipe(uuid, data)
+  async replace(uuid: string, payload: RecipeCreatePayload): Promise<void> {
+    await recipeApi.put(`/recipes/${uuid}`, payload)
   },
 
-  /**
-   * Supprime une recette (soft delete)
-   */
   async delete(uuid: string): Promise<void> {
-    return apiService.deleteRecipe(uuid)
+    await recipeApi.delete(`/recipes/${uuid}`)
   },
 
-  /**
-   * Duplique une recette
-   */
-  async duplicate(uuid: string): Promise<CreateResponse> {
-    return apiService.duplicateRecipe(uuid)
-  }
+  async duplicate(uuid: string): Promise<RecipeCreatedResponse> {
+    const response = await recipeApi.post<ApiResponse<RecipeCreatedResponse>>(`/recipes/${uuid}/duplicate`)
+    return unwrapApiResponse(response.data)
+  },
 }

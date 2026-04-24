@@ -1,86 +1,119 @@
-/**
- * Types pour l'application Recipe
- * Mode TypeScript strict - Zéro any
- * Aligné avec l'API backend
- */
-
-// Types API (correspondant aux UUIDs de l'API)
-export interface Ingredient {
-  uuid: string
+export interface RecipeSource {
   name: string
-  unit: string | null
+  description?: string | null
+  uri?: string | null
 }
 
-export interface Step {
-  uuid: string
-  recipe_uuid: string
+export interface RecipeIngredient {
   name: string
-  description: string
+  quantity: number
+  unit: string
+  season_months: Record<number, number>
+  rayon?: string | null
+  group?: string | null
+  green_score?: number | null
 }
 
-export interface Utensil {
-  uuid: string
+export interface RecipeEquipment {
   name: string
+  quantity?: number | null
+}
+
+export interface RecipeStep {
+  uuid?: string
+  name: string
+  description?: string | null
+  cooking_time?: number | null
+  rest_time?: number | null
+  preparation_time?: number | null
+  main_image?: string | null
+  secondary_images: string[]
+  rank: number
+  total_time?: number
 }
 
 export interface Recipe {
   uuid: string
+  version: number
+  created_at?: string
+  updated_at?: string
   name: string
-  description?: string
-  nutriscore?: string | null
-  ingredients?: Ingredient[]
-  steps?: Step[]
-  ustensils?: Utensil[]
+  description?: string | null
+  servings?: number | null
+  unit_count?: number | null
+  difficulty?: number | null
+  price?: number | null
+  main_image?: string | null
+  secondary_images: string[]
+  sources: RecipeSource[]
+  ingredients: RecipeIngredient[]
+  equipment: RecipeEquipment[]
+  steps: RecipeStep[]
 }
 
-// Types pour la création (sans UUID)
-export interface CreateIngredientDTO {
+export interface RecipeCreatedResponse {
+  uuid: string
+}
+
+export interface RecipeFormIngredient {
   name: string
+  quantity: string
   unit: string
+  seasonMonths: number[]
+  rayon: string
+  group: string
+  greenScore: string
 }
 
-export interface CreateStepDTO {
+export interface RecipeFormEquipment {
+  name: string
+  quantity: string
+}
+
+export interface RecipeFormStep {
   name: string
   description: string
+  preparationTime: string
+  cookingTime: string
+  restTime: string
 }
 
-export interface CreateUtensilDTO {
+export interface RecipeFormSource {
   name: string
-}
-
-export interface CreateRecipeDTO {
-  name: string
-  description?: string
+  description: string
+  uri: string
 }
 
 export interface RecipeFormData {
   name: string
   description: string
-  ingredients: CreateIngredientDTO[]
-  steps: CreateStepDTO[]
-  utensils: CreateUtensilDTO[]
+  servings: string
+  mainImage: string
+  secondaryImages: string
+  ingredients: RecipeFormIngredient[]
+  equipment: RecipeFormEquipment[]
+  steps: RecipeFormStep[]
+  sources: RecipeFormSource[]
 }
 
-// Réponses API
-export interface ApiResponse<T> {
-  data?: T
-  error?: string
-  message?: string
+export interface RecipeCreatePayload {
+  name: string
+  description?: string | null
+  servings: number
+  main_image?: string | null
+  secondary_images: string[]
+  sources: RecipeSource[]
+  ingredients: RecipeIngredient[]
+  equipment: RecipeEquipment[]
+  steps: RecipeStep[]
 }
 
-export interface CreateResponse {
-  uuid: string
-}
-
-export interface PurgeResponse {
-  purged: number
-}
-
-// Types pour la création avec IA
 export interface CreateRecipeWithAIDTO {
   raw_text: string
 }
 
 export interface AICreateResponse {
-  uuid: string
+  recipe_uuid: string
+  recipe_name: string
+  formatted_response: string
 }

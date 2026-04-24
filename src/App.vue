@@ -1,150 +1,219 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
+import { appConfig } from '@/config/env'
 </script>
 
 <template>
-  <div class="app">
-    <!-- En-tête sémantique avec navigation -->
-    <header class="app__header">
-      <nav class="app__nav" aria-label="Navigation principale">
-        <div class="app__nav-content">
-          <RouterLink to="/" class="app__logo">
-            <span class="app__logo-icon">🍽️</span>
-            <span class="app__logo-text">Recipe</span>
+  <div class="app-shell">
+    <header class="app-shell__header">
+      <nav class="app-shell__nav" aria-label="Navigation principale">
+        <div class="app-shell__brand">
+          <RouterLink to="/recipes" class="app-shell__logo">
+            <span class="app-shell__logo-mark">RK</span>
+            <span>
+              <span class="app-shell__logo-title">rekipe</span>
+              <span class="app-shell__logo-subtitle">cuisine, planning, courses</span>
+            </span>
           </RouterLink>
+        </div>
 
-          <div class="app__nav-links">
-            <RouterLink to="/" class="app__nav-link" exact-active-class="app__nav-link--active">
-              Accueil
-            </RouterLink>
-            <RouterLink to="/add" class="app__nav-link" exact-active-class="app__nav-link--active">
-              Nouvelle recette
-            </RouterLink>
+        <div class="app-shell__links">
+          <RouterLink
+            to="/recipes"
+            class="app-shell__link"
+            active-class="app-shell__link--active"
+          >
+            Recettes
+          </RouterLink>
+          <RouterLink
+            to="/planning"
+            class="app-shell__link"
+            active-class="app-shell__link--active"
+          >
+            Planning
+          </RouterLink>
+          <RouterLink
+            to="/shopping"
+            class="app-shell__link"
+            active-class="app-shell__link--active"
+          >
+            Courses
+          </RouterLink>
+        </div>
+
+        <div class="app-shell__meta">
+          <div class="app-shell__tenant">
+            <span class="app-shell__tenant-label">Tenant</span>
+            <span class="app-shell__tenant-value">{{ appConfig.tenantUri }}</span>
           </div>
+
+          <RouterLink
+            to="/recipes/new"
+            class="app-shell__cta"
+            active-class="app-shell__cta--active"
+          >
+            Nouvelle recette
+          </RouterLink>
         </div>
       </nav>
     </header>
 
-    <!-- Contenu principal -->
     <RouterView />
   </div>
 </template>
 
 <style scoped>
-.app {
+.app-shell {
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  background:
+    radial-gradient(circle at top, rgba(255, 190, 92, 0.12), transparent 28%),
+    linear-gradient(180deg, #fffaf2 0%, #fffdf9 35%, #f7f7f2 100%);
 }
 
-/* En-tête */
-.app__header {
-  background-color: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+.app-shell__header {
   position: sticky;
   top: 0;
   z-index: 100;
+  backdrop-filter: blur(14px);
+  background: rgba(255, 252, 246, 0.86);
+  border-bottom: 1px solid rgba(99, 70, 36, 0.12);
 }
 
-.app__nav {
-  width: 100%;
-}
-
-.app__nav-content {
-  max-width: 1200px;
+.app-shell__nav {
+  max-width: 1240px;
   margin: 0 auto;
   padding: 16px 24px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+  gap: 18px;
 }
 
-/* Logo */
-.app__logo {
-  display: flex;
+.app-shell__logo {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  color: #2f2112;
   text-decoration: none;
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: var(--color-text-primary, #2c3e50);
-  transition: var(--transition-base, 0.2s ease-in-out);
 }
 
-.app__logo:hover {
-  color: var(--color-primary, #4a90e2);
+.app-shell__logo:hover {
+  color: #7c4b12;
   text-decoration: none;
-  transform: scale(1.02);
 }
 
-.app__logo-icon {
-  font-size: 2rem;
-}
-
-.app__logo:focus-visible {
-  outline: 3px solid var(--color-focus, #4a90e2);
-  outline-offset: 2px;
-  border-radius: 8px;
-}
-
-/* Navigation */
-.app__nav-links {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.app__nav-link {
+.app-shell__logo-mark {
+  width: 46px;
+  height: 46px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #ffb85e 0%, #ff8b4d 100%);
+  color: #fffaf4;
+  font-size: 0.96rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  box-shadow: 0 14px 30px rgba(255, 139, 77, 0.28);
+}
+
+.app-shell__logo-title {
+  display: block;
+  font-size: 1.22rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.app-shell__logo-subtitle {
+  display: block;
+  font-size: 0.78rem;
+  color: #8b6a3b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.app-shell__links,
+.app-shell__meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-shell__link,
+.app-shell__cta {
   min-height: 44px;
-  padding: 8px 16px;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-text-secondary, #718096);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 0.98rem;
+  font-weight: 700;
   text-decoration: none;
-  border-radius: 8px;
-  transition: var(--transition-base, 0.2s ease-in-out);
+  transition: all 0.18s ease;
 }
 
-.app__nav-link:hover {
-  color: var(--color-primary, #4a90e2);
-  background-color: var(--color-background-alt, #f7fafc);
+.app-shell__link {
+  color: #6f5737;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(99, 70, 36, 0.08);
+}
+
+.app-shell__link:hover,
+.app-shell__link--active {
+  color: #2f2112;
+  background: #fff2dc;
+  border-color: rgba(185, 120, 36, 0.18);
   text-decoration: none;
 }
 
-.app__nav-link--active {
-  color: var(--color-primary, #4a90e2);
-  background-color: rgba(74, 144, 226, 0.1);
+.app-shell__tenant {
+  padding: 6px 12px;
+  border-radius: 16px;
+  background: rgba(47, 33, 18, 0.06);
 }
 
-.app__nav-link:focus-visible {
-  outline: 3px solid var(--color-focus, #4a90e2);
-  outline-offset: 2px;
+.app-shell__tenant-label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8b6a3b;
 }
 
-/* Responsive */
-@media (max-width: 640px) {
-  .app__nav-content {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
+.app-shell__tenant-value {
+  display: block;
+  color: #2f2112;
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.app-shell__cta {
+  color: #fff7ef;
+  background: linear-gradient(135deg, #e46f2d 0%, #c2481b 100%);
+  box-shadow: 0 12px 24px rgba(194, 72, 27, 0.2);
+}
+
+.app-shell__cta:hover,
+.app-shell__cta--active {
+  color: #fff7ef;
+  text-decoration: none;
+  transform: translateY(-1px);
+  box-shadow: 0 16px 28px rgba(194, 72, 27, 0.24);
+}
+
+@media (max-width: 980px) {
+  .app-shell__nav {
+    grid-template-columns: 1fr;
   }
 
-  .app__nav-links {
-    width: 100%;
+  .app-shell__links,
+  .app-shell__meta {
+    flex-wrap: wrap;
+  }
+
+  .app-shell__meta {
     justify-content: space-between;
-  }
-
-  .app__nav-link {
-    flex: 1;
-    justify-content: center;
-  }
-
-  .app__logo-text {
-    display: none;
   }
 }
 </style>

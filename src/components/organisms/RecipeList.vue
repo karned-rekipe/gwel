@@ -1,260 +1,206 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useRecipes, useSearchRecipes } from '@/composables/useRecipeQueries'
-import RecipeCard from '@/components/molecules/RecipeCard.vue'
-import AppInput from '@/components/atoms/AppInput.vue'
 import AppButton from '@/components/atoms/AppButton.vue'
+import AppInput from '@/components/atoms/AppInput.vue'
 import AppLoader from '@/components/atoms/AppLoader.vue'
+import RecipeCard from '@/components/molecules/RecipeCard.vue'
+import { useRecipes, useSearchRecipes } from '@/composables/useRecipeQueries'
 
 const router = useRouter()
-const searchTerm = ref<string>('')
+const searchTerm = ref('')
 
-// Vue Query - Récupération de toutes les recettes
 const { data: allRecipes, isLoading, isError, error, isFetching } = useRecipes()
-
-// Vue Query - Recherche (s'active seulement si searchTerm n'est pas vide)
 const { data: searchResults } = useSearchRecipes(searchTerm)
 
-// Computed pour déterminer quelles recettes afficher
 const displayedRecipes = computed(() => {
   if (searchTerm.value.trim()) {
     return searchResults.value ?? []
   }
+
   return allRecipes.value ?? []
 })
 
 const isEmpty = computed(() => displayedRecipes.value.length === 0)
 
-const handleSearch = (value: string): void => {
-  searchTerm.value = value
-}
-
-const clearSearch = (): void => {
-  searchTerm.value = ''
-}
-
 const handleRecipeClick = (uuid: string): void => {
-  router.push({ name: 'recipe-detail', params: { id: uuid } })
+  router.push({ name: 'recipes-detail', params: { id: uuid } })
 }
 
 const handleAddRecipe = (): void => {
-  router.push({ name: 'recipe-add' })
-}
-
-const handleReload = (): void => {
-  window.location.reload()
+  router.push({ name: 'recipes-new' })
 }
 </script>
 
 <template>
-  <div class="recipe-list">
-    <!-- En-tête avec recherche et CTA -->
-    <header class="recipe-list__header">
-      <div class="recipe-list__header-content">
-        <h1 class="recipe-list__title">Mes Recettes</h1>
-        <p class="recipe-list__subtitle">Découvrez et partagez vos recettes préférées</p>
+  <section class="recipe-list">
+    <header class="recipe-list__hero">
+      <div class="recipe-list__copy">
+        <p class="recipe-list__eyebrow">Volet 1</p>
+        <h1 class="recipe-list__title">Mémoire culinaire du foyer</h1>
+        <p class="recipe-list__subtitle">
+          Le hub gwel centralise les recettes aujourd’hui, puis la planification et les courses.
+        </p>
       </div>
 
       <div class="recipe-list__actions">
-        <!-- Barre de recherche -->
         <div class="recipe-list__search">
           <AppInput
             id="recipe-search"
             :model-value="searchTerm"
             type="search"
-            label="Rechercher"
-            placeholder="Rechercher par titre ou ingrédient..."
-            aria-label="Rechercher une recette par titre ou ingrédient"
-            @update:model-value="handleSearch"
+            label="Filtrer les recettes"
+            placeholder="Nom de recette"
+            @update:model-value="searchTerm = $event"
           />
         </div>
 
-        <!-- Bouton CTA pour ajouter -->
-        <AppButton
-          variant="primary"
-          aria-label="Ajouter une nouvelle recette"
-          @click="handleAddRecipe"
-        >
-          ➕ Nouvelle recette
+        <AppButton variant="primary" @click="handleAddRecipe">
+          Nouvelle recette
         </AppButton>
       </div>
     </header>
 
-    <!-- État de chargement -->
     <div v-if="isLoading" class="recipe-list__loading">
       <AppLoader variant="skeleton" />
       <AppLoader variant="skeleton" />
       <AppLoader variant="skeleton" />
     </div>
 
-    <!-- État d'erreur -->
-    <div v-else-if="isError" class="recipe-list__error" role="alert">
-      <p class="recipe-list__error-message">
-        ❌ {{ error?.message || 'Erreur lors du chargement des recettes' }}
+    <div v-else-if="isError" class="recipe-list__state">
+      <h2 class="recipe-list__state-title">Chargement impossible</h2>
+      <p class="recipe-list__state-text">
+        {{ error?.message || 'Les recettes ne sont pas accessibles pour le moment.' }}
       </p>
-      <AppButton variant="secondary" @click="handleReload">
-        Réessayer
-      </AppButton>
     </div>
 
-    <!-- État vide (aucune recette) -->
-    <div v-else-if="isEmpty && !searchTerm" class="recipe-list__empty">
-      <div class="recipe-list__empty-icon">🍽️</div>
-      <h2 class="recipe-list__empty-title">Aucune recette</h2>
-      <p class="recipe-list__empty-text">Commencez par ajouter votre première recette !</p>
-      <AppButton variant="primary" @click="handleAddRecipe">
-        Ajouter une recette
-      </AppButton>
-    </div>
-
-    <!-- État vide (résultat de recherche) -->
-    <div v-else-if="isEmpty && searchTerm" class="recipe-list__empty">
-      <div class="recipe-list__empty-icon">🔍</div>
-      <h2 class="recipe-list__empty-title">Aucun résultat</h2>
-      <p class="recipe-list__empty-text">
-        Aucune recette ne correspond à votre recherche "{{ searchTerm }}"
+    <div v-else-if="isEmpty" class="recipe-list__state">
+      <h2 class="recipe-list__state-title">
+        {{ searchTerm ? 'Aucun résultat' : 'Aucune recette disponible' }}
+      </h2>
+      <p class="recipe-list__state-text">
+        {{
+          searchTerm
+            ? `Aucune recette ne correspond à "${searchTerm}".`
+            : 'Commence par créer la première fiche recette complète.'
+        }}
       </p>
-      <AppButton variant="secondary" @click="clearSearch">
-        Effacer la recherche
-      </AppButton>
     </div>
 
-    <!-- Grille de recettes -->
-    <div v-else class="recipe-list__grid">
-      <!-- Indicateur de chargement pendant le fetch -->
-      <div v-if="isFetching" class="recipe-list__fetching">
-        Mise à jour...
+    <div v-else class="recipe-list__results">
+      <div class="recipe-list__results-head">
+        <p class="recipe-list__results-count">{{ displayedRecipes.length }} recette(s)</p>
+        <p v-if="isFetching" class="recipe-list__results-refresh">Mise à jour…</p>
       </div>
 
-      <RecipeCard
-        v-for="recipe in displayedRecipes"
-        :key="recipe.uuid"
-        :recipe="recipe"
-        @click="handleRecipeClick"
-      />
+      <div class="recipe-list__grid">
+        <RecipeCard
+          v-for="recipe in displayedRecipes"
+          :key="recipe.uuid"
+          :recipe="recipe"
+          @click="handleRecipeClick"
+        />
+      </div>
     </div>
-  </div>
+  </section>
 </template>
 
 <style scoped>
 .recipe-list {
-  width: 100%;
-  max-width: 1200px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 28px 24px 56px;
 }
 
-/* En-tête */
-.recipe-list__header {
-  margin-bottom: 32px;
+.recipe-list__hero {
+  display: grid;
+  gap: 20px;
+  padding: 28px;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 211, 122, 0.26), transparent 34%),
+    linear-gradient(135deg, #fff8ec 0%, #fffdf8 100%);
+  border: 1px solid rgba(194, 154, 54, 0.18);
 }
 
-.recipe-list__header-content {
-  margin-bottom: 24px;
+.recipe-list__eyebrow {
+  margin: 0 0 10px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8c5e15;
 }
 
 .recipe-list__title {
-  font-size: 2rem;
+  margin: 0 0 10px;
+  font-size: clamp(2.1rem, 4vw, 3.5rem);
   font-weight: 800;
-  color: var(--color-text-primary, #2c3e50);
-  margin: 0 0 8px 0;
-  line-height: 1.2;
+  color: #2f2112;
 }
 
-.recipe-list__subtitle {
-  font-size: 1.125rem;
-  color: var(--color-text-secondary, #718096);
+.recipe-list__subtitle,
+.recipe-list__state-text,
+.recipe-list__results-count {
   margin: 0;
+  color: #6f5737;
+  line-height: 1.65;
 }
 
-/* Actions (Recherche + CTA) */
 .recipe-list__actions {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  display: grid;
+  gap: 14px;
+  align-items: end;
 }
 
 .recipe-list__search {
-  flex: 1;
-  max-width: 500px;
+  max-width: 440px;
 }
 
-/* Grille de recettes */
+.recipe-list__loading,
 .recipe-list__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 24px;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  margin-top: 24px;
 }
 
-/* État de chargement */
-.recipe-list__loading {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 24px;
+.recipe-list__state {
+  margin-top: 24px;
+  padding: 32px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(109, 78, 40, 0.08);
 }
 
-/* État d'erreur */
-.recipe-list__error {
-  text-align: center;
-  padding: 64px 24px;
+.recipe-list__state-title {
+  margin: 0 0 10px;
+  color: #2f2112;
+  font-weight: 800;
 }
 
-.recipe-list__error-message {
-  font-size: 1.125rem;
-  color: var(--color-danger, #dc3545);
-  margin-bottom: 24px;
+.recipe-list__results {
+  margin-top: 24px;
 }
 
-/* État vide */
-.recipe-list__empty {
-  text-align: center;
-  padding: 64px 24px;
+.recipe-list__results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
-.recipe-list__empty-icon {
-  font-size: 5rem;
-  margin-bottom: 24px;
-  opacity: 0.5;
-}
-
-.recipe-list__empty-title {
-  font-size: 1.5rem;
+.recipe-list__results-refresh {
+  margin: 0;
+  color: #8c5e15;
   font-weight: 700;
-  color: var(--color-text-primary, #2c3e50);
-  margin: 0 0 12px 0;
 }
 
-.recipe-list__empty-text {
-  font-size: 1rem;
-  color: var(--color-text-secondary, #718096);
-  margin: 0 0 24px 0;
-}
-
-/* Responsive */
-@media (min-width: 640px) {
-  .recipe-list {
-    padding: 32px;
-  }
-
-  .recipe-list__actions {
-    flex-direction: row;
-    align-items: flex-end;
-    gap: 24px;
-  }
-
-  .recipe-list__grid {
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  }
-}
-
-@media (min-width: 1024px) {
-  .recipe-list {
-    padding: 48px;
-  }
-
-  .recipe-list__title {
-    font-size: 2.5rem;
+@media (min-width: 900px) {
+  .recipe-list__hero {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
   }
 }
 </style>

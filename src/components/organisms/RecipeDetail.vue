@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import AppButton from '@/components/atoms/AppButton.vue'
+import IconActionButton from '@/components/resources/IconActionButton.vue'
+import { useDeleteRecipe } from '@/composables/useRecipeQueries'
 import type { Recipe } from '@/types/recipe'
 
 const props = defineProps<{
@@ -9,120 +10,144 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
+const { mutate: deleteRecipe, isPending: isDeleting } = useDeleteRecipe()
+const monthNames = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc']
 
-const headlineMetrics = computed(() => [
-  { label: 'Portions', value: props.recipe.servings ?? '?' },
-  { label: 'Ingrédients', value: props.recipe.ingredients.length },
-  { label: 'Étapes', value: props.recipe.steps.length },
+const totalTime = computed(() =>
+  props.recipe.steps.reduce(
+    (total, step) =>
+      total + (step.total_time ?? (step.preparation_time ?? 0) + (step.cooking_time ?? 0) + (step.rest_time ?? 0)),
+    0,
+  ),
+)
+
+const totalTimeLabel = computed(() => {
+  if (totalTime.value <= 0) return '—'
+  const hours = Math.floor(totalTime.value / 60)
+  const minutes = totalTime.value % 60
+  return hours ? `${hours} h${minutes ? ` ${minutes}` : ''}` : `${minutes} min`
+})
+
+const seasonLabel = computed(() => {
+  const bestMonths = Object.entries(props.recipe.season_months)
+    .filter(([, score]) => Number(score) >= 2)
+    .map(([month]) => monthNames[Number(month) - 1])
+    .filter(Boolean)
+  return bestMonths.length ? bestMonths.join(', ') : 'Toute saison'
+})
+
+const metaItems = computed(() => [
+  { label: 'Origine', value: props.recipe.origin_country || '—' },
+  { label: 'Difficulté', value: props.recipe.difficulty ? `${props.recipe.difficulty}/5` : '—' },
+  { label: 'Prix', value: props.recipe.price ? `${props.recipe.price}/5` : '—' },
+  { label: 'Temps', value: totalTimeLabel.value },
+  { label: 'Saison', value: seasonLabel.value },
 ])
 
 const handleBack = (): void => {
   router.push({ name: 'recipes-home' })
 }
+
+const handleEdit = (): void => {
+  router.push({ name: 'recipes-edit', params: { id: props.recipe.uuid } })
+}
+
+const handleDelete = (): void => {
+  if (!window.confirm('Supprimer cette recette ?')) return
+  deleteRecipe(props.recipe.uuid, {
+    onSuccess: () => {
+      router.push({ name: 'recipes-home' })
+    },
+  })
+}
 </script>
 
 <template>
   <article class="recipe-detail">
-    <div class="recipe-detail__back">
-      <AppButton variant="secondary" @click="handleBack">Retour aux recettes</AppButton>
-    </div>
-
-    <header class="recipe-detail__hero">
-      <div class="recipe-detail__hero-copy">
-        <p class="recipe-detail__eyebrow">Fiche recette</p>
-        <h1 class="recipe-detail__title">{{ recipe.name }}</h1>
-        <p v-if="recipe.description" class="recipe-detail__description">{{ recipe.description }}</p>
-
-        <div class="recipe-detail__metrics">
-          <div
-            v-for="metric in headlineMetrics"
-            :key="metric.label"
-            class="recipe-detail__metric"
-          >
-            <span class="recipe-detail__metric-label">{{ metric.label }}</span>
-            <span class="recipe-detail__metric-value">{{ metric.value }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="recipe.main_image" class="recipe-detail__hero-media">
-        <img :src="recipe.main_image" :alt="recipe.name" class="recipe-detail__image" />
-      </div>
-      <div v-else class="recipe-detail__hero-media recipe-detail__hero-media--placeholder">
-        <span class="recipe-detail__hero-emoji">🍽️</span>
+    <header class="recipe-detail__header">
+      <IconActionButton label="Retour" icon="←" @click="handleBack" />
+      <div class="recipe-detail__header-actions">
+        <IconActionButton label="Modifier" icon="✎" @click="handleEdit" />
+        <IconActionButton label="Supprimer" icon="×" variant="danger" :disabled="isDeleting" @click="handleDelete" />
       </div>
     </header>
 
+    <section class="recipe-detail__hero">
+      <div>
+        <div class="recipe-detail__title-row">
+          <h1 class="recipe-detail__title">{{ recipe.name }}</h1>
+          <span v-if="recipe.favorite" class="recipe-detail__favorite">Favori</span>
+        </div>
+        <p v-if="recipe.description" class="recipe-detail__description">{{ recipe.description }}</p>
+        <div class="recipe-detail__tags">
+          <router-link v-for="tag in recipe.tags" :key="tag.uuid" :to="{ name: 'tags-detail', params: { id: tag.uuid } }" class="recipe-detail__tag">
+            {{ tag.name }}
+          </router-link>
+        </div>
+      </div>
+      <img v-if="recipe.main_image" :src="recipe.main_image" :alt="recipe.name" class="recipe-detail__image" />
+    </section>
+
+    <section class="recipe-detail__meta" aria-label="Métadonnées recette">
+      <div v-for="item in metaItems" :key="item.label" class="recipe-detail__meta-item">
+        <span>{{ item.label }}</span>
+        <strong>{{ item.value }}</strong>
+      </div>
+    </section>
+
     <div class="recipe-detail__grid">
       <section class="recipe-detail__section">
-        <h2 class="recipe-detail__section-title">Ingrédients</h2>
-        <ul class="recipe-detail__list">
-          <li
-            v-for="ingredient in recipe.ingredients"
-            :key="`${ingredient.name}-${ingredient.unit}`"
-            class="recipe-detail__list-item"
-          >
-            <div>
-              <strong>{{ ingredient.quantity }} {{ ingredient.unit }}</strong>
-              <span>{{ ingredient.name }}</span>
-            </div>
-            <small v-if="Object.keys(ingredient.season_months).length" class="recipe-detail__hint">
-              Saison : {{ Object.keys(ingredient.season_months).join(', ') }}
-            </small>
+        <h2>Ingrédients</h2>
+        <ul class="recipe-detail__ingredients">
+          <li v-for="ingredient in recipe.ingredients" :key="ingredient.ingredient_uuid">
+            <span class="recipe-detail__qty">{{ ingredient.quantity }}</span>
+            <span class="recipe-detail__unit">{{ ingredient.unit }}</span>
+            <router-link :to="{ name: 'ingredients-detail', params: { id: ingredient.ingredient_uuid } }">
+              {{ ingredient.name }}
+            </router-link>
           </li>
         </ul>
       </section>
 
-      <section v-if="recipe.equipment.length" class="recipe-detail__section">
-        <h2 class="recipe-detail__section-title">Équipement</h2>
-        <ul class="recipe-detail__list">
-          <li
-            v-for="equipment in recipe.equipment"
-            :key="`${equipment.name}-${equipment.quantity ?? 'single'}`"
-            class="recipe-detail__list-item"
-          >
-            <div>
-              <strong v-if="equipment.quantity">{{ equipment.quantity }}x</strong>
-              <span>{{ equipment.name }}</span>
-            </div>
+      <section class="recipe-detail__section">
+        <h2>Ustensiles</h2>
+        <ul v-if="recipe.equipment.length" class="recipe-detail__equipment">
+          <li v-for="equipment in recipe.equipment" :key="equipment.equipment_uuid">
+            <span>{{ equipment.quantity ? `${equipment.quantity}x` : '1x' }}</span>
+            <router-link :to="{ name: 'equipment-detail', params: { id: equipment.equipment_uuid } }">
+              {{ equipment.name }}
+            </router-link>
           </li>
         </ul>
+        <p v-else class="recipe-detail__empty">Aucun ustensile renseigné.</p>
       </section>
 
       <section class="recipe-detail__section recipe-detail__section--wide">
-        <h2 class="recipe-detail__section-title">Préparation</h2>
+        <h2>Préparation</h2>
         <ol class="recipe-detail__steps">
-          <li
-            v-for="(step, index) in recipe.steps"
-            :key="step.uuid ?? `${step.name}-${index}`"
-            class="recipe-detail__step"
-          >
-            <div class="recipe-detail__step-rank">{{ index + 1 }}</div>
-            <div class="recipe-detail__step-body">
-              <div class="recipe-detail__step-head">
-                <h3 class="recipe-detail__step-title">{{ step.name }}</h3>
-                <p class="recipe-detail__step-times">
-                  Prépa {{ step.preparation_time ?? 0 }} min · Cuisson
-                  {{ step.cooking_time ?? 0 }} min · Repos {{ step.rest_time ?? 0 }} min
-                </p>
-              </div>
-              <p class="recipe-detail__step-description">{{ step.description }}</p>
+          <li v-for="(step, index) in recipe.steps" :key="step.uuid ?? `${step.name}-${index}`">
+            <span class="recipe-detail__step-index">{{ index + 1 }}</span>
+            <div>
+              <h3>{{ step.name }}</h3>
+              <p class="recipe-detail__step-time">
+                Prépa {{ step.preparation_time ?? 0 }} min · Cuisson {{ step.cooking_time ?? 0 }} min · Repos {{ step.rest_time ?? 0 }} min
+              </p>
+              <p>{{ step.description }}</p>
             </div>
           </li>
         </ol>
       </section>
 
-      <section v-if="recipe.sources.length" class="recipe-detail__section recipe-detail__section--wide">
-        <h2 class="recipe-detail__section-title">Sources</h2>
-        <ul class="recipe-detail__sources">
+      <section class="recipe-detail__source-box recipe-detail__section--wide">
+        <h2>Source</h2>
+        <ul v-if="recipe.sources.length" class="recipe-detail__sources">
           <li v-for="source in recipe.sources" :key="`${source.name}-${source.uri}`">
             <strong>{{ source.name }}</strong>
-            <span v-if="source.description"> — {{ source.description }}</span>
-            <a v-if="source.uri" :href="source.uri" target="_blank" rel="noreferrer">
-              {{ source.uri }}
-            </a>
+            <span v-if="source.description">{{ source.description }}</span>
+            <a v-if="source.uri" :href="source.uri" target="_blank" rel="noreferrer">{{ source.uri }}</a>
           </li>
         </ul>
+        <p v-else class="recipe-detail__empty">Aucune source renseignée.</p>
       </section>
     </div>
   </article>
@@ -132,225 +157,222 @@ const handleBack = (): void => {
 .recipe-detail {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 28px 24px 56px;
+  padding: 32px 24px 56px;
 }
 
-.recipe-detail__back {
-  margin-bottom: 18px;
+.recipe-detail__header,
+.recipe-detail__title-row,
+.recipe-detail__tags {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.recipe-detail__header {
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+
+.recipe-detail__header-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .recipe-detail__hero {
   display: grid;
   gap: 22px;
-  padding: 28px;
-  border-radius: 28px;
-  background:
-    radial-gradient(circle at top right, rgba(255, 206, 98, 0.22), transparent 34%),
-    linear-gradient(135deg, #fffaf1 0%, #ffffff 100%);
-  border: 1px solid rgba(109, 78, 40, 0.08);
-  box-shadow: 0 26px 48px rgba(81, 58, 19, 0.08);
+  align-items: start;
 }
 
-.recipe-detail__eyebrow {
-  margin: 0 0 8px;
-  color: #8c5e15;
-  font-size: 0.84rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+.recipe-detail__title-row {
+  align-items: flex-start;
+  justify-content: space-between;
 }
 
 .recipe-detail__title {
-  margin: 0 0 10px;
-  font-size: clamp(2.1rem, 4vw, 3.6rem);
-  color: #2f2112;
-  font-weight: 800;
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: clamp(2rem, 5vw, 4.2rem);
+  line-height: 1;
+  font-weight: 700;
+}
+
+.recipe-detail__favorite,
+.recipe-detail__tag {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 0.8rem;
+  font-weight: 650;
+  padding: 5px 9px;
+  white-space: nowrap;
 }
 
 .recipe-detail__description {
-  margin: 0;
-  color: #6f5737;
-  line-height: 1.7;
+  max-width: 820px;
+  margin: 14px 0 0;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
 }
 
-.recipe-detail__metrics {
-  display: flex;
+.recipe-detail__tags {
   flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 20px;
-}
-
-.recipe-detail__metric {
-  min-width: 120px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: rgba(255, 244, 220, 0.9);
-}
-
-.recipe-detail__metric-label {
-  display: block;
-  color: #8c5e15;
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.recipe-detail__metric-value {
-  display: block;
-  margin-top: 6px;
-  color: #2f2112;
-  font-size: 1.35rem;
-  font-weight: 800;
-}
-
-.recipe-detail__hero-media {
-  overflow: hidden;
-  min-height: 280px;
-  border-radius: 24px;
-  background: #f7efe0;
+  margin-top: 14px;
 }
 
 .recipe-detail__image {
   width: 100%;
-  height: 100%;
+  aspect-ratio: 4 / 3;
   object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.recipe-detail__meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1px;
+  margin-top: 24px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-border);
+}
+
+.recipe-detail__meta-item {
+  min-height: 70px;
+  padding: 14px;
+  background: var(--color-surface);
+}
+
+.recipe-detail__meta-item span {
   display: block;
+  color: var(--color-text-tertiary);
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
-.recipe-detail__hero-media--placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background:
-    radial-gradient(circle at top, rgba(255, 206, 98, 0.38), transparent 38%),
-    linear-gradient(135deg, #f3d6a3 0%, #ebb26c 100%);
-}
-
-.recipe-detail__hero-emoji {
-  font-size: 6rem;
+.recipe-detail__meta-item strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--color-text-primary);
+  font-size: 1rem;
 }
 
 .recipe-detail__grid {
   display: grid;
-  gap: 18px;
-  margin-top: 24px;
+  gap: 12px;
+  margin-top: 18px;
 }
 
-.recipe-detail__section {
-  padding: 24px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(109, 78, 40, 0.08);
-  box-shadow: 0 20px 38px rgba(81, 58, 19, 0.06);
+.recipe-detail__section,
+.recipe-detail__source-box {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: 20px;
 }
 
-.recipe-detail__section-title {
-  margin: 0 0 18px;
-  color: #2f2112;
-  font-size: 1.4rem;
-  font-weight: 800;
+.recipe-detail__section h2,
+.recipe-detail__source-box h2 {
+  margin: 0 0 16px;
+  font-size: 1.05rem;
 }
 
-.recipe-detail__list,
-.recipe-detail__sources,
-.recipe-detail__steps {
+.recipe-detail__ingredients,
+.recipe-detail__equipment,
+.recipe-detail__steps,
+.recipe-detail__sources {
   list-style: none;
-  padding: 0;
   margin: 0;
+  padding: 0;
 }
 
-.recipe-detail__list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.recipe-detail__list-item {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: #fff8ea;
-  color: #5d4a2b;
-}
-
-.recipe-detail__list-item strong {
-  margin-right: 6px;
-  color: #2f2112;
-}
-
-.recipe-detail__hint {
-  color: #8c5e15;
-}
-
-.recipe-detail__steps {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.recipe-detail__step {
+.recipe-detail__ingredients li {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 16px;
+  grid-template-columns: 72px 58px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--color-border);
 }
 
-.recipe-detail__step-rank {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
+.recipe-detail__ingredients li:last-child,
+.recipe-detail__equipment li:last-child,
+.recipe-detail__steps li:last-child {
+  border-bottom: 0;
+}
+
+.recipe-detail__qty {
+  text-align: right;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.recipe-detail__unit {
+  text-align: left;
+  color: var(--color-text-secondary);
+}
+
+.recipe-detail__equipment li,
+.recipe-detail__steps li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.recipe-detail__step-index {
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #ffb85e 0%, #ff8b4d 100%);
-  color: #fffaf4;
-  font-weight: 800;
-}
-
-.recipe-detail__step-body {
-  padding: 16px;
-  border-radius: 18px;
-  background: #fff8ea;
-}
-
-.recipe-detail__step-title {
-  margin: 0;
-  color: #2f2112;
-  font-size: 1.08rem;
-  font-weight: 800;
-}
-
-.recipe-detail__step-times {
-  margin: 6px 0 0;
-  color: #8c5e15;
-  font-size: 0.88rem;
+  border-radius: var(--radius-full);
+  background: var(--color-secondary);
+  font-size: 0.85rem;
   font-weight: 700;
 }
 
-.recipe-detail__step-description {
-  margin: 12px 0 0;
-  color: #5d4a2b;
-  line-height: 1.65;
+.recipe-detail__steps h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.recipe-detail__steps p {
+  margin: 8px 0 0;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+
+.recipe-detail__step-time {
+  color: var(--color-text-tertiary) !important;
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .recipe-detail__sources {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  gap: 12px;
 }
 
 .recipe-detail__sources li {
-  color: #5d4a2b;
-  line-height: 1.6;
+  display: grid;
+  gap: 4px;
+  color: var(--color-text-secondary);
 }
 
-@media (min-width: 960px) {
+.recipe-detail__empty {
+  margin: 0;
+  color: var(--color-text-tertiary);
+}
+
+@media (min-width: 940px) {
   .recipe-detail__hero {
-    grid-template-columns: minmax(0, 1.2fr) 360px;
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
   }
 
   .recipe-detail__grid {

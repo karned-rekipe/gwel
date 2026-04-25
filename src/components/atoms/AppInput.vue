@@ -8,6 +8,7 @@ defineProps<{
   required?: boolean
   error?: string
   disabled?: boolean
+  hideLabel?: boolean
 }>()
 
 defineEmits<{
@@ -17,7 +18,7 @@ defineEmits<{
 
 <template>
   <div class="app-input">
-    <label :for="id" class="app-input__label">
+    <label v-if="!hideLabel" :for="id" class="app-input__label">
       {{ label }}
       <span v-if="required" class="app-input__required" aria-label="Champ requis">*</span>
     </label>
@@ -28,6 +29,7 @@ defineEmits<{
       :placeholder="placeholder"
       :required="required"
       :disabled="disabled"
+      :aria-label="hideLabel ? label : undefined"
       :aria-invalid="!!error"
       :aria-describedby="error ? `${id}-error` : undefined"
       class="app-input__field"
@@ -49,69 +51,63 @@ defineEmits<{
 }
 
 .app-input__label {
-  font-size: 0.875rem;
+  font-size: 0.86rem;
   font-weight: 600;
-  color: var(--color-text-primary, #2c3e50);
+  color: var(--color-text-secondary);
 }
 
 .app-input__required {
-  color: var(--color-danger, #dc3545);
+  color: var(--color-danger);
   margin-left: 4px;
 }
 
 .app-input__field {
-  /* Taille tactile minimale */
   min-height: 44px;
   padding: 12px 16px;
-
-  /* Typographie */
   font-size: 1rem;
-  line-height: 1.5;
-
-  /* Apparence */
-  border: 2px solid var(--color-border, #cbd5e0);
-  border-radius: 8px;
-  background-color: var(--color-background, #ffffff);
-  color: var(--color-text-primary, #2c3e50);
-
-  /* Transitions */
-  transition: all 0.2s ease-in-out;
-
-  /* Accessibilité : outline */
+  line-height: 1.4;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    background var(--transition-base);
   outline: none;
 }
 
 .app-input__field:hover:not(:disabled) {
-  border-color: var(--color-border-hover, #a0aec0);
+  border-color: var(--color-border-hover);
 }
 
 .app-input__field:focus {
-  border-color: var(--color-primary, #4a90e2);
-  box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12);
 }
 
 .app-input__field:focus-visible {
-  outline: 2px solid var(--color-focus, #4a90e2);
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
 .app-input__field:disabled {
-  background-color: var(--color-background-disabled, #f7fafc);
+  background: var(--color-background-disabled);
   cursor: not-allowed;
   opacity: 0.6;
 }
 
 .app-input__field--error {
-  border-color: var(--color-danger, #dc3545);
+  border-color: var(--color-danger);
 }
 
 .app-input__field--error:focus {
-  box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+  box-shadow: 0 0 0 3px rgba(215, 0, 21, 0.12);
 }
 
 .app-input__error {
   font-size: 0.875rem;
-  color: var(--color-danger, #dc3545);
+  color: var(--color-danger);
   margin-top: -4px;
 }
 </style>

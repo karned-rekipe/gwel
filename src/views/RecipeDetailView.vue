@@ -57,14 +57,14 @@ const { data: recipe, isLoading, isError, error } = useRecipe(recipeUuid)
 
 .recipe-detail-view__title {
   margin: 0 0 12px;
-  color: #2f2112;
+  color: var(--color-text-primary);
   font-size: 2rem;
-  font-weight: 800;
+  font-weight: 650;
 }
 
 .recipe-detail-view__text {
   margin: 0 0 24px;
-  color: #6f5737;
+  color: var(--color-text-secondary);
   line-height: 1.65;
 }
 
@@ -73,16 +73,17 @@ const { data: recipe, isLoading, isError, error } = useRecipe(recipeUuid)
   align-items: center;
   justify-content: center;
   min-height: 44px;
-  padding: 12px 20px;
-  border-radius: 999px;
-  background: #fff1db;
-  color: #7b4b13;
-  font-weight: 700;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-weight: 600;
   text-decoration: none;
 }
 
 .recipe-detail-view__link:hover {
   text-decoration: none;
-  background: #ffe4ba;
+  background: var(--color-secondary);
 }
 </style>

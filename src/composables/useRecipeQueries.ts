@@ -1,22 +1,40 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { toValue, type MaybeRefOrGetter } from 'vue'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { aiRecipeService } from '@/services/aiRecipeService'
-import { recipeService } from '@/services/recipeService'
+import { recipeService, type RecipeListFilters } from '@/services/recipeService'
 import type { RecipeCreatePayload } from '@/types/recipe'
 
 export const recipeKeys = {
   all: ['recipes'] as const,
   lists: () => [...recipeKeys.all, 'list'] as const,
+  list: (filters: string) => [...recipeKeys.lists(), filters] as const,
   details: () => [...recipeKeys.all, 'detail'] as const,
   detail: (uuid: string) => [...recipeKeys.details(), uuid] as const,
   search: (term: string) => [...recipeKeys.all, 'search', term] as const,
 }
+
+const serializeFilters = (filters: RecipeListFilters): string => JSON.stringify(filters)
 
 export function useRecipes() {
   return useQuery({
     queryKey: recipeKeys.lists(),
     queryFn: () => recipeService.getAll(),
     staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useInfiniteRecipes(filters: MaybeRefOrGetter<RecipeListFilters>) {
+  return useInfiniteQuery({
+    queryKey: computed(() => recipeKeys.list(serializeFilters(toValue(filters)))),
+    queryFn: ({ pageParam }) =>
+      recipeService.getPage({
+        ...toValue(filters),
+        page: pageParam,
+        per_page: toValue(filters).per_page ?? 24,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.pagination.next_page ?? undefined,
+    staleTime: 2 * 60 * 1000,
   })
 }
 

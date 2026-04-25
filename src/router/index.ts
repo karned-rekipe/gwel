@@ -24,11 +24,75 @@ const router = createRouter({
       },
     },
     {
+      path: '/recipes/:id/edit',
+      name: 'recipes-edit',
+      component: () => import('../views/RecipeEditView.vue'),
+      meta: {
+        title: 'Modifier la recette',
+      },
+    },
+    {
       path: '/recipes/new',
       name: 'recipes-new',
       component: () => import('../views/RecipeAddView.vue'),
       meta: {
         title: 'Nouvelle recette',
+      },
+    },
+    {
+      path: '/ingredients',
+      name: 'ingredients-home',
+      component: () => import('../views/IngredientListView.vue'),
+      meta: {
+        title: 'Ingrédients',
+      },
+    },
+    {
+      path: '/ingredients/:id',
+      name: 'ingredients-detail',
+      component: () => import('../views/IngredientDetailView.vue'),
+      meta: {
+        title: 'Fiche ingrédient',
+      },
+    },
+    {
+      path: '/equipment',
+      name: 'equipment-home',
+      component: () => import('../views/EquipmentListView.vue'),
+      meta: {
+        title: 'Équipements',
+      },
+    },
+    {
+      path: '/equipment/:id',
+      name: 'equipment-detail',
+      component: () => import('../views/EquipmentDetailView.vue'),
+      meta: {
+        title: 'Fiche équipement',
+      },
+    },
+    {
+      path: '/tags',
+      name: 'tags-home',
+      component: () => import('../views/TagListView.vue'),
+      meta: {
+        title: 'Tags',
+      },
+    },
+    {
+      path: '/tags/:id',
+      name: 'tags-detail',
+      component: () => import('../views/TagDetailView.vue'),
+      meta: {
+        title: 'Fiche tag',
+      },
+    },
+    {
+      path: '/settings/ingredients',
+      name: 'ingredient-settings',
+      component: () => import('../views/IngredientSettingsView.vue'),
+      meta: {
+        title: 'Réglages ingrédients',
       },
     },
     {

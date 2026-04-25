@@ -77,11 +77,10 @@ const handleSubmit = (): void => {
 <style scoped>
 .recipe-form-ai {
   max-width: 960px;
-  padding: 26px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(109, 78, 40, 0.08);
-  box-shadow: 0 20px 38px rgba(81, 58, 19, 0.06);
+  padding: 22px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
 }
 
 .recipe-form-ai__header {
@@ -90,15 +89,15 @@ const handleSubmit = (): void => {
 
 .recipe-form-ai__title {
   margin: 0 0 10px;
-  color: #2f2112;
+  color: var(--color-text-primary);
   font-size: 1.5rem;
-  font-weight: 800;
+  font-weight: 650;
 }
 
 .recipe-form-ai__subtitle,
 .recipe-form-ai__hint {
   margin: 0;
-  color: #6f5737;
+  color: var(--color-text-secondary);
   line-height: 1.6;
 }
 
@@ -115,41 +114,41 @@ const handleSubmit = (): void => {
 }
 
 .recipe-form-ai__label {
-  color: #6f5737;
+  color: var(--color-text-secondary);
   font-size: 0.92rem;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .recipe-form-ai__textarea {
   width: 100%;
   min-height: 320px;
   padding: 14px 16px;
-  border-radius: 18px;
-  border: 2px solid #ebdcc1;
-  background: #fffdf9;
-  color: #2f2112;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
   font: inherit;
   resize: vertical;
 }
 
 .recipe-form-ai__textarea:focus {
   outline: none;
-  border-color: #ff9a53;
-  box-shadow: 0 0 0 3px rgba(255, 154, 83, 0.14);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12);
 }
 
 .recipe-form-ai__hint--error {
-  color: #b42318;
-  font-weight: 700;
+  color: var(--color-danger);
+  font-weight: 600;
 }
 
 .recipe-form-ai__error {
   padding: 16px 18px;
-  border-radius: 18px;
-  background: rgba(255, 239, 240, 0.9);
-  border: 1px solid rgba(225, 29, 72, 0.18);
-  color: #a3123c;
-  font-weight: 700;
+  border-radius: var(--radius-md);
+  background: rgba(215, 0, 21, 0.08);
+  border: 1px solid rgba(215, 0, 21, 0.16);
+  color: var(--color-danger);
+  font-weight: 600;
 }
 
 .recipe-form-ai__actions {

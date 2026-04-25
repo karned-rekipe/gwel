@@ -1,107 +1,168 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import AppButton from '@/components/atoms/AppButton.vue'
-import AppInput from '@/components/atoms/AppInput.vue'
-import AppLoader from '@/components/atoms/AppLoader.vue'
-import RecipeCard from '@/components/molecules/RecipeCard.vue'
-import { useRecipes, useSearchRecipes } from '@/composables/useRecipeQueries'
+import ResourceList from '@/components/resources/ResourceList.vue'
+import ResourceRow from '@/components/resources/ResourceRow.vue'
+import ResourceSearchBar from '@/components/resources/ResourceSearchBar.vue'
+import { useTags } from '@/composables/useCatalogQueries'
+import { useListNavigation } from '@/composables/useListNavigation'
+import { useInfiniteRecipes } from '@/composables/useRecipeQueries'
+import type { Recipe } from '@/types/recipe'
 
+const PER_PAGE = 50
 const router = useRouter()
-const searchTerm = ref('')
-
-const { data: allRecipes, isLoading, isError, error, isFetching } = useRecipes()
-const { data: searchResults } = useSearchRecipes(searchTerm)
-
-const displayedRecipes = computed(() => {
-  if (searchTerm.value.trim()) {
-    return searchResults.value ?? []
-  }
-
-  return allRecipes.value ?? []
+const navigation = useListNavigation('recipes')
+const searchTerm = ref(navigation.state.search)
+const filters = reactive({
+  tag_uuid: navigation.state.filters.tag_uuid ?? '',
+  difficulty: navigation.state.filters.difficulty ?? '',
+  origin_country: navigation.state.filters.origin_country ?? '',
+  price: navigation.state.filters.price ?? '',
+  favorite: navigation.state.filters.favorite ?? '',
+  season_month: navigation.state.filters.season_month ?? '',
 })
 
-const isEmpty = computed(() => displayedRecipes.value.length === 0)
+const queryFilters = computed(() => ({
+  name: searchTerm.value.trim() || undefined,
+  tag_uuid: filters.tag_uuid || undefined,
+  difficulty: filters.difficulty || undefined,
+  origin_country: filters.origin_country.trim().toUpperCase() || undefined,
+  price: filters.price || undefined,
+  favorite: filters.favorite === '' ? null : filters.favorite === 'true',
+  season_month: filters.season_month || undefined,
+  per_page: PER_PAGE,
+}))
 
-const handleRecipeClick = (uuid: string): void => {
-  router.push({ name: 'recipes-detail', params: { id: uuid } })
+const { data: tags } = useTags()
+const {
+  data,
+  isLoading,
+  isError,
+  error,
+  fetchNextPage,
+  hasNextPage,
+  isFetchingNextPage,
+} = useInfiniteRecipes(queryFilters)
+
+const displayedRecipes = computed(() => data.value?.pages.flatMap((page) => page.data) ?? [])
+const lastPagination = computed(() => {
+  const pages = data.value?.pages ?? []
+  return pages[pages.length - 1]?.pagination ?? null
+})
+const total = computed(() => lastPagination.value?.total ?? displayedRecipes.value.length)
+const isEmpty = computed(() => !isLoading.value && displayedRecipes.value.length === 0)
+
+const totalTimeLabel = (recipe: Recipe): string => {
+  const totalTime = recipe.steps.reduce(
+    (total, step) =>
+      total + (step.total_time ?? (step.preparation_time ?? 0) + (step.cooking_time ?? 0) + (step.rest_time ?? 0)),
+    0,
+  )
+  if (totalTime <= 0) return '—'
+  const hours = Math.floor(totalTime / 60)
+  const minutes = totalTime % 60
+  return hours ? `${hours} h${minutes ? ` ${minutes}` : ''}` : `${minutes} min`
 }
 
-const handleAddRecipe = (): void => {
-  router.push({ name: 'recipes-new' })
+const filterState = computed(() => ({
+  tag_uuid: filters.tag_uuid,
+  difficulty: filters.difficulty,
+  origin_country: filters.origin_country,
+  price: filters.price,
+  favorite: filters.favorite,
+  season_month: filters.season_month,
+}))
+
+const loadRemaining = async (): Promise<void> => {
+  while (hasNextPage.value) {
+    await fetchNextPage()
+  }
 }
+
+const handleRecipeClick = (recipe: Recipe): void => {
+  navigation.navigateToDetail(
+    router,
+    { name: 'recipes-detail', params: { id: recipe.uuid } },
+    {
+      search: searchTerm.value,
+      filters: { ...filterState.value },
+      page: lastPagination.value?.page ?? 1,
+      selectedUuid: recipe.uuid,
+    },
+  )
+}
+
+watch([searchTerm, filterState], () => {
+  navigation.save({ search: searchTerm.value, filters: { ...filterState.value }, page: 1 })
+})
+
+watch(lastPagination, (pagination) => {
+  if (!pagination) return
+  navigation.save({ search: searchTerm.value, filters: { ...filterState.value }, page: pagination.page })
+})
+
+onMounted(() => {
+  navigation.restoreScroll()
+})
 </script>
 
 <template>
   <section class="recipe-list">
-    <header class="recipe-list__hero">
-      <div class="recipe-list__copy">
-        <p class="recipe-list__eyebrow">Volet 1</p>
-        <h1 class="recipe-list__title">Mémoire culinaire du foyer</h1>
-        <p class="recipe-list__subtitle">
-          Le hub gwel centralise les recettes aujourd’hui, puis la planification et les courses.
-        </p>
-      </div>
-
-      <div class="recipe-list__actions">
-        <div class="recipe-list__search">
-          <AppInput
-            id="recipe-search"
-            :model-value="searchTerm"
-            type="search"
-            label="Filtrer les recettes"
-            placeholder="Nom de recette"
-            @update:model-value="searchTerm = $event"
-          />
+    <ResourceList
+      :is-loading="isLoading"
+      :is-error="isError"
+      :error-message="error?.message"
+      :is-empty="isEmpty"
+      :loaded-count="displayedRecipes.length"
+      :total="total"
+      :per-page="PER_PAGE"
+      :has-next="hasNextPage"
+      :is-fetching-more="isFetchingNextPage"
+      @load-more="fetchNextPage()"
+      @load-remaining="loadRemaining"
+    >
+      <template #toolbar>
+        <div class="recipe-list__toolbar">
+          <ResourceSearchBar v-model="searchTerm" placeholder="Rechercher une recette" />
+          <select v-model="filters.tag_uuid" class="recipe-list__control" aria-label="Filtrer par tag">
+            <option value="">Tags</option>
+            <option v-for="tag in tags ?? []" :key="tag.uuid" :value="tag.uuid">{{ tag.name }}</option>
+          </select>
+          <select v-model="filters.difficulty" class="recipe-list__control" aria-label="Filtrer par difficulté">
+            <option value="">Difficulté</option>
+            <option v-for="level in 5" :key="level" :value="String(level)">{{ level }}/5</option>
+          </select>
+          <input v-model="filters.origin_country" class="recipe-list__control" aria-label="Filtrer par origine" placeholder="Origine" />
+          <select v-model="filters.price" class="recipe-list__control" aria-label="Filtrer par prix">
+            <option value="">Prix</option>
+            <option v-for="level in 5" :key="level" :value="String(level)">{{ level }}/5</option>
+          </select>
+          <select v-model="filters.favorite" class="recipe-list__control" aria-label="Filtrer par favori">
+            <option value="">Favoris</option>
+            <option value="true">Favoris</option>
+            <option value="false">Non favoris</option>
+          </select>
+          <select v-model="filters.season_month" class="recipe-list__control" aria-label="Filtrer par saison">
+            <option value="">Saison</option>
+            <option v-for="month in 12" :key="month" :value="String(month)">Mois {{ month }}</option>
+          </select>
         </div>
+      </template>
 
-        <AppButton variant="primary" @click="handleAddRecipe">
-          Nouvelle recette
-        </AppButton>
-      </div>
-    </header>
-
-    <div v-if="isLoading" class="recipe-list__loading">
-      <AppLoader variant="skeleton" />
-      <AppLoader variant="skeleton" />
-      <AppLoader variant="skeleton" />
-    </div>
-
-    <div v-else-if="isError" class="recipe-list__state">
-      <h2 class="recipe-list__state-title">Chargement impossible</h2>
-      <p class="recipe-list__state-text">
-        {{ error?.message || 'Les recettes ne sont pas accessibles pour le moment.' }}
-      </p>
-    </div>
-
-    <div v-else-if="isEmpty" class="recipe-list__state">
-      <h2 class="recipe-list__state-title">
-        {{ searchTerm ? 'Aucun résultat' : 'Aucune recette disponible' }}
-      </h2>
-      <p class="recipe-list__state-text">
-        {{
-          searchTerm
-            ? `Aucune recette ne correspond à "${searchTerm}".`
-            : 'Commence par créer la première fiche recette complète.'
-        }}
-      </p>
-    </div>
-
-    <div v-else class="recipe-list__results">
-      <div class="recipe-list__results-head">
-        <p class="recipe-list__results-count">{{ displayedRecipes.length }} recette(s)</p>
-        <p v-if="isFetching" class="recipe-list__results-refresh">Mise à jour…</p>
-      </div>
-
-      <div class="recipe-list__grid">
-        <RecipeCard
-          v-for="recipe in displayedRecipes"
-          :key="recipe.uuid"
-          :recipe="recipe"
-          @click="handleRecipeClick"
-        />
-      </div>
-    </div>
+      <ResourceRow
+        v-for="recipe in displayedRecipes"
+        :key="recipe.uuid"
+        columns="minmax(0, 1.4fr) 76px minmax(120px, 1fr) 72px 72px 86px"
+        @click="handleRecipeClick(recipe)"
+      >
+        <strong class="recipe-list__name">{{ recipe.name }}</strong>
+        <span>{{ recipe.origin_country || '—' }}</span>
+        <span class="recipe-list__tags">{{ recipe.tags.map((tag) => tag.name).slice(0, 3).join(', ') || '—' }}</span>
+        <span>{{ recipe.favorite ? '★' : '—' }}</span>
+        <span>{{ recipe.difficulty ? `${recipe.difficulty}/5` : '—' }}</span>
+        <span class="recipe-list__time">{{ totalTimeLabel(recipe) }}</span>
+      </ResourceRow>
+    </ResourceList>
   </section>
 </template>
 
@@ -109,98 +170,50 @@ const handleAddRecipe = (): void => {
 .recipe-list {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 28px 24px 56px;
+  padding: 18px 20px 48px;
 }
 
-.recipe-list__hero {
+.recipe-list__toolbar {
   display: grid;
-  gap: 20px;
-  padding: 28px;
-  border-radius: 28px;
-  background:
-    radial-gradient(circle at top right, rgba(255, 211, 122, 0.26), transparent 34%),
-    linear-gradient(135deg, #fff8ec 0%, #fffdf8 100%);
-  border: 1px solid rgba(194, 154, 54, 0.18);
-}
-
-.recipe-list__eyebrow {
-  margin: 0 0 10px;
-  font-size: 0.84rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #8c5e15;
-}
-
-.recipe-list__title {
-  margin: 0 0 10px;
-  font-size: clamp(2.1rem, 4vw, 3.5rem);
-  font-weight: 800;
-  color: #2f2112;
-}
-
-.recipe-list__subtitle,
-.recipe-list__state-text,
-.recipe-list__results-count {
-  margin: 0;
-  color: #6f5737;
-  line-height: 1.65;
-}
-
-.recipe-list__actions {
-  display: grid;
-  gap: 14px;
-  align-items: end;
-}
-
-.recipe-list__search {
-  max-width: 440px;
-}
-
-.recipe-list__loading,
-.recipe-list__grid {
-  display: grid;
-  gap: 18px;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  margin-top: 24px;
-}
-
-.recipe-list__state {
-  margin-top: 24px;
-  padding: 32px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(109, 78, 40, 0.08);
-}
-
-.recipe-list__state-title {
-  margin: 0 0 10px;
-  color: #2f2112;
-  font-weight: 800;
-}
-
-.recipe-list__results {
-  margin-top: 24px;
-}
-
-.recipe-list__results-head {
-  display: flex;
+  grid-template-columns: minmax(220px, 1.8fr) repeat(6, minmax(112px, 1fr));
+  gap: 8px;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
 }
 
-.recipe-list__results-refresh {
-  margin: 0;
-  color: #8c5e15;
-  font-weight: 700;
+.recipe-list__control {
+  min-height: 38px;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: 8px 10px;
 }
 
-@media (min-width: 900px) {
-  .recipe-list__hero {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
+.recipe-list__name {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recipe-list__tags {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recipe-list__time {
+  justify-self: end;
+  color: var(--color-text-tertiary);
+  font-weight: 650;
+}
+
+@media (max-width: 980px) {
+  .recipe-list__toolbar {
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   }
 }
 </style>

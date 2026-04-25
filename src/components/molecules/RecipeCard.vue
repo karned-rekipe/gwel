@@ -1,13 +1,39 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Recipe } from '@/types/recipe'
 
-defineProps<{
+const props = defineProps<{
   recipe: Recipe
 }>()
 
 defineEmits<{
   click: [uuid: string]
 }>()
+
+const totalTime = computed(() =>
+  props.recipe.steps.reduce((total, step) => {
+    const stepTime =
+      step.total_time ??
+      (step.preparation_time ?? 0) + (step.cooking_time ?? 0) + (step.rest_time ?? 0)
+
+    return total + stepTime
+  }, 0),
+)
+
+const totalTimeLabel = computed(() => {
+  if (totalTime.value <= 0) {
+    return '—'
+  }
+
+  const hours = Math.floor(totalTime.value / 60)
+  const minutes = totalTime.value % 60
+
+  if (hours === 0) {
+    return `${minutes} min`
+  }
+
+  return minutes > 0 ? `${hours} h ${minutes}` : `${hours} h`
+})
 </script>
 
 <template>
@@ -19,109 +45,84 @@ defineEmits<{
     @keydown.enter="$emit('click', recipe.uuid)"
     @keydown.space.prevent="$emit('click', recipe.uuid)"
   >
-    <div v-if="recipe.main_image" class="recipe-card__media">
-      <img :src="recipe.main_image" :alt="recipe.name" class="recipe-card__image" />
-    </div>
-    <div v-else class="recipe-card__media recipe-card__media--placeholder">
-      <span class="recipe-card__emoji">🍲</span>
-    </div>
-
-    <div class="recipe-card__body">
-      <div class="recipe-card__heading">
-        <h3 class="recipe-card__title">{{ recipe.name }}</h3>
-        <p v-if="recipe.description" class="recipe-card__description">{{ recipe.description }}</p>
-      </div>
-
+    <div class="recipe-card__main">
+      <h3 class="recipe-card__title">{{ recipe.name }}</h3>
       <div class="recipe-card__meta">
-        <span class="recipe-card__meta-item">{{ recipe.servings ?? '?' }} pers.</span>
-        <span class="recipe-card__meta-item">{{ recipe.ingredients.length }} ingrédients</span>
-        <span class="recipe-card__meta-item">{{ recipe.steps.length }} étapes</span>
+        <span v-if="recipe.origin_country">{{ recipe.origin_country }}</span>
+        <span v-if="recipe.difficulty">D{{ recipe.difficulty }}</span>
+        <span v-if="recipe.favorite">Favori</span>
+        <span v-for="tag in recipe.tags.slice(0, 2)" :key="tag.uuid">{{ tag.name }}</span>
       </div>
     </div>
+    <span class="recipe-card__time" :aria-label="`Temps total ${totalTimeLabel}`">
+      {{ totalTimeLabel }}
+    </span>
   </article>
 </template>
 
 <style scoped>
 .recipe-card {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-  border-radius: 22px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(109, 78, 40, 0.1);
-  box-shadow: 0 22px 40px rgba(81, 58, 19, 0.08);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  min-height: 58px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    border-color var(--transition-base),
+    background var(--transition-base),
+    transform var(--transition-base);
 }
 
 .recipe-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 28px 48px rgba(81, 58, 19, 0.13);
+  transform: translateY(-1px);
+  border-color: var(--color-border-hover);
+  background: var(--color-surface-muted);
 }
 
-.recipe-card__media {
-  height: 210px;
-  background: #f7efe0;
-}
-
-.recipe-card__image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.recipe-card__media--placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background:
-    radial-gradient(circle at top, rgba(255, 206, 98, 0.38), transparent 38%),
-    linear-gradient(135deg, #f3d6a3 0%, #ebb26c 100%);
-}
-
-.recipe-card__emoji {
-  font-size: 4rem;
-}
-
-.recipe-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 20px;
-  flex: 1;
+.recipe-card__main {
+  min-width: 0;
 }
 
 .recipe-card__title {
   margin: 0;
-  color: #2f2112;
-  font-size: 1.32rem;
-  font-weight: 800;
-}
-
-.recipe-card__description {
-  margin: 10px 0 0;
-  color: #6f5737;
-  line-height: 1.6;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  color: var(--color-text-primary);
+  font-size: 0.98rem;
+  font-weight: 650;
+  line-height: 1.22;
   overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .recipe-card__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 5px;
+  margin-top: 8px;
 }
 
-.recipe-card__meta-item {
-  padding: 8px 10px;
-  border-radius: 999px;
-  background: #f7efe0;
-  color: #7b5c2d;
-  font-size: 0.86rem;
-  font-weight: 700;
+.recipe-card__meta span {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 7px;
+}
+
+.recipe-card__time {
+  white-space: nowrap;
+  color: var(--color-text-tertiary);
+  font-size: 0.82rem;
+  font-weight: 550;
+  line-height: 1.25;
 }
 </style>

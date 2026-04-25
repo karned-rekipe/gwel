@@ -71,32 +71,26 @@ const { data: statuses, isLoading } = useQuery({
 .domain-view {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 32px 24px 56px;
+  padding: 40px 24px 56px;
 }
 
 .domain-view__hero {
-  padding: 32px;
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at top left, rgba(110, 231, 183, 0.28), transparent 35%),
-    linear-gradient(135deg, #edf9f3 0%, #fbfdf7 100%);
-  border: 1px solid rgba(37, 99, 67, 0.18);
+  margin-bottom: 28px;
 }
 
 .domain-view__eyebrow {
   margin: 0 0 8px;
-  font-size: 0.9rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #136f4d;
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
 }
 
 .domain-view__title {
   margin: 0 0 12px;
-  font-size: clamp(2rem, 4vw, 3.4rem);
-  font-weight: 800;
-  color: #173a2d;
+  font-size: clamp(2.4rem, 5vw, 4.2rem);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-text-primary);
 }
 
 .domain-view__subtitle,
@@ -104,15 +98,15 @@ const { data: statuses, isLoading } = useQuery({
 .domain-view__section-text,
 .domain-view__status-detail {
   margin: 0;
-  color: #3f5e51;
-  line-height: 1.65;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
 }
 
 .domain-view__grid,
 .domain-view__status-grid {
   display: grid;
-  gap: 18px;
-  margin-top: 24px;
+  gap: 12px;
+  margin-top: 18px;
 }
 
 .domain-view__grid {
@@ -121,19 +115,18 @@ const { data: statuses, isLoading } = useQuery({
 
 .domain-view__card,
 .domain-view__status-card {
-  padding: 24px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(34, 94, 67, 0.12);
-  box-shadow: 0 20px 45px rgba(23, 58, 45, 0.08);
+  padding: 22px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
 }
 
 .domain-view__card-title,
 .domain-view__section-title,
 .domain-view__status-title {
   margin: 0 0 10px;
-  font-weight: 700;
-  color: #173a2d;
+  font-weight: 650;
+  color: var(--color-text-primary);
 }
 
 .domain-view__status {
@@ -152,32 +145,31 @@ const { data: statuses, isLoading } = useQuery({
 }
 
 .domain-view__status-badge {
-  padding: 6px 10px;
-  border-radius: 999px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
   font-size: 0.82rem;
-  font-weight: 700;
-  text-transform: uppercase;
+  font-weight: 600;
 }
 
 .domain-view__status-card--available .domain-view__status-badge {
-  color: #0c5b37;
-  background: rgba(16, 185, 129, 0.16);
+  color: var(--color-success);
+  background: rgba(36, 138, 61, 0.1);
 }
 
 .domain-view__status-card--unavailable .domain-view__status-badge {
-  color: #9f1239;
-  background: rgba(244, 63, 94, 0.14);
+  color: var(--color-danger);
+  background: rgba(215, 0, 21, 0.1);
 }
 
 .domain-view__status-url {
   margin: 8px 0 10px;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 0.92rem;
-  color: #276749;
+  color: var(--color-text-tertiary);
 }
 
 .domain-view__loading {
   padding: 18px 0;
-  color: #276749;
+  color: var(--color-text-tertiary);
 }
 </style>

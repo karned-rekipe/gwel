@@ -24,9 +24,21 @@ import type { PaginationInfo } from '@/types/api'
 import type { Supplier } from '@/types/shopping'
 
 const PER_PAGE = 50
+type QualityFilter =
+  | 'all'
+  | 'missing'
+  | 'without_image'
+  | 'season_now'
+  | 'with_allergen'
+  | 'nutrition_unknown'
+  | 'carbon_unknown'
+  | 'conversion_missing'
+  | 'ai_suggestion'
+
 const router = useRouter()
 const navigation = useListNavigation('ingredients')
 const searchTerm = ref(navigation.state.search)
+const qualityFilter = ref<QualityFilter>('all')
 const ingredients = ref<Ingredient[]>([])
 const suppliers = ref<Supplier[]>([])
 const pagination = ref<PaginationInfo | null>(null)
@@ -57,14 +69,74 @@ const { mutate: mergeDuplicates, isPending: isMerging } = useMergeIngredientDupl
 
 const total = computed(() => pagination.value?.total ?? ingredients.value.length)
 const hasNext = computed(() => pagination.value?.has_next ?? false)
-const isEmpty = computed(() => !isLoading.value && ingredients.value.length === 0)
+const filteredIngredients = computed(() => ingredients.value.filter(matchesQualityFilter))
+const isEmpty = computed(() => !isLoading.value && filteredIngredients.value.length === 0)
 const supplierByUuid = computed(() => new Map(suppliers.value.map((supplier) => [supplier.uuid, supplier.name] as const)))
 const secondarySuppliers = computed(() => suppliers.value.filter((supplier) => supplier.uuid !== form.mainSupplierUuid))
+const currentMonth = new Date().getMonth() + 1
 
 const supplierName = (uuid: string | null | undefined): string => {
   if (!uuid) return '—'
   return supplierByUuid.value.get(uuid) ?? 'Fournisseur inconnu'
 }
+
+function matchesQualityFilter(ingredient: Ingredient): boolean {
+  switch (qualityFilter.value) {
+    case 'missing':
+      return ingredient.enrichment_profile.missing_fields.length > 0 || ingredient.enrichment_profile.status === 'missing'
+    case 'without_image':
+      return !ingredient.media_profile.main_image_uri || ingredient.media_profile.image_status === 'missing'
+    case 'season_now':
+      return ingredient.seasonality_profile.availability_type === 'year_round'
+        || Number(ingredient.seasonality_profile.months[currentMonth] ?? 0) > 0
+    case 'with_allergen':
+      return ingredient.allergen_profile.allergens.some((allergen) =>
+        ['contains', 'may_contain'].includes(allergen.presence),
+      )
+    case 'nutrition_unknown':
+      return ingredient.nutrition_profile.nutri_score === 'unknown'
+        && ingredient.nutrition_profile.kcal_per_100g === null
+        && ingredient.nutrition_profile.kcal_per_100ml === null
+    case 'carbon_unknown':
+      return ingredient.sustainability_profile.carbon_kg_co2e_per_kg === null
+    case 'conversion_missing':
+      return ingredient.unit_profile.reference_unit === 'unknown' || ingredient.unit_profile.conversions.length === 0
+    case 'ai_suggestion':
+      return ingredient.enrichment_profile.status === 'suggested'
+    case 'all':
+      return true
+  }
+}
+
+const scoreLabel = (ingredient: Ingredient): string => `${ingredient.enrichment_profile.completeness_score} %`
+
+const seasonLabel = (ingredient: Ingredient): string => {
+  if (ingredient.seasonality_profile.availability_type === 'year_round') return 'Saison'
+  if (Number(ingredient.seasonality_profile.months[currentMonth] ?? 0) > 0) return 'Saison'
+  if (ingredient.seasonality_profile.availability_type === 'unknown') return 'Saison ?'
+  return 'Hors saison'
+}
+
+const nutritionLabel = (ingredient: Ingredient): string => {
+  if (ingredient.nutrition_profile.nutri_score !== 'unknown') return `Nutri ${ingredient.nutrition_profile.nutri_score}`
+  if (ingredient.nutrition_profile.kcal_per_100g !== null) return `${ingredient.nutrition_profile.kcal_per_100g} kcal`
+  return 'Nutri ?'
+}
+
+const carbonLabel = (ingredient: Ingredient): string =>
+  ingredient.sustainability_profile.carbon_kg_co2e_per_kg === null
+    ? 'CO2 ?'
+    : `${ingredient.sustainability_profile.carbon_kg_co2e_per_kg} CO2e`
+
+const allergenLabel = (ingredient: Ingredient): string => {
+  const count = ingredient.allergen_profile.allergens.filter((allergen) =>
+    ['contains', 'may_contain'].includes(allergen.presence),
+  ).length
+  return count ? `${count} allergène${count > 1 ? 's' : ''}` : 'Allergènes ?'
+}
+
+const aiLabel = (ingredient: Ingredient): string =>
+  ingredient.enrichment_profile.status === 'suggested' ? 'IA à valider' : ingredient.enrichment_profile.status
 
 const fetchPage = async (page: number, append: boolean): Promise<void> => {
   const response = await ingredientService.getPage({
@@ -290,19 +362,47 @@ onMounted(async () => {
     >
       <template #toolbar>
         <ResourceSearchBar v-model="searchTerm" placeholder="Rechercher un ingrédient">
-          <router-link :to="{ name: 'ingredient-settings' }" class="resource-page__settings" title="Réglages ingrédients">
-            ⚙
-          </router-link>
+          <div class="resource-page__toolbar-actions">
+            <label class="resource-page__filter">
+              <span>Qualité</span>
+              <select v-model="qualityFilter">
+                <option value="all">Tous</option>
+                <option value="missing">Informations manquantes</option>
+                <option value="without_image">Sans image</option>
+                <option value="season_now">De saison</option>
+                <option value="with_allergen">Contient allergène</option>
+                <option value="nutrition_unknown">Nutrition inconnue</option>
+                <option value="carbon_unknown">Carbone inconnu</option>
+                <option value="conversion_missing">Conversion manquante</option>
+                <option value="ai_suggestion">Suggestion IA</option>
+              </select>
+            </label>
+            <router-link :to="{ name: 'ingredient-settings' }" class="resource-page__settings" title="Réglages ingrédients">
+              ⚙
+            </router-link>
+          </div>
         </ResourceSearchBar>
       </template>
 
       <ResourceRow
-        v-for="ingredient in ingredients"
+        v-for="ingredient in filteredIngredients"
         :key="ingredient.uuid"
-        columns="minmax(0, 1.4fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) minmax(130px, 0.8fr) 70px auto"
+        columns="minmax(0, 1.3fr) minmax(150px, 1fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) minmax(130px, 0.8fr) 70px auto"
         @click="openIngredient(ingredient)"
       >
-        <strong class="resource-page__primary">{{ ingredient.name }}</strong>
+        <div class="resource-page__identity">
+          <strong class="resource-page__primary">{{ ingredient.name }}</strong>
+          <span class="resource-page__badges">
+            <span>{{ scoreLabel(ingredient) }}</span>
+            <span>{{ seasonLabel(ingredient) }}</span>
+            <span>{{ aiLabel(ingredient) }}</span>
+          </span>
+        </div>
+        <span class="resource-page__quality">
+          <span>{{ nutritionLabel(ingredient) }}</span>
+          <span>{{ carbonLabel(ingredient) }}</span>
+          <span>{{ allergenLabel(ingredient) }}</span>
+        </span>
         <span>{{ ingredient.group?.name || '—' }}</span>
         <span>{{ ingredient.rayon?.name || '—' }}</span>
         <span>{{ supplierName(ingredient.main_supplier_uuid) }}</span>
@@ -344,6 +444,7 @@ onMounted(async () => {
 }
 
 .resource-page__field select,
+.resource-page__filter select,
 .resource-page__dedupe select {
   min-height: 38px;
   border: 1px solid var(--color-border);
@@ -365,6 +466,21 @@ onMounted(async () => {
   justify-content: flex-end;
 }
 
+.resource-page__toolbar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.resource-page__filter {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
 .resource-page__settings {
   width: 38px;
   height: 38px;
@@ -378,11 +494,39 @@ onMounted(async () => {
   text-decoration: none;
 }
 
+.resource-page__identity {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
 .resource-page__primary {
   overflow: hidden;
   color: var(--color-text-primary);
   font-weight: 650;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-page__badges,
+.resource-page__quality {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.resource-page__badges span,
+.resource-page__quality span {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 2px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 650;
   white-space: nowrap;
 }
 
@@ -413,6 +557,17 @@ onMounted(async () => {
 
 @media (max-width: 860px) {
   .resource-page__dedupe-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .resource-page__toolbar-actions,
+  .resource-page__filter {
+    width: 100%;
+  }
+
+  .resource-page__toolbar-actions,
+  .resource-page__filter {
+    display: grid;
     grid-template-columns: minmax(0, 1fr);
   }
 }

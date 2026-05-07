@@ -80,15 +80,15 @@ const router = createRouter({
       },
     },
     {
-      path: '/tags',
+      path: '/settings/tags',
       name: 'tags-home',
       component: () => import('../views/TagListView.vue'),
       meta: {
-        title: 'Tags',
+        title: 'Réglages tags',
       },
     },
     {
-      path: '/tags/:id',
+      path: '/settings/tags/:id',
       name: 'tags-detail',
       component: () => import('../views/TagDetailView.vue'),
       meta: {
@@ -102,6 +102,14 @@ const router = createRouter({
       meta: {
         title: 'Réglages ingrédients',
       },
+    },
+    {
+      path: '/tags',
+      redirect: { name: 'tags-home' },
+    },
+    {
+      path: '/tags/:id',
+      redirect: (to) => ({ name: 'tags-detail', params: { id: to.params.id } }),
     },
     {
       path: '/planning',

@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import AppButton from '@/components/atoms/AppButton.vue'
 import AppInput from '@/components/atoms/AppInput.vue'
+import SettingsNavigation from '@/components/settings/SettingsNavigation.vue'
 import {
   useCreateIngredientGroup,
   useCreateIngredientRayon,
@@ -213,6 +214,8 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="settings-view">
+    <SettingsNavigation />
+
     <header class="settings-view__tabs">
       <button :class="{ 'settings-view__tab--active': activeTab === 'groups' }" @click="selectTab('groups')">Groupes</button>
       <button :class="{ 'settings-view__tab--active': activeTab === 'rayons' }" @click="selectTab('rayons')">Rayons</button>

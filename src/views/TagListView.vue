@@ -7,6 +7,7 @@ import IconActionButton from '@/components/resources/IconActionButton.vue'
 import ResourceList from '@/components/resources/ResourceList.vue'
 import ResourceRow from '@/components/resources/ResourceRow.vue'
 import ResourceSearchBar from '@/components/resources/ResourceSearchBar.vue'
+import SettingsNavigation from '@/components/settings/SettingsNavigation.vue'
 import { useCreateTag, useDeleteTag, useUpdateTag } from '@/composables/useCatalogQueries'
 import { useListNavigation } from '@/composables/useListNavigation'
 import { tagService } from '@/services/tagService'
@@ -154,6 +155,8 @@ onMounted(async () => {
 
 <template>
   <main class="resource-page">
+    <SettingsNavigation />
+
     <section class="resource-page__editor">
       <AppInput id="tag-name" v-model="form.name" label="Nom" placeholder="Végan" required />
       <label class="resource-page__field">

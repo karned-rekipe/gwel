@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import ResourceList from '@/components/resources/ResourceList.vue'
 import ResourceRow from '@/components/resources/ResourceRow.vue'
 import ResourceSearchBar from '@/components/resources/ResourceSearchBar.vue'
@@ -108,6 +108,11 @@ onMounted(() => {
 
 <template>
   <section class="recipe-list">
+    <header class="recipe-list__header">
+      <h1 class="recipe-list__title">Recettes</h1>
+      <RouterLink to="/recipes/new" class="recipe-list__create">Nouvelle recette</RouterLink>
+    </header>
+
     <ResourceList
       :is-loading="isLoading"
       :is-error="isError"
@@ -170,7 +175,42 @@ onMounted(() => {
 .recipe-list {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 18px 20px 48px;
+  padding: 24px 20px 48px;
+}
+
+.recipe-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.recipe-list__title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: clamp(1.45rem, 2.4vw, 2rem);
+  font-weight: 700;
+}
+
+.recipe-list__create {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 14px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: #ffffff;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.recipe-list__create:hover {
+  background: var(--color-primary-dark);
+  color: #ffffff;
+  text-decoration: none;
 }
 
 .recipe-list__toolbar {
@@ -214,6 +254,13 @@ onMounted(() => {
 @media (max-width: 980px) {
   .recipe-list__toolbar {
     grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .recipe-list__header {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 </style>

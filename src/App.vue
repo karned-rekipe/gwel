@@ -1,5 +1,18 @@
 <script setup lang="ts">
-import { RouterView } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
+
+const route = useRoute()
+const isMenuOpen = ref(false)
+
+const isSettingsRoute = computed(() => ['ingredient-settings', 'tags-home', 'tags-detail'].includes(String(route.name)))
+
+watch(
+  () => route.fullPath,
+  () => {
+    isMenuOpen.value = false
+  },
+)
 </script>
 
 <template>
@@ -15,7 +28,10 @@ import { RouterView } from 'vue-router'
           </RouterLink>
         </div>
 
-        <div class="app-shell__links">
+        <div
+          id="app-navigation"
+          :class="['app-shell__links', { 'app-shell__links--open': isMenuOpen }]"
+        >
           <RouterLink
             to="/recipes"
             class="app-shell__link"
@@ -38,32 +54,11 @@ import { RouterView } from 'vue-router'
             Ingrédients
           </RouterLink>
           <RouterLink
-            to="/ingredients/runs"
-            class="app-shell__link"
-            active-class="app-shell__link--active"
-          >
-            Runs IA
-          </RouterLink>
-          <RouterLink
             to="/equipment"
             class="app-shell__link"
             active-class="app-shell__link--active"
           >
             Équipements
-          </RouterLink>
-          <RouterLink
-            to="/tags"
-            class="app-shell__link"
-            active-class="app-shell__link--active"
-          >
-            Tags
-          </RouterLink>
-          <RouterLink
-            to="/settings/ingredients"
-            class="app-shell__link"
-            active-class="app-shell__link--active"
-          >
-            Réglages
           </RouterLink>
           <RouterLink
             to="/shopping"
@@ -74,14 +69,27 @@ import { RouterView } from 'vue-router'
           </RouterLink>
         </div>
 
-        <div class="app-shell__meta">
+        <div class="app-shell__actions">
           <RouterLink
-            to="/recipes/new"
-            class="app-shell__cta"
-            active-class="app-shell__cta--active"
+            to="/settings/ingredients"
+            :class="['app-shell__icon-link', { 'app-shell__icon-link--active': isSettingsRoute }]"
+            aria-label="Réglages"
+            title="Réglages"
           >
-            Nouvelle recette
+            <span aria-hidden="true">⚙</span>
           </RouterLink>
+          <button
+            type="button"
+            class="app-shell__menu-button"
+            :aria-expanded="isMenuOpen"
+            :aria-label="isMenuOpen ? 'Fermer la navigation' : 'Ouvrir la navigation'"
+            aria-controls="app-navigation"
+            @click="isMenuOpen = !isMenuOpen"
+          >
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+          </button>
         </div>
       </nav>
     </header>
@@ -108,15 +116,15 @@ import { RouterView } from 'vue-router'
 .app-shell__nav {
   max-width: 1240px;
   margin: 0 auto;
-  padding: 10px 24px;
-  display: flex;
-  flex-wrap: wrap;
+  padding: 10px clamp(16px, 4vw, 24px);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
 }
 
 .app-shell__brand {
-  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .app-shell__logo {
@@ -152,25 +160,22 @@ import { RouterView } from 'vue-router'
   font-weight: 650;
 }
 
-.app-shell__links,
-.app-shell__meta {
+.app-shell__links {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.app-shell__links {
-  flex: 1 1 auto;
   flex-wrap: wrap;
+  gap: 8px;
   min-width: 0;
 }
 
-.app-shell__meta {
-  margin-left: auto;
+.app-shell__actions {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+  gap: 8px;
 }
 
-.app-shell__link,
-.app-shell__cta {
+.app-shell__link {
   min-height: 36px;
   display: inline-flex;
   align-items: center;
@@ -180,6 +185,7 @@ import { RouterView } from 'vue-router'
   font-size: 0.92rem;
   font-weight: 500;
   text-decoration: none;
+  white-space: nowrap;
   transition: color var(--transition-base), background var(--transition-base);
 }
 
@@ -195,30 +201,95 @@ import { RouterView } from 'vue-router'
   text-decoration: none;
 }
 
-.app-shell__cta {
-  color: #ffffff;
-  background: var(--color-primary);
+.app-shell__icon-link,
+.app-shell__menu-button {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  background: transparent;
+  font: inherit;
+  padding: 0;
+  text-decoration: none;
+  transition: color var(--transition-base), background var(--transition-base), border-color var(--transition-base);
 }
 
-.app-shell__cta:hover,
-.app-shell__cta--active {
-  color: #ffffff;
-  background: var(--color-primary-dark);
+.app-shell__icon-link:hover,
+.app-shell__icon-link--active,
+.app-shell__menu-button:hover {
+  color: var(--color-text-primary);
+  background: var(--color-secondary-dark);
   text-decoration: none;
 }
 
-@media (max-width: 680px) {
+.app-shell__link:focus-visible,
+.app-shell__icon-link:focus-visible,
+.app-shell__menu-button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.app-shell__menu-button {
+  display: none;
+  cursor: pointer;
+}
+
+.app-shell__menu-button span {
+  width: 16px;
+  height: 2px;
+  display: block;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.app-shell__menu-button {
+  flex-direction: column;
+  gap: 4px;
+}
+
+@media (max-width: 820px) {
   .app-shell__nav {
-    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 12px;
   }
 
-  .app-shell__links,
-  .app-shell__meta {
-    flex-wrap: wrap;
+  .app-shell__links {
+    grid-column: 1 / -1;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border);
   }
 
-  .app-shell__meta {
-    justify-content: space-between;
+  .app-shell__links--open {
+    display: flex;
+  }
+
+  .app-shell__link {
+    justify-content: flex-start;
+    min-height: 42px;
+  }
+
+  .app-shell__menu-button {
+    display: inline-flex;
+  }
+}
+
+@media (min-width: 821px) {
+  .app-shell__links {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .app-shell__logo-title {
+    display: none;
   }
 }
 </style>

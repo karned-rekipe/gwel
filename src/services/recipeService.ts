@@ -37,6 +37,20 @@ export const recipeService = {
     return unwrapPaginatedResponse(response)
   },
 
+  async listEligibleRecipes(params: {
+    search?: string
+    page?: number
+    page_size?: number
+  } = {}): Promise<PaginatedResponse<Recipe>> {
+    return this.getPage({
+      name: params.search,
+      page: params.page ?? 1,
+      per_page: params.page_size ?? 20,
+      meal_planner_eligible: true,
+      status: 'active',
+    })
+  },
+
   async getByUuid(uuid: string): Promise<Recipe> {
     const response = await recipeApi.get<ApiResponse<Recipe>>(`/recipes/${uuid}`)
     return unwrapApiResponse(response.data)

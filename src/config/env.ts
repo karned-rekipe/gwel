@@ -36,6 +36,7 @@ export const appConfig = {
       import.meta.env.VITE_SHOPPING_AGENT_API_BASE_URL,
       '/api/shopping-agent',
     ),
+    mediaApiBaseUrl: readString(import.meta.env.VITE_MEDIA_API_BASE_URL, '/api/media'),
   },
 }
 

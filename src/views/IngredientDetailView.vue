@@ -1,17 +1,26 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLoader from '@/components/atoms/AppLoader.vue'
 import ResourceDetailHeader from '@/components/resources/ResourceDetailHeader.vue'
 import { useDeleteIngredient, useIngredient, useIngredientRecipes } from '@/composables/useCatalogQueries'
+import { shoppingService } from '@/services/shoppingService'
+import type { Supplier } from '@/types/shopping'
 
 const route = useRoute()
 const router = useRouter()
 const ingredientUuid = computed(() => route.params.id as string)
+const suppliers = ref<Supplier[]>([])
 
 const { data: ingredient, isLoading, isError, error } = useIngredient(ingredientUuid)
 const { data: recipes, isLoading: isLoadingRecipes } = useIngredientRecipes(ingredientUuid)
 const { mutate: deleteIngredient, isPending: isDeleting } = useDeleteIngredient()
+const supplierByUuid = computed(() => new Map(suppliers.value.map((supplier) => [supplier.uuid, supplier.name] as const)))
+
+const supplierName = (uuid: string | null | undefined): string => {
+  if (!uuid) return '—'
+  return supplierByUuid.value.get(uuid) ?? 'Fournisseur inconnu'
+}
 
 const goBack = (): void => {
   router.push({ name: 'ingredients-home' })
@@ -23,6 +32,15 @@ const removeIngredient = (): void => {
     onSuccess: goBack,
   })
 }
+
+onMounted(async () => {
+  try {
+    const response = await shoppingService.listSuppliers({ per_page: 100 })
+    suppliers.value = response.data
+  } catch {
+    suppliers.value = []
+  }
+})
 </script>
 
 <template>
@@ -49,8 +67,13 @@ const removeIngredient = (): void => {
           <span>Unité {{ ingredient.unit || '—' }}</span>
           <span>Groupe {{ ingredient.group?.name || '—' }}</span>
           <span>Rayon {{ ingredient.rayon?.name || '—' }}</span>
+          <span>Fournisseur {{ supplierName(ingredient.main_supplier_uuid) }}</span>
           <span>Green score {{ ingredient.green_score ?? '—' }}</span>
         </div>
+        <p class="catalog-detail__text">
+          Fournisseurs secondaires :
+          {{ ingredient.secondary_supplier_uuids.map((uuid) => supplierName(uuid)).join(', ') || '—' }}
+        </p>
         <p class="catalog-detail__text">Saisonnalité : {{ Object.keys(ingredient.season_months).join(', ') || 'Toute saison' }}</p>
       </ResourceDetailHeader>
 

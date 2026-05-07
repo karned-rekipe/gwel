@@ -1,6 +1,7 @@
 import { computed, type Reactive } from 'vue'
 import type {
   RecipeCreatePayload,
+  RecipeFormComponent,
   RecipeFormData,
   RecipeFormEquipment,
   RecipeFormIngredient,
@@ -35,6 +36,14 @@ const hasAnyIngredientInput = (ingredient: RecipeFormIngredient): boolean =>
 
 const hasAnyEquipmentInput = (equipment: RecipeFormEquipment): boolean =>
   Boolean(equipment.equipmentUuid || equipment.search.trim() || equipment.quantity.trim())
+
+const hasAnyComponentInput = (component: RecipeFormComponent): boolean =>
+  Boolean(
+    component.recipeUuid ||
+    component.search.trim() ||
+    component.label.trim() ||
+    component.servingsMultiplier.trim(),
+  )
 
 const hasAnyStepInput = (step: RecipeFormStep): boolean =>
   Boolean(
@@ -80,6 +89,20 @@ export function useRecipeValidation(formData: Reactive<RecipeFormData>) {
       }
     })
 
+    formData.components.forEach((component, index) => {
+      if (!hasAnyComponentInput(component)) return
+      if (!component.recipeUuid) {
+        result[`components.${index}.recipeUuid`] = 'Choisis une sous-recette.'
+      }
+      if (!component.label.trim()) {
+        result[`components.${index}.label`] = 'Le libellé est obligatoire.'
+      }
+      const multiplier = parseNumber(component.servingsMultiplier)
+      if (component.servingsMultiplier.trim() && (multiplier === null || multiplier <= 0)) {
+        result[`components.${index}.servingsMultiplier`] = 'Le multiplicateur doit être positif.'
+      }
+    })
+
     formData.steps.forEach((step, index) => {
       if (!hasAnyStepInput(step)) return
       if (!step.name.trim()) {
@@ -105,6 +128,12 @@ export function useRecipeValidation(formData: Reactive<RecipeFormData>) {
     for (const index of formData.equipment.keys()) {
       if (errors.value[`equipment.${index}.equipmentUuid`]) return `equipment-select-${index}`
       if (errors.value[`equipment.${index}.quantity`]) return `equipment-quantity-${index}`
+    }
+
+    for (const index of formData.components.keys()) {
+      if (errors.value[`components.${index}.recipeUuid`]) return `component-select-${index}`
+      if (errors.value[`components.${index}.label`]) return `component-label-${index}`
+      if (errors.value[`components.${index}.servingsMultiplier`]) return `component-multiplier-${index}`
     }
 
     for (const index of formData.steps.keys()) {
@@ -139,6 +168,14 @@ export function useRecipeFormatter() {
     uri: compact(source.uri) || null,
   })
 
+  const normalizeComponent = (component: RecipeFormComponent, rank: number) => ({
+    ...(component.uuid ? { uuid: component.uuid } : {}),
+    recipe_uuid: component.recipeUuid,
+    label: compact(component.label),
+    rank,
+    servings_multiplier: parseNumber(component.servingsMultiplier) ?? 1,
+  })
+
   const normalizeStep = (step: RecipeFormStep, rank: number) => ({
     name: compact(step.name),
     description: compact(step.description) || null,
@@ -164,6 +201,9 @@ export function useRecipeFormatter() {
       .filter(Boolean),
     favorite: formData.favorite,
     tag_uuids: [...formData.tagUuids],
+    components: formData.components
+      .filter((component) => component.recipeUuid)
+      .map((component, index) => normalizeComponent(component, index + 1)),
     ingredients: formData.ingredients
       .filter((ingredient) => ingredient.ingredientUuid && ingredient.quantity.trim() && ingredient.unit.trim())
       .map(normalizeIngredient),

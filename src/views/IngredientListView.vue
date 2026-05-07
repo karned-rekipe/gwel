@@ -18,14 +18,17 @@ import {
 } from '@/composables/useCatalogQueries'
 import { useListNavigation } from '@/composables/useListNavigation'
 import { ingredientService } from '@/services/ingredientService'
+import { shoppingService } from '@/services/shoppingService'
 import type { DuplicateGroup, Ingredient } from '@/types/recipe'
 import type { PaginationInfo } from '@/types/api'
+import type { Supplier } from '@/types/shopping'
 
 const PER_PAGE = 50
 const router = useRouter()
 const navigation = useListNavigation('ingredients')
 const searchTerm = ref(navigation.state.search)
 const ingredients = ref<Ingredient[]>([])
+const suppliers = ref<Supplier[]>([])
 const pagination = ref<PaginationInfo | null>(null)
 const currentPage = ref(navigation.state.page || 1)
 const isLoading = ref(false)
@@ -40,6 +43,8 @@ const form = reactive({
   unit: '',
   groupUuid: '',
   rayonUuid: '',
+  mainSupplierUuid: '',
+  secondarySupplierUuids: [] as string[],
 })
 
 const { data: groups } = useIngredientGroups()
@@ -53,6 +58,13 @@ const { mutate: mergeDuplicates, isPending: isMerging } = useMergeIngredientDupl
 const total = computed(() => pagination.value?.total ?? ingredients.value.length)
 const hasNext = computed(() => pagination.value?.has_next ?? false)
 const isEmpty = computed(() => !isLoading.value && ingredients.value.length === 0)
+const supplierByUuid = computed(() => new Map(suppliers.value.map((supplier) => [supplier.uuid, supplier.name] as const)))
+const secondarySuppliers = computed(() => suppliers.value.filter((supplier) => supplier.uuid !== form.mainSupplierUuid))
+
+const supplierName = (uuid: string | null | undefined): string => {
+  if (!uuid) return '—'
+  return supplierByUuid.value.get(uuid) ?? 'Fournisseur inconnu'
+}
 
 const fetchPage = async (page: number, append: boolean): Promise<void> => {
   const response = await ingredientService.getPage({
@@ -106,6 +118,8 @@ const resetForm = (): void => {
   form.unit = ''
   form.groupUuid = ''
   form.rayonUuid = ''
+  form.mainSupplierUuid = ''
+  form.secondarySupplierUuids = []
   editingUuid.value = null
 }
 
@@ -115,6 +129,8 @@ const editIngredient = (ingredient: Ingredient): void => {
   form.unit = ingredient.unit ?? ''
   form.groupUuid = ingredient.group_uuid ?? ''
   form.rayonUuid = ingredient.rayon_uuid ?? ''
+  form.mainSupplierUuid = ingredient.main_supplier_uuid ?? ''
+  form.secondarySupplierUuids = ingredient.secondary_supplier_uuids ?? []
 }
 
 const submit = (): void => {
@@ -123,6 +139,8 @@ const submit = (): void => {
     unit: form.unit.trim() || null,
     group_uuid: form.groupUuid || null,
     rayon_uuid: form.rayonUuid || null,
+    main_supplier_uuid: form.mainSupplierUuid || null,
+    secondary_supplier_uuids: form.secondarySupplierUuids.filter((uuid) => uuid && uuid !== form.mainSupplierUuid),
     green_score: null,
     quantity: null,
     season_months: {},
@@ -192,6 +210,12 @@ watch(searchTerm, async () => {
 
 onMounted(async () => {
   const pageToLoad = navigation.state.page || 1
+  try {
+    const supplierResponse = await shoppingService.listSuppliers({ per_page: 100 })
+    suppliers.value = supplierResponse.data
+  } catch {
+    suppliers.value = []
+  }
   await reload(pageToLoad)
   await navigation.restoreScroll()
 })
@@ -214,6 +238,19 @@ onMounted(async () => {
         <select v-model="form.rayonUuid">
           <option value="">Aucun</option>
           <option v-for="rayon in rayons ?? []" :key="rayon.uuid" :value="rayon.uuid">{{ rayon.name }}</option>
+        </select>
+      </label>
+      <label class="resource-page__field">
+        <span>Fournisseur principal</span>
+        <select v-model="form.mainSupplierUuid">
+          <option value="">Aucun</option>
+          <option v-for="supplier in suppliers" :key="supplier.uuid" :value="supplier.uuid">{{ supplier.name }}</option>
+        </select>
+      </label>
+      <label class="resource-page__field">
+        <span>Fournisseurs secondaires</span>
+        <select v-model="form.secondarySupplierUuids" multiple>
+          <option v-for="supplier in secondarySuppliers" :key="supplier.uuid" :value="supplier.uuid">{{ supplier.name }}</option>
         </select>
       </label>
       <div class="resource-page__actions">
@@ -262,12 +299,13 @@ onMounted(async () => {
       <ResourceRow
         v-for="ingredient in ingredients"
         :key="ingredient.uuid"
-        columns="minmax(0, 1.4fr) minmax(120px, 0.7fr) minmax(120px, 0.7fr) 70px auto"
+        columns="minmax(0, 1.4fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) minmax(130px, 0.8fr) 70px auto"
         @click="openIngredient(ingredient)"
       >
         <strong class="resource-page__primary">{{ ingredient.name }}</strong>
         <span>{{ ingredient.group?.name || '—' }}</span>
         <span>{{ ingredient.rayon?.name || '—' }}</span>
+        <span>{{ supplierName(ingredient.main_supplier_uuid) }}</span>
         <span>{{ ingredient.unit || '—' }}</span>
         <span class="resource-page__row-actions">
           <IconActionButton label="Modifier" icon="✎" @click="editIngredient(ingredient)" />
@@ -314,6 +352,10 @@ onMounted(async () => {
   color: var(--color-text-primary);
   font: inherit;
   padding: 8px 10px;
+}
+
+.resource-page__field select[multiple] {
+  min-height: 84px;
 }
 
 .resource-page__actions,

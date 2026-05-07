@@ -1,8 +1,9 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { aiRecipeService } from '@/services/aiRecipeService'
+import { mediaService } from '@/services/mediaService'
 import { recipeService, type RecipeListFilters } from '@/services/recipeService'
-import type { RecipeCreatePayload } from '@/types/recipe'
+import type { Recipe, RecipeCreatePayload } from '@/types/recipe'
 
 export const recipeKeys = {
   all: ['recipes'] as const,
@@ -108,10 +109,37 @@ export function useCreateRecipeWithAI() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (rawText: string) => aiRecipeService.createRecipeWithAI(rawText),
-    onSuccess: () => {
+    mutationFn: ({
+      rawText,
+      allowDuplicate = false,
+    }: {
+      rawText: string
+      allowDuplicate?: boolean
+    }) => aiRecipeService.createRecipeWithAI(rawText, allowDuplicate),
+    onSuccess: (result) => {
+      if (result.created) {
+        queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
+        queryClient.invalidateQueries({ queryKey: recipeKeys.all })
+      }
+    },
+  })
+}
+
+export function useGenerateRecipeImage() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (recipe: Recipe) => {
+      const generated = await mediaService.generateRecipeImage({
+        recipeUuid: recipe.uuid,
+        recipeName: recipe.name,
+      })
+      await recipeService.update(recipe.uuid, { main_image: generated.image.url })
+      return generated
+    },
+    onSuccess: (_, recipe) => {
+      queryClient.invalidateQueries({ queryKey: recipeKeys.detail(recipe.uuid) })
       queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
-      queryClient.invalidateQueries({ queryKey: recipeKeys.all })
     },
   })
 }

@@ -97,10 +97,31 @@ const router = createRouter({
     },
     {
       path: '/planning',
-      name: 'planning-home',
-      component: () => import('../views/PlanningView.vue'),
+      name: 'planning-list',
+      component: () => import('../views/planning/PlanningListView.vue'),
       meta: {
         title: 'Planification',
+      },
+    },
+    {
+      path: '/planning/new',
+      redirect: { name: 'planning-list' },
+    },
+    {
+      path: '/planning/preferences',
+      name: 'planning-preferences',
+      component: () => import('../views/planning/PlanningPreferencesView.vue'),
+      meta: {
+        title: 'Préférences planning',
+      },
+    },
+    {
+      path: '/planning/:uuid',
+      name: 'planning-detail',
+      component: () => import('../views/planning/PlanningDetailView.vue'),
+      props: true,
+      meta: {
+        title: 'Plan de repas',
       },
     },
     {

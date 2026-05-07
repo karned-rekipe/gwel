@@ -12,6 +12,8 @@ export interface Ingredient {
   name: string
   rayon_uuid?: string | null
   group_uuid?: string | null
+  main_supplier_uuid?: string | null
+  secondary_supplier_uuids: string[]
   rayon?: IngredientRayon | null
   group?: IngredientGroup | null
   green_score?: number | null
@@ -24,6 +26,8 @@ export interface IngredientPayload {
   name: string
   rayon_uuid?: string | null
   group_uuid?: string | null
+  main_supplier_uuid?: string | null
+  secondary_supplier_uuids?: string[]
   green_score?: number | null
   unit?: string | null
   quantity?: number | null
@@ -123,9 +127,14 @@ export interface RecipeIngredient {
   season_months: Record<number, number>
   rayon_uuid?: string | null
   group_uuid?: string | null
+  main_supplier_uuid?: string | null
+  secondary_supplier_uuids?: string[]
   rayon?: IngredientRayon | null
   group?: IngredientGroup | null
   green_score?: number | null
+  component_uuid?: string | null
+  source_recipe_uuid?: string | null
+  line_origin?: 'manual' | 'component_projection'
 }
 
 export interface RecipeEquipment {
@@ -145,6 +154,20 @@ export interface RecipeStep {
   secondary_images: string[]
   rank: number
   total_time?: number
+  component_uuid?: string | null
+  source_recipe_uuid?: string | null
+  line_origin?: 'manual' | 'component_projection'
+}
+
+export interface RecipeComponent {
+  uuid: string
+  recipe_uuid: string
+  label: string
+  rank: number
+  servings_multiplier: number
+  recipe_name?: string | null
+  ingredients: RecipeIngredient[]
+  steps: RecipeStep[]
 }
 
 export type RecipeStatus = 'draft' | 'active' | 'archived'
@@ -178,6 +201,7 @@ export interface Recipe {
   updated_at_legacy?: string | null
   migration_metadata: RecipeMigrationMetadata
   sources: RecipeSource[]
+  components: RecipeComponent[]
   ingredients: RecipeIngredient[]
   equipment: RecipeEquipment[]
   steps: RecipeStep[]
@@ -208,6 +232,14 @@ export interface RecipeFormStep {
   restTime: string
 }
 
+export interface RecipeFormComponent {
+  uuid?: string
+  recipeUuid: string
+  search: string
+  label: string
+  servingsMultiplier: string
+}
+
 export interface RecipeFormSource {
   name: string
   description: string
@@ -226,6 +258,7 @@ export interface RecipeFormData {
   mainImage: string
   secondaryImages: string
   ingredients: RecipeFormIngredient[]
+  components: RecipeFormComponent[]
   equipment: RecipeFormEquipment[]
   steps: RecipeFormStep[]
   sources: RecipeFormSource[]
@@ -249,6 +282,13 @@ export interface RecipeCreatePayload {
   updated_at_legacy?: string | null
   migration_metadata?: RecipeMigrationMetadata
   sources: RecipeSource[]
+  components?: Array<{
+    uuid?: string | null
+    recipe_uuid: string
+    label: string
+    rank: number
+    servings_multiplier: number
+  }>
   ingredients: Array<{
     ingredient_uuid: string
     quantity: number
@@ -263,10 +303,15 @@ export interface RecipeCreatePayload {
 
 export interface CreateRecipeWithAIDTO {
   raw_text: string
+  allow_duplicate?: boolean
 }
 
 export interface AICreateResponse {
   recipe_uuid: string
   recipe_name: string
   formatted_response: string
+  created: boolean
+  duplicate_confirmation_required: boolean
+  existing_recipe_uuid?: string | null
+  existing_recipe_name?: string | null
 }

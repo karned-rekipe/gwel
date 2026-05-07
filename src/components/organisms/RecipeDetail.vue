@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import IconActionButton from '@/components/resources/IconActionButton.vue'
-import { useDeleteRecipe } from '@/composables/useRecipeQueries'
+import { useDeleteRecipe, useGenerateRecipeImage } from '@/composables/useRecipeQueries'
 import type { Recipe } from '@/types/recipe'
 
 const props = defineProps<{
@@ -11,10 +11,18 @@ const props = defineProps<{
 
 const router = useRouter()
 const { mutate: deleteRecipe, isPending: isDeleting } = useDeleteRecipe()
+const { mutate: generateRecipeImage, isPending: isGeneratingImage } = useGenerateRecipeImage()
 const monthNames = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc']
 
+const recipeTags = computed(() => props.recipe.tags ?? [])
+const recipeIngredients = computed(() => props.recipe.ingredients ?? [])
+const recipeEquipment = computed(() => props.recipe.equipment ?? [])
+const recipeSteps = computed(() => props.recipe.steps ?? [])
+const recipeSources = computed(() => props.recipe.sources ?? [])
+const recipeComponents = computed(() => props.recipe.components ?? [])
+
 const totalTime = computed(() =>
-  props.recipe.steps.reduce(
+  recipeSteps.value.reduce(
     (total, step) =>
       total + (step.total_time ?? (step.preparation_time ?? 0) + (step.cooking_time ?? 0) + (step.rest_time ?? 0)),
     0,
@@ -29,7 +37,7 @@ const totalTimeLabel = computed(() => {
 })
 
 const seasonLabel = computed(() => {
-  const bestMonths = Object.entries(props.recipe.season_months)
+  const bestMonths = Object.entries(props.recipe.season_months ?? {})
     .filter(([, score]) => Number(score) >= 2)
     .map(([month]) => monthNames[Number(month) - 1])
     .filter(Boolean)
@@ -38,6 +46,7 @@ const seasonLabel = computed(() => {
 
 const metaItems = computed(() => [
   { label: 'Origine', value: props.recipe.origin_country || '—' },
+  { label: 'Pax', value: props.recipe.servings ? `${props.recipe.servings} pax` : '—' },
   { label: 'Difficulté', value: props.recipe.difficulty ? `${props.recipe.difficulty}/5` : '—' },
   { label: 'Prix', value: props.recipe.price ? `${props.recipe.price}/5` : '—' },
   { label: 'Temps', value: totalTimeLabel.value },
@@ -50,6 +59,10 @@ const handleBack = (): void => {
 
 const handleEdit = (): void => {
   router.push({ name: 'recipes-edit', params: { id: props.recipe.uuid } })
+}
+
+const handleGenerateImage = (): void => {
+  generateRecipeImage(props.recipe)
 }
 
 const handleDelete = (): void => {
@@ -67,6 +80,12 @@ const handleDelete = (): void => {
     <header class="recipe-detail__header">
       <IconActionButton label="Retour" icon="←" @click="handleBack" />
       <div class="recipe-detail__header-actions">
+        <IconActionButton
+          label="Image IA"
+          icon="▣"
+          :disabled="isGeneratingImage"
+          @click="handleGenerateImage"
+        />
         <IconActionButton label="Modifier" icon="✎" @click="handleEdit" />
         <IconActionButton label="Supprimer" icon="×" variant="danger" :disabled="isDeleting" @click="handleDelete" />
       </div>
@@ -80,7 +99,7 @@ const handleDelete = (): void => {
         </div>
         <p v-if="recipe.description" class="recipe-detail__description">{{ recipe.description }}</p>
         <div class="recipe-detail__tags">
-          <router-link v-for="tag in recipe.tags" :key="tag.uuid" :to="{ name: 'tags-detail', params: { id: tag.uuid } }" class="recipe-detail__tag">
+          <router-link v-for="tag in recipeTags" :key="tag.uuid" :to="{ name: 'tags-detail', params: { id: tag.uuid } }" class="recipe-detail__tag">
             {{ tag.name }}
           </router-link>
         </div>
@@ -99,7 +118,7 @@ const handleDelete = (): void => {
       <section class="recipe-detail__section">
         <h2>Ingrédients</h2>
         <ul class="recipe-detail__ingredients">
-          <li v-for="ingredient in recipe.ingredients" :key="ingredient.ingredient_uuid">
+          <li v-for="ingredient in recipeIngredients" :key="ingredient.ingredient_uuid">
             <span class="recipe-detail__qty">{{ ingredient.quantity }}</span>
             <span class="recipe-detail__unit">{{ ingredient.unit }}</span>
             <router-link :to="{ name: 'ingredients-detail', params: { id: ingredient.ingredient_uuid } }">
@@ -111,8 +130,8 @@ const handleDelete = (): void => {
 
       <section class="recipe-detail__section">
         <h2>Ustensiles</h2>
-        <ul v-if="recipe.equipment.length" class="recipe-detail__equipment">
-          <li v-for="equipment in recipe.equipment" :key="equipment.equipment_uuid">
+        <ul v-if="recipeEquipment.length" class="recipe-detail__equipment">
+          <li v-for="equipment in recipeEquipment" :key="equipment.equipment_uuid">
             <span>{{ equipment.quantity ? `${equipment.quantity}x` : '1x' }}</span>
             <router-link :to="{ name: 'equipment-detail', params: { id: equipment.equipment_uuid } }">
               {{ equipment.name }}
@@ -125,7 +144,7 @@ const handleDelete = (): void => {
       <section class="recipe-detail__section recipe-detail__section--wide">
         <h2>Préparation</h2>
         <ol class="recipe-detail__steps">
-          <li v-for="(step, index) in recipe.steps" :key="step.uuid ?? `${step.name}-${index}`">
+          <li v-for="(step, index) in recipeSteps" :key="step.uuid ?? `${step.name}-${index}`">
             <span class="recipe-detail__step-index">{{ index + 1 }}</span>
             <div>
               <h3>{{ step.name }}</h3>
@@ -138,10 +157,51 @@ const handleDelete = (): void => {
         </ol>
       </section>
 
+      <section v-if="recipeComponents.length" class="recipe-detail__section recipe-detail__section--wide">
+        <h2>Sous-recettes</h2>
+        <div class="recipe-detail__components">
+          <article
+            v-for="component in recipeComponents"
+            :key="component.uuid"
+            class="recipe-detail__component"
+          >
+            <header class="recipe-detail__component-head">
+              <h3>{{ component.label }}</h3>
+              <span>x{{ component.servings_multiplier }}</span>
+            </header>
+
+            <div class="recipe-detail__component-grid">
+              <div>
+                <h4>Ingrédients</h4>
+                <ul class="recipe-detail__ingredients recipe-detail__ingredients--compact">
+                  <li v-for="ingredient in component.ingredients" :key="`${component.uuid}-${ingredient.ingredient_uuid}`">
+                    <span class="recipe-detail__qty">{{ ingredient.quantity }}</span>
+                    <span class="recipe-detail__unit">{{ ingredient.unit }}</span>
+                    <router-link :to="{ name: 'ingredients-detail', params: { id: ingredient.ingredient_uuid } }">
+                      {{ ingredient.name }}
+                    </router-link>
+                  </li>
+                </ul>
+              </div>
+
+              <div>
+                <h4>Étapes</h4>
+                <ol class="recipe-detail__component-steps">
+                  <li v-for="step in component.steps" :key="step.uuid ?? `${component.uuid}-${step.rank}`">
+                    <strong>{{ step.rank }}. {{ step.name }}</strong>
+                    <p v-if="step.description">{{ step.description }}</p>
+                  </li>
+                </ol>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section class="recipe-detail__source-box recipe-detail__section--wide">
         <h2>Source</h2>
-        <ul v-if="recipe.sources.length" class="recipe-detail__sources">
-          <li v-for="source in recipe.sources" :key="`${source.name}-${source.uri}`">
+        <ul v-if="recipeSources.length" class="recipe-detail__sources">
+          <li v-for="source in recipeSources" :key="`${source.name}-${source.uri}`">
             <strong>{{ source.name }}</strong>
             <span v-if="source.description">{{ source.description }}</span>
             <a v-if="source.uri" :href="source.uri" target="_blank" rel="noreferrer">{{ source.uri }}</a>
@@ -359,6 +419,59 @@ const handleDelete = (): void => {
   gap: 12px;
 }
 
+.recipe-detail__components {
+  display: grid;
+  gap: 14px;
+}
+
+.recipe-detail__component {
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.recipe-detail__component-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.recipe-detail__component-head h3,
+.recipe-detail__component-grid h4 {
+  margin: 0;
+}
+
+.recipe-detail__component-head span {
+  color: var(--color-text-secondary);
+  font-weight: 650;
+}
+
+.recipe-detail__component-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.recipe-detail__ingredients--compact li {
+  grid-template-columns: 58px 48px minmax(0, 1fr);
+}
+
+.recipe-detail__component-steps {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--color-text-secondary);
+}
+
+.recipe-detail__component-steps li + li {
+  margin-top: 10px;
+}
+
+.recipe-detail__component-steps p {
+  margin: 4px 0 0;
+}
+
 .recipe-detail__sources li {
   display: grid;
   gap: 4px;
@@ -377,6 +490,10 @@ const handleDelete = (): void => {
 
   .recipe-detail__grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .recipe-detail__component-grid {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   }
 
   .recipe-detail__section--wide {

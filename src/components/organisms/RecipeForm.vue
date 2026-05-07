@@ -14,12 +14,13 @@ import {
   useTags,
 } from '@/composables/useCatalogQueries'
 import { useRecipeFormatter, useRecipeValidation } from '@/composables/useRecipe'
-import { useCreateRecipe, useUpdateRecipe } from '@/composables/useRecipeQueries'
+import { useCreateRecipe, useSearchRecipes, useUpdateRecipe } from '@/composables/useRecipeQueries'
 import { ingredientService } from '@/services/ingredientService'
 import type {
   Equipment,
   Ingredient,
   Recipe,
+  RecipeFormComponent,
   RecipeFormData,
   RecipeFormEquipment,
   RecipeFormIngredient,
@@ -39,6 +40,13 @@ const createEmptyEquipment = (): RecipeFormEquipment => ({
   equipmentUuid: '',
   search: '',
   quantity: '',
+})
+
+const createEmptyComponent = (): RecipeFormComponent => ({
+  recipeUuid: '',
+  search: '',
+  label: '',
+  servingsMultiplier: '',
 })
 
 const createEmptyStep = (): RecipeFormStep => ({
@@ -72,9 +80,11 @@ const { normalizeFormData } = useRecipeFormatter()
 
 const ingredientSearchTerm = ref('')
 const equipmentSearchTerm = ref('')
+const componentSearchTerm = ref('')
 const tagSearchTerm = ref('')
 const { data: ingredientOptions, isFetching: isFetchingIngredients } = useIngredients(ingredientSearchTerm)
 const { data: equipmentOptions, isFetching: isFetchingEquipment } = useEquipment(equipmentSearchTerm)
+const { data: componentRecipeOptions, isFetching: isFetchingComponentRecipes } = useSearchRecipes(componentSearchTerm)
 const { data: tagOptions } = useTags(tagSearchTerm)
 const { data: groupOptions } = useIngredientGroups()
 const { data: rayonOptions } = useIngredientRayons()
@@ -97,6 +107,7 @@ const formData = reactive<RecipeFormData>({
   mainImage: '',
   secondaryImages: '',
   ingredients: [createEmptyIngredient()],
+  components: [createEmptyComponent()],
   equipment: [createEmptyEquipment()],
   steps: [createEmptyStep()],
   sources: [createEmptySource()],
@@ -161,6 +172,16 @@ const removeEquipment = (index: number): void => {
   }
 }
 
+const addComponent = (): void => {
+  formData.components.push(createEmptyComponent())
+}
+
+const removeComponent = (index: number): void => {
+  if (formData.components.length > 1) {
+    formData.components.splice(index, 1)
+  }
+}
+
 const addStep = (): void => {
   formData.steps.push(createEmptyStep())
 }
@@ -191,6 +212,11 @@ const handleEquipmentSearch = (equipment: RecipeFormEquipment, value: string): v
   equipmentSearchTerm.value = value
 }
 
+const handleComponentSearch = (component: RecipeFormComponent, value: string): void => {
+  component.search = value
+  componentSearchTerm.value = value
+}
+
 const selectIngredient = (ingredient: RecipeFormIngredient): void => {
   const selected = ingredientOptions.value?.find((item) => item.uuid === ingredient.ingredientUuid)
   if (!selected) return
@@ -202,6 +228,13 @@ const selectEquipment = (equipment: RecipeFormEquipment): void => {
   const selected = equipmentOptions.value?.find((item) => item.uuid === equipment.equipmentUuid)
   if (!selected) return
   equipment.search = selected.name
+}
+
+const selectComponent = (component: RecipeFormComponent): void => {
+  const selected = componentRecipeOptions.value?.find((item) => item.uuid === component.recipeUuid)
+  if (!selected) return
+  component.search = selected.name
+  component.label = component.label || selected.name
 }
 
 const openIngredientCreate = (index: number): void => {
@@ -394,8 +427,11 @@ const fillFromRecipe = (recipe: Recipe): void => {
   formData.tagUuids = [...(recipe.tag_uuids ?? recipe.tags.map((tag) => tag.uuid))]
   formData.mainImage = recipe.main_image ?? ''
   formData.secondaryImages = recipe.secondary_images.join(', ')
-  formData.ingredients = recipe.ingredients.length
-    ? recipe.ingredients.map((ingredient) => ({
+  const manualIngredients = recipe.ingredients.filter(
+    (ingredient) => ingredient.line_origin !== 'component_projection',
+  )
+  formData.ingredients = manualIngredients.length
+    ? manualIngredients.map((ingredient) => ({
       ingredientUuid: ingredient.ingredient_uuid,
       search: ingredient.name,
       quantity: String(ingredient.quantity),
@@ -409,8 +445,18 @@ const fillFromRecipe = (recipe: Recipe): void => {
       quantity: equipment.quantity ? String(equipment.quantity) : '',
     }))
     : [createEmptyEquipment()]
-  formData.steps = recipe.steps.length
-    ? recipe.steps.map((step) => ({
+  formData.components = recipe.components.length
+    ? recipe.components.map((component) => ({
+      uuid: component.uuid,
+      recipeUuid: component.recipe_uuid,
+      search: component.recipe_name ?? component.label,
+      label: component.label,
+      servingsMultiplier: String(component.servings_multiplier),
+    }))
+    : [createEmptyComponent()]
+  const manualSteps = recipe.steps.filter((step) => step.line_origin !== 'component_projection')
+  formData.steps = manualSteps.length
+    ? manualSteps.map((step) => ({
       name: step.name,
       description: step.description ?? '',
       preparationTime: step.preparation_time ? String(step.preparation_time) : '',
@@ -611,6 +657,97 @@ const fieldError = (key: string): string => (hasSubmitted.value ? validationErro
         </div>
 
         <AppButton variant="secondary" @click="addIngredient">Ajouter un ingrédient</AppButton>
+      </section>
+
+      <section class="recipe-form__section">
+        <div class="recipe-form__section-head recipe-form__section-head--inline">
+          <h2 class="recipe-form__section-title">Sous-recettes</h2>
+          <span v-if="isFetchingComponentRecipes" class="recipe-form__hint">Recherche…</span>
+        </div>
+
+        <div
+          v-for="(component, index) in formData.components"
+          :key="component.uuid ?? `component-${index}`"
+          class="recipe-form__item-card"
+        >
+          <div class="recipe-form__item-head">
+            <h3 class="recipe-form__item-title">Sous-recette {{ index + 1 }}</h3>
+            <AppButton
+              v-if="formData.components.length > 1"
+              variant="danger"
+              @click="removeComponent(index)"
+            >
+              Retirer
+            </AppButton>
+          </div>
+
+          <div class="recipe-form__grid recipe-form__grid--four">
+            <div class="recipe-form__field">
+              <label :for="`component-search-${index}`" class="recipe-form__label">Recherche</label>
+              <input
+                :id="`component-search-${index}`"
+                :value="component.search"
+                class="recipe-form__control"
+                type="search"
+                placeholder="Meringue, caramel, crème anglaise..."
+                @input="handleComponentSearch(component, ($event.target as HTMLInputElement).value)"
+              />
+            </div>
+
+            <div class="recipe-form__field">
+              <label :for="`component-select-${index}`" class="recipe-form__label">Recette</label>
+              <select
+                :id="`component-select-${index}`"
+                v-model="component.recipeUuid"
+                class="recipe-form__control"
+                :class="{ 'recipe-form__control--error': !!fieldError(`components.${index}.recipeUuid`) }"
+                :aria-invalid="!!fieldError(`components.${index}.recipeUuid`)"
+                @change="selectComponent(component)"
+              >
+                <option value="">Choisir</option>
+                <option
+                  v-if="
+                    component.recipeUuid &&
+                    component.search &&
+                    !(componentRecipeOptions ?? []).some((option) => option.uuid === component.recipeUuid)
+                  "
+                  :value="component.recipeUuid"
+                >
+                  {{ component.search }}
+                </option>
+                <option
+                  v-for="option in componentRecipeOptions ?? []"
+                  :key="option.uuid"
+                  :value="option.uuid"
+                  :disabled="props.recipe?.uuid === option.uuid"
+                >
+                  {{ option.name }}
+                </option>
+              </select>
+              <span v-if="fieldError(`components.${index}.recipeUuid`)" class="recipe-form__field-error">
+                {{ fieldError(`components.${index}.recipeUuid`) }}
+              </span>
+            </div>
+
+            <AppInput
+              :id="`component-label-${index}`"
+              v-model="component.label"
+              label="Libellé"
+              placeholder="Crème anglaise"
+              :error="fieldError(`components.${index}.label`)"
+            />
+            <AppInput
+              :id="`component-multiplier-${index}`"
+              v-model="component.servingsMultiplier"
+              type="number"
+              label="Multiplicateur"
+              placeholder="1"
+              :error="fieldError(`components.${index}.servingsMultiplier`)"
+            />
+          </div>
+        </div>
+
+        <AppButton variant="secondary" @click="addComponent">Ajouter une sous-recette</AppButton>
       </section>
 
       <section class="recipe-form__section">

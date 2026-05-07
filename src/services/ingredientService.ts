@@ -43,7 +43,10 @@ export const ingredientService = {
   },
 
   async getByUuid(uuid: string): Promise<Ingredient> {
-    const response = await ingredientApi.get<ApiResponse<Ingredient>>(`/ingredients/${uuid}`)
+    const response = await ingredientApi.get<ApiResponse<Ingredient>>(`/ingredients/${uuid}`, {
+      headers: { 'Cache-Control': 'no-cache' },
+      params: { _cache: Date.now() },
+    })
     return unwrapApiResponse(response.data)
   },
 

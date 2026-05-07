@@ -129,6 +129,21 @@ export function useRunIngredientEnrichment() {
   })
 }
 
+export function useRunIngredientEnrichmentBatch() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { ingredientUuids: string[]; limit?: number; continueOnError?: boolean }) =>
+      ingredientEnrichmentAgentService.enrichBatch({
+        ingredient_uuids: payload.ingredientUuids,
+        limit: payload.limit ?? payload.ingredientUuids.length,
+        continue_on_error: payload.continueOnError ?? true,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ingredientKeys.all })
+    },
+  })
+}
+
 export function useApplyIngredientEnrichmentSuggestion() {
   const queryClient = useQueryClient()
   return useMutation({

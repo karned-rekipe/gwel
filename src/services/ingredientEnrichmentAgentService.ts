@@ -13,4 +13,16 @@ export const ingredientEnrichmentAgentService = {
     )
     return unwrapApiResponse(response.data)
   },
+
+  async enrichBatch(payload: {
+    ingredient_uuids?: string[]
+    limit?: number
+    continue_on_error?: boolean
+  }): Promise<IngredientEnrichmentRunResult[]> {
+    const response = await enrichmentAgentApi.post<ApiResponse<IngredientEnrichmentRunResult[]>>(
+      '/ingredient-enrichment/batch',
+      payload,
+    )
+    return unwrapApiResponse(response.data)
+  },
 }

@@ -14,6 +14,7 @@ import {
   useIngredientGroups,
   useIngredientRayons,
   useMergeIngredientDuplicates,
+  useRunIngredientEnrichmentBatch,
   useUpdateIngredient,
 } from '@/composables/useCatalogQueries'
 import { useListNavigation } from '@/composables/useListNavigation'
@@ -48,6 +49,7 @@ const isFetchingMore = ref(false)
 const loadError = ref('')
 const editingUuid = ref<string | null>(null)
 const deleteError = ref('')
+const enrichmentMessage = ref('')
 const duplicateTargets = reactive<Record<string, string>>({})
 
 const form = reactive({
@@ -66,6 +68,7 @@ const { mutate: createIngredient, isPending: isCreating } = useCreateIngredient(
 const { mutate: updateIngredient, isPending: isUpdating } = useUpdateIngredient()
 const { mutate: deleteIngredient, isPending: isDeleting } = useDeleteIngredient()
 const { mutate: mergeDuplicates, isPending: isMerging } = useMergeIngredientDuplicates()
+const { mutate: runEnrichmentBatch, isPending: isRunningEnrichmentBatch } = useRunIngredientEnrichmentBatch()
 
 const total = computed(() => pagination.value?.total ?? ingredients.value.length)
 const hasNext = computed(() => pagination.value?.has_next ?? false)
@@ -137,6 +140,31 @@ const allergenLabel = (ingredient: Ingredient): string => {
 
 const aiLabel = (ingredient: Ingredient): string =>
   ingredient.enrichment_profile.status === 'suggested' ? 'IA à valider' : ingredient.enrichment_profile.status
+
+const enrichVisibleMissingIngredients = (): void => {
+  enrichmentMessage.value = ''
+  const ingredientUuids = filteredIngredients.value
+    .filter((ingredient) => ingredient.enrichment_profile.missing_fields.length > 0)
+    .map((ingredient) => ingredient.uuid)
+
+  if (!ingredientUuids.length) {
+    enrichmentMessage.value = 'Aucun ingrédient incomplet dans la liste filtrée.'
+    return
+  }
+
+  runEnrichmentBatch(
+    { ingredientUuids, continueOnError: true },
+    {
+      onSuccess: (results) => {
+        const failedCount = results.filter((result) => result.status === 'failed').length
+        enrichmentMessage.value = `${results.length - failedCount} enrichissement(s) lancé(s), ${failedCount} échec(s).`
+      },
+      onError: (err) => {
+        enrichmentMessage.value = err.message
+      },
+    },
+  )
+}
 
 const fetchPage = async (page: number, append: boolean): Promise<void> => {
   const response = await ingredientService.getPage({
@@ -334,6 +362,7 @@ onMounted(async () => {
     </section>
 
     <p v-if="deleteError" class="resource-page__error">{{ deleteError }}</p>
+    <p v-if="enrichmentMessage" class="resource-page__notice">{{ enrichmentMessage }}</p>
 
     <section v-if="duplicateGroups?.length" class="resource-page__dedupe">
       <article v-for="group in duplicateGroups" :key="group.normalized_name" class="resource-page__dedupe-row">
@@ -377,6 +406,13 @@ onMounted(async () => {
                 <option value="ai_suggestion">Suggestion IA</option>
               </select>
             </label>
+            <AppButton
+              variant="secondary"
+              :disabled="isRunningEnrichmentBatch || !filteredIngredients.length"
+              @click="enrichVisibleMissingIngredients"
+            >
+              {{ isRunningEnrichmentBatch ? 'Enrichissement…' : 'Enrichir les manquants' }}
+            </AppButton>
             <router-link :to="{ name: 'ingredient-settings' }" class="resource-page__settings" title="Réglages ingrédients">
               ⚙
             </router-link>
@@ -533,6 +569,12 @@ onMounted(async () => {
 .resource-page__error {
   margin: 0 0 10px;
   color: var(--color-danger);
+  font-weight: 650;
+}
+
+.resource-page__notice {
+  margin: 0 0 10px;
+  color: var(--color-text-secondary);
   font-weight: 650;
 }
 

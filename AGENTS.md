@@ -48,6 +48,7 @@ src/
     molecules/           # Combinaisons simples (champ + label, card simple)
     organisms/           # Sections complètes (header, sidebar, formulaire entier)
     icons/               # Composants icônes
+    ingredients/         # Composants spécifiques au catalogue ingrédients enrichi
     planning/            # Composants spécifiques planning (calendrier, slot)
     resources/           # Composants pour resources génériques
   composables/           # Hooks Vue partagés (useXxx.ts)

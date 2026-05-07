@@ -19,6 +19,19 @@ watch(
   <div class="app-shell">
     <header class="app-shell__header">
       <nav class="app-shell__nav" aria-label="Navigation principale">
+        <button
+          type="button"
+          class="app-shell__menu-button"
+          :aria-expanded="isMenuOpen"
+          :aria-label="isMenuOpen ? 'Fermer la navigation' : 'Ouvrir la navigation'"
+          aria-controls="app-navigation"
+          @click="isMenuOpen = !isMenuOpen"
+        >
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+        </button>
+
         <div class="app-shell__brand">
           <RouterLink to="/recipes" class="app-shell__logo">
             <span class="app-shell__logo-mark">R</span>
@@ -78,18 +91,6 @@ watch(
           >
             <span aria-hidden="true">⚙</span>
           </RouterLink>
-          <button
-            type="button"
-            class="app-shell__menu-button"
-            :aria-expanded="isMenuOpen"
-            :aria-label="isMenuOpen ? 'Fermer la navigation' : 'Ouvrir la navigation'"
-            aria-controls="app-navigation"
-            @click="isMenuOpen = !isMenuOpen"
-          >
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-          </button>
         </div>
       </nav>
     </header>
@@ -124,6 +125,7 @@ watch(
 }
 
 .app-shell__brand {
+  grid-column: 1;
   min-width: 0;
 }
 
@@ -161,6 +163,7 @@ watch(
 }
 
 .app-shell__links {
+  grid-column: 2;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -169,6 +172,7 @@ watch(
 }
 
 .app-shell__actions {
+  grid-column: 3;
   display: flex;
   align-items: center;
   justify-self: end;
@@ -234,6 +238,7 @@ watch(
 }
 
 .app-shell__menu-button {
+  grid-column: 1;
   display: none;
   cursor: pointer;
 }
@@ -253,12 +258,23 @@ watch(
 
 @media (max-width: 820px) {
   .app-shell__nav {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 10px 12px;
+  }
+
+  .app-shell__brand {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .app-shell__actions {
+    grid-column: 3;
+    grid-row: 1;
   }
 
   .app-shell__links {
     grid-column: 1 / -1;
+    grid-row: 2;
     display: none;
     flex-direction: column;
     align-items: stretch;
@@ -277,6 +293,7 @@ watch(
   }
 
   .app-shell__menu-button {
+    grid-row: 1;
     display: inline-flex;
   }
 }

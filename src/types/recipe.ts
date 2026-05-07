@@ -181,6 +181,8 @@ export interface IngredientEnrichmentSuggestion {
   proposed_patch: Record<string, unknown>
   field_confidences: Record<string, number>
   field_sources: Record<string, string>
+  applied_fields: string[]
+  rejected_fields: string[]
   reasoning_summary: string
   applied_at?: string | null
   rejected_at?: string | null

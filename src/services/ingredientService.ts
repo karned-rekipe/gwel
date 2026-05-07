@@ -91,9 +91,14 @@ export const ingredientService = {
     return unwrapApiResponse(response.data)
   },
 
-  async rejectEnrichmentSuggestion(uuid: string, suggestionUuid: string): Promise<IngredientEnrichmentSuggestion> {
+  async rejectEnrichmentSuggestion(
+    uuid: string,
+    suggestionUuid: string,
+    payload: IngredientEnrichmentSuggestionActionPayload = {},
+  ): Promise<IngredientEnrichmentSuggestion> {
     const response = await ingredientApi.post<ApiResponse<IngredientEnrichmentSuggestion>>(
       `/ingredients/${uuid}/enrichment-suggestions/${suggestionUuid}/reject`,
+      payload,
     )
     return unwrapApiResponse(response.data)
   },

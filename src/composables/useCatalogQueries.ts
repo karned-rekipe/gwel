@@ -153,8 +153,15 @@ export function useApplyIngredientEnrichmentSuggestion() {
 export function useRejectIngredientEnrichmentSuggestion() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ ingredientUuid, suggestionUuid }: { ingredientUuid: string; suggestionUuid: string }) =>
-      ingredientService.rejectEnrichmentSuggestion(ingredientUuid, suggestionUuid),
+    mutationFn: ({
+      ingredientUuid,
+      suggestionUuid,
+      payload,
+    }: {
+      ingredientUuid: string
+      suggestionUuid: string
+      payload?: IngredientEnrichmentSuggestionActionPayload
+    }) => ingredientService.rejectEnrichmentSuggestion(ingredientUuid, suggestionUuid, payload ?? {}),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ingredientKeys.detail(variables.ingredientUuid) })
       queryClient.invalidateQueries({ queryKey: ingredientKeys.suggestions(variables.ingredientUuid) })

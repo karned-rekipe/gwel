@@ -92,6 +92,12 @@ const confidenceLabel = (suggestion: IngredientEnrichmentSuggestion, field: stri
   return typeof confidence === 'number' ? `${Math.round(confidence * 100)} %` : '—'
 }
 
+const fieldDecisionLabel = (suggestion: IngredientEnrichmentSuggestion, field: string): string => {
+  if (suggestion.applied_fields.includes(field)) return 'appliqué'
+  if (suggestion.rejected_fields.includes(field)) return 'rejeté'
+  return 'à valider'
+}
+
 const seasonalityLabel = computed(() => {
   const profile = ingredient.value?.seasonality_profile
   if (!profile || profile.availability_type === 'unknown') return 'Inconnue'
@@ -150,6 +156,14 @@ const applyAllFields = (suggestion: IngredientEnrichmentSuggestion): void => {
 
 const rejectSuggestion = (suggestion: IngredientEnrichmentSuggestion): void => {
   rejectEnrichmentSuggestion({ ingredientUuid: ingredientUuid.value, suggestionUuid: suggestion.uuid })
+}
+
+const rejectField = (suggestion: IngredientEnrichmentSuggestion, field: string): void => {
+  rejectEnrichmentSuggestion({
+    ingredientUuid: ingredientUuid.value,
+    suggestionUuid: suggestion.uuid,
+    payload: { fields: [field] },
+  })
 }
 
 const goBack = (): void => {
@@ -305,9 +319,12 @@ onMounted(async () => {
             <div class="catalog-detail__field-list">
               <article v-for="field in proposedFields(suggestion)" :key="field" class="catalog-detail__field">
                 <div class="catalog-detail__field-heading">
-                  <strong>{{ fieldLabel(field) }}</strong>
-                  <span>{{ sourceLabel(suggestion, field) }} · {{ confidenceLabel(suggestion, field) }}</span>
-                </div>
+                <strong>{{ fieldLabel(field) }}</strong>
+                <span>
+                  {{ sourceLabel(suggestion, field) }} · {{ confidenceLabel(suggestion, field) }} ·
+                  {{ fieldDecisionLabel(suggestion, field) }}
+                </span>
+              </div>
                 <div class="catalog-detail__diff">
                   <div>
                     <span>Actuel</span>
@@ -318,10 +335,15 @@ onMounted(async () => {
                     <code>{{ formatValue(proposedValue(suggestion, field)) }}</code>
                   </div>
                 </div>
+              <div class="catalog-detail__actions catalog-detail__actions--field">
                 <AppButton variant="secondary" :disabled="isApplyingSuggestion" @click="applyField(suggestion, field)">
                   Appliquer ce champ
                 </AppButton>
-              </article>
+                <AppButton variant="danger" :disabled="isRejectingSuggestion" @click="rejectField(suggestion, field)">
+                  Rejeter ce champ
+                </AppButton>
+              </div>
+            </article>
             </div>
           </article>
         </template>

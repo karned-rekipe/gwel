@@ -20,6 +20,15 @@ export interface Ingredient {
   unit?: string | null
   quantity?: number | null
   season_months: Record<number, number>
+  media_profile: IngredientMediaProfile
+  seasonality_profile: IngredientSeasonalityProfile
+  nutrition_profile: IngredientNutritionProfile
+  sustainability_profile: IngredientSustainabilityProfile
+  allergen_profile: IngredientAllergenProfile
+  unit_profile: IngredientUnitProfile
+  package_profiles: IngredientPackageProfile[]
+  substitution_profile: IngredientSubstitutionProfile
+  enrichment_profile: IngredientEnrichmentProfile
 }
 
 export interface IngredientPayload {
@@ -32,6 +41,165 @@ export interface IngredientPayload {
   unit?: string | null
   quantity?: number | null
   season_months: Record<number, number>
+  media_profile?: IngredientMediaProfile
+  seasonality_profile?: IngredientSeasonalityProfile
+  nutrition_profile?: IngredientNutritionProfile
+  sustainability_profile?: IngredientSustainabilityProfile
+  allergen_profile?: IngredientAllergenProfile
+  unit_profile?: IngredientUnitProfile
+  package_profiles?: IngredientPackageProfile[]
+  substitution_profile?: IngredientSubstitutionProfile
+  enrichment_profile?: IngredientEnrichmentProfile
+}
+
+export interface IngredientMediaProfile {
+  main_image_uri?: string | null
+  image_status: 'missing' | 'generated' | 'uploaded' | 'rejected'
+  image_prompt?: string | null
+  source: 'manual' | 'ai' | 'import' | 'unknown'
+  validated: boolean
+}
+
+export interface IngredientSeasonalityProfile {
+  availability_type: 'unknown' | 'year_round' | 'seasonal' | 'not_applicable'
+  months: Record<number, number>
+  geography?: string | null
+  source: 'manual' | 'dataset' | 'ai' | 'import' | 'legacy_hint' | 'unknown'
+  confidence?: number | null
+  validated: boolean
+}
+
+export interface IngredientNutritionProfile {
+  kcal_per_100g?: number | null
+  kcal_per_100ml?: number | null
+  nutri_score: 'A' | 'B' | 'C' | 'D' | 'E' | 'not_applicable' | 'unknown'
+  ciqual_code?: string | null
+  source: 'manual' | 'ciqual' | 'openfoodfacts' | 'ai' | 'import' | 'unknown'
+  confidence?: number | null
+  validated: boolean
+}
+
+export interface IngredientSustainabilityProfile {
+  carbon_kg_co2e_per_kg?: number | null
+  agribalyse_code?: string | null
+  environmental_score?: number | null
+  source: 'manual' | 'agribalyse' | 'openfoodfacts' | 'ai' | 'import' | 'unknown'
+  confidence?: number | null
+  validated: boolean
+}
+
+export interface IngredientAllergen {
+  code:
+    | 'gluten'
+    | 'crustaceans'
+    | 'eggs'
+    | 'fish'
+    | 'peanuts'
+    | 'soy'
+    | 'milk'
+    | 'nuts'
+    | 'celery'
+    | 'mustard'
+    | 'sesame'
+    | 'sulphites'
+    | 'lupin'
+    | 'molluscs'
+  presence: 'contains' | 'may_contain' | 'absent' | 'unknown'
+  note?: string | null
+}
+
+export interface IngredientAllergenProfile {
+  allergens: IngredientAllergen[]
+  source: 'manual' | 'regulation' | 'openfoodfacts' | 'ai' | 'import' | 'unknown'
+  confidence?: number | null
+  validated: boolean
+}
+
+export interface IngredientUnitConversion {
+  from_unit: string
+  to_unit: string
+  factor: number
+  source: 'global' | 'ingredient_specific' | 'package_profile'
+  confidence?: number | null
+}
+
+export interface IngredientUnitProfile {
+  reference_unit: 'g' | 'kg' | 'ml' | 'cl' | 'l' | 'piece' | 'serving' | 'unknown'
+  default_purchase_unit?: string | null
+  default_recipe_unit?: string | null
+  allowed_units: string[]
+  conversions: IngredientUnitConversion[]
+}
+
+export interface IngredientPackageProfile {
+  label: string
+  package_unit: 'paquet' | 'bouteille' | 'boite' | 'barquette' | 'piece' | 'custom'
+  net_quantity: number
+  net_unit: 'g' | 'ml' | 'piece'
+  servings_count?: number | null
+  serving_label?: string | null
+  serving_quantity?: number | null
+  serving_unit?: 'g' | 'ml' | 'piece' | null
+  source: 'manual' | 'ai' | 'import' | 'supplier' | 'unknown'
+  validated: boolean
+}
+
+export interface IngredientSubstitutionProfile {
+  default_policy: 'unknown' | 'substitutable' | 'essential_by_default'
+  substitute_ingredient_uuids: string[]
+  notes?: string | null
+  source: 'manual' | 'ai' | 'import' | 'unknown'
+  confidence?: number | null
+  validated: boolean
+}
+
+export interface IngredientEnrichmentProfile {
+  completeness_score: number
+  status: 'missing' | 'partial' | 'suggested' | 'validated' | 'rejected'
+  missing_fields: string[]
+  last_run_uuid?: string | null
+  last_enriched_at?: string | null
+  validated_fields: string[]
+  rejected_fields: string[]
+}
+
+export type IngredientEnrichmentSuggestionStatus =
+  | 'pending'
+  | 'partially_applied'
+  | 'applied'
+  | 'rejected'
+  | 'expired'
+
+export interface IngredientEnrichmentSuggestion {
+  uuid: string
+  version: number
+  created_at?: string
+  updated_at?: string
+  ingredient_uuid: string
+  run_uuid: string
+  status: IngredientEnrichmentSuggestionStatus
+  proposed_patch: Record<string, unknown>
+  field_confidences: Record<string, number>
+  field_sources: Record<string, string>
+  reasoning_summary: string
+  applied_at?: string | null
+  rejected_at?: string | null
+}
+
+export interface IngredientEnrichmentSuggestionActionPayload {
+  fields?: string[] | null
+  force?: boolean
+}
+
+export interface IngredientEnrichmentRunResult {
+  run_uuid: string
+  ingredient_uuid: string
+  suggestion_uuid?: string | null
+  status: string
+  completeness_score: number
+  missing_fields: string[]
+  proposed_fields: string[]
+  error?: string | null
 }
 
 export interface IngredientGroup {

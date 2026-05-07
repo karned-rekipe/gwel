@@ -1,10 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { equipmentService } from '@/services/equipmentService'
+import { ingredientEnrichmentAgentService } from '@/services/ingredientEnrichmentAgentService'
 import { ingredientGroupService, ingredientRayonService } from '@/services/ingredientSettingService'
 import { ingredientService } from '@/services/ingredientService'
 import { tagService } from '@/services/tagService'
-import type { EquipmentPayload, IngredientPayload, IngredientSettingPayload, TagPayload } from '@/types/recipe'
+import type {
+  EquipmentPayload,
+  IngredientEnrichmentSuggestionActionPayload,
+  IngredientPayload,
+  IngredientSettingPayload,
+  TagPayload,
+} from '@/types/recipe'
 import { recipeKeys } from '@/composables/useRecipeQueries'
 
 export const ingredientKeys = {
@@ -13,6 +20,7 @@ export const ingredientKeys = {
   list: (name: string) => [...ingredientKeys.lists(), name] as const,
   detail: (uuid: string) => [...ingredientKeys.all, 'detail', uuid] as const,
   recipes: (uuid: string) => [...ingredientKeys.detail(uuid), 'recipes'] as const,
+  suggestions: (uuid: string) => [...ingredientKeys.detail(uuid), 'enrichment-suggestions'] as const,
   duplicates: () => [...ingredientKeys.all, 'duplicates'] as const,
 }
 
@@ -67,6 +75,15 @@ export function useIngredientRecipes(uuid: MaybeRefOrGetter<string>) {
   })
 }
 
+export function useIngredientEnrichmentSuggestions(uuid: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => ingredientKeys.suggestions(toValue(uuid))),
+    queryFn: () => ingredientService.listEnrichmentSuggestions(toValue(uuid)),
+    enabled: () => !!toValue(uuid),
+    staleTime: 30 * 1000,
+  })
+}
+
 export function useCreateIngredient() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -96,6 +113,52 @@ export function useDeleteIngredient() {
     mutationFn: (uuid: string) => ingredientService.delete(uuid),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ingredientKeys.all })
+    },
+  })
+}
+
+export function useRunIngredientEnrichment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ingredientUuid: string) => ingredientEnrichmentAgentService.enrichIngredient(ingredientUuid),
+    onSuccess: (_, ingredientUuid) => {
+      queryClient.invalidateQueries({ queryKey: ingredientKeys.detail(ingredientUuid) })
+      queryClient.invalidateQueries({ queryKey: ingredientKeys.suggestions(ingredientUuid) })
+      queryClient.invalidateQueries({ queryKey: ingredientKeys.lists() })
+    },
+  })
+}
+
+export function useApplyIngredientEnrichmentSuggestion() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      ingredientUuid,
+      suggestionUuid,
+      payload,
+    }: {
+      ingredientUuid: string
+      suggestionUuid: string
+      payload: IngredientEnrichmentSuggestionActionPayload
+    }) => ingredientService.applyEnrichmentSuggestion(ingredientUuid, suggestionUuid, payload),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ingredientKeys.detail(variables.ingredientUuid) })
+      queryClient.invalidateQueries({ queryKey: ingredientKeys.suggestions(variables.ingredientUuid) })
+      queryClient.invalidateQueries({ queryKey: ingredientKeys.lists() })
+      queryClient.invalidateQueries({ queryKey: recipeKeys.all })
+    },
+  })
+}
+
+export function useRejectIngredientEnrichmentSuggestion() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ingredientUuid, suggestionUuid }: { ingredientUuid: string; suggestionUuid: string }) =>
+      ingredientService.rejectEnrichmentSuggestion(ingredientUuid, suggestionUuid),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ingredientKeys.detail(variables.ingredientUuid) })
+      queryClient.invalidateQueries({ queryKey: ingredientKeys.suggestions(variables.ingredientUuid) })
+      queryClient.invalidateQueries({ queryKey: ingredientKeys.lists() })
     },
   })
 }

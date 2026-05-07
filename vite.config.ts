@@ -21,6 +21,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/recipe-agent/, ''),
         },
+        '/api/ingredient-enrichment-agent': {
+          target: env.VITE_INGREDIENT_ENRICHMENT_AGENT_PROXY_TARGET || 'http://127.0.0.1:8036',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/ingredient-enrichment-agent/, ''),
+        },
         '/api/recipe': {
           target: env.VITE_RECIPE_PROXY_TARGET || 'http://127.0.0.1:8301',
           changeOrigin: true,

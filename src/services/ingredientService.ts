@@ -6,6 +6,8 @@ import type {
   DuplicateMergePayload,
   DuplicateMergeResult,
   Ingredient,
+  IngredientEnrichmentSuggestion,
+  IngredientEnrichmentSuggestionActionPayload,
   IngredientPayload,
   Recipe,
 } from '@/types/recipe'
@@ -64,6 +66,36 @@ export const ingredientService = {
 
   async update(uuid: string, payload: Partial<IngredientPayload>): Promise<void> {
     await ingredientApi.patch(`/ingredients/${uuid}`, payload)
+  },
+
+  async listEnrichmentSuggestions(uuid: string): Promise<IngredientEnrichmentSuggestion[]> {
+    const response = await ingredientApi.get<ApiResponse<IngredientEnrichmentSuggestion[]>>(
+      `/ingredients/${uuid}/enrichment-suggestions`,
+      {
+        headers: { 'Cache-Control': 'no-cache' },
+        params: { _cache: Date.now() },
+      },
+    )
+    return unwrapApiResponse(response.data)
+  },
+
+  async applyEnrichmentSuggestion(
+    uuid: string,
+    suggestionUuid: string,
+    payload: IngredientEnrichmentSuggestionActionPayload,
+  ): Promise<IngredientEnrichmentSuggestion> {
+    const response = await ingredientApi.post<ApiResponse<IngredientEnrichmentSuggestion>>(
+      `/ingredients/${uuid}/enrichment-suggestions/${suggestionUuid}/apply`,
+      payload,
+    )
+    return unwrapApiResponse(response.data)
+  },
+
+  async rejectEnrichmentSuggestion(uuid: string, suggestionUuid: string): Promise<IngredientEnrichmentSuggestion> {
+    const response = await ingredientApi.post<ApiResponse<IngredientEnrichmentSuggestion>>(
+      `/ingredients/${uuid}/enrichment-suggestions/${suggestionUuid}/reject`,
+    )
+    return unwrapApiResponse(response.data)
   },
 
   async delete(uuid: string): Promise<void> {

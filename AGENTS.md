@@ -106,6 +106,7 @@ src/
 Préfixe `VITE_` (sinon non exposé au runtime) :
 
 - `VITE_RECIPE_API_BASE_URL`, `VITE_RECIPE_AGENT_API_BASE_URL`
+- `VITE_INGREDIENT_ENRICHMENT_AGENT_API_BASE_URL`
 - `VITE_MEAL_PLANNER_API_BASE_URL`, `VITE_MEAL_PLANNER_AGENT_API_BASE_URL`
 - `VITE_SHOPPING_API_BASE_URL`, `VITE_SHOPPING_AGENT_API_BASE_URL`
 - `VITE_TENANT_URI`
@@ -121,6 +122,7 @@ Définis dans `vite.config.ts`. Tableau de routes :
 |---|---|
 | `/api/recipe` | `http://127.0.0.1:8301` |
 | `/api/recipe-agent` | `http://127.0.0.1:8303` |
+| `/api/ingredient-enrichment-agent` | `http://127.0.0.1:8036` |
 | `/api/meal-planner` | `http://127.0.0.1:8010` |
 | `/api/meal-planner-agent` | `http://127.0.0.1:8016` |
 | `/api/shopping` | `http://127.0.0.1:8020` |

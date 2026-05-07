@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppButton from '@/components/atoms/AppButton.vue'
 import AppLoader from '@/components/atoms/AppLoader.vue'
+import IngredientProfileEditor from '@/components/ingredients/IngredientProfileEditor.vue'
 import ResourceDetailHeader from '@/components/resources/ResourceDetailHeader.vue'
 import {
   useApplyIngredientEnrichmentSuggestion,
@@ -12,9 +13,10 @@ import {
   useIngredientRecipes,
   useRejectIngredientEnrichmentSuggestion,
   useRunIngredientEnrichment,
+  useUpdateIngredient,
 } from '@/composables/useCatalogQueries'
 import { shoppingService } from '@/services/shoppingService'
-import type { IngredientEnrichmentSuggestion } from '@/types/recipe'
+import type { IngredientEnrichmentSuggestion, IngredientPayload } from '@/types/recipe'
 import type { Supplier } from '@/types/shopping'
 
 const route = useRoute()
@@ -26,6 +28,7 @@ const { data: ingredient, isLoading, isError, error } = useIngredient(ingredient
 const { data: recipes, isLoading: isLoadingRecipes } = useIngredientRecipes(ingredientUuid)
 const { data: suggestions, isLoading: isLoadingSuggestions } = useIngredientEnrichmentSuggestions(ingredientUuid)
 const { mutate: deleteIngredient, isPending: isDeleting } = useDeleteIngredient()
+const { mutate: updateIngredient, isPending: isSavingProfiles, error: saveProfilesError } = useUpdateIngredient()
 const { mutate: runEnrichment, isPending: isRunningEnrichment, error: runEnrichmentError } = useRunIngredientEnrichment()
 const {
   mutate: applyEnrichmentSuggestion,
@@ -166,6 +169,10 @@ const rejectField = (suggestion: IngredientEnrichmentSuggestion, field: string):
   })
 }
 
+const saveProfiles = (payload: Partial<IngredientPayload>): void => {
+  updateIngredient({ uuid: ingredientUuid.value, data: payload })
+}
+
 const goBack = (): void => {
   router.push({ name: 'ingredients-home' })
 }
@@ -282,6 +289,16 @@ onMounted(async () => {
             <strong>{{ substitutionLabel }}</strong>
           </article>
         </div>
+      </section>
+
+      <section class="catalog-detail__panel">
+        <h2 class="catalog-detail__panel-title">Édition manuelle V5</h2>
+        <IngredientProfileEditor
+          :ingredient="ingredient"
+          :is-saving="isSavingProfiles"
+          :error="saveProfilesError?.message"
+          @save="saveProfiles"
+        />
       </section>
 
       <section class="catalog-detail__panel">

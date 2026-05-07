@@ -22,6 +22,7 @@ export const ingredientKeys = {
   recipes: (uuid: string) => [...ingredientKeys.detail(uuid), 'recipes'] as const,
   suggestions: (uuid: string) => [...ingredientKeys.detail(uuid), 'enrichment-suggestions'] as const,
   duplicates: () => [...ingredientKeys.all, 'duplicates'] as const,
+  enrichmentRuns: (page: number) => ['ingredient-enrichment-runs', page] as const,
 }
 
 export const equipmentKeys = {
@@ -141,6 +142,14 @@ export function useRunIngredientEnrichmentBatch() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ingredientKeys.all })
     },
+  })
+}
+
+export function useIngredientEnrichmentRuns(page: MaybeRefOrGetter<number> = 1) {
+  return useQuery({
+    queryKey: computed(() => ingredientKeys.enrichmentRuns(toValue(page))),
+    queryFn: () => ingredientEnrichmentAgentService.listRuns({ page: toValue(page), per_page: 50 }),
+    staleTime: 15 * 1000,
   })
 }
 

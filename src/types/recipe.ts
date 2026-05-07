@@ -204,6 +204,23 @@ export interface IngredientEnrichmentRunResult {
   error?: string | null
 }
 
+export type IngredientEnrichmentRunStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
+
+export interface IngredientEnrichmentRun {
+  uuid: string
+  version: number
+  created_at?: string
+  updated_at?: string
+  ingredient_uuid: string
+  status: IngredientEnrichmentRunStatus
+  suggestion_uuid?: string | null
+  proposed_fields: string[]
+  error?: string | null
+  started_at?: string | null
+  completed_at?: string | null
+  metadata: Record<string, unknown>
+}
+
 export interface IngredientGroup {
   uuid: string
   version: number

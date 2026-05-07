@@ -38,6 +38,13 @@ import { RouterView } from 'vue-router'
             Ingrédients
           </RouterLink>
           <RouterLink
+            to="/ingredients/runs"
+            class="app-shell__link"
+            active-class="app-shell__link--active"
+          >
+            Runs IA
+          </RouterLink>
+          <RouterLink
             to="/equipment"
             class="app-shell__link"
             active-class="app-shell__link--active"

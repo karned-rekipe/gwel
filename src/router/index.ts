@@ -48,6 +48,14 @@ const router = createRouter({
       },
     },
     {
+      path: '/ingredients/runs',
+      name: 'ingredient-enrichment-runs',
+      component: () => import('../views/IngredientEnrichmentRunsView.vue'),
+      meta: {
+        title: 'Runs ingrédients',
+      },
+    },
+    {
       path: '/ingredients/:id',
       name: 'ingredients-detail',
       component: () => import('../views/IngredientDetailView.vue'),

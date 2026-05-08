@@ -2,8 +2,8 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import ResourceList from '@/components/resources/ResourceList.vue'
-import ResourceRow from '@/components/resources/ResourceRow.vue'
 import ResourceSearchBar from '@/components/resources/ResourceSearchBar.vue'
+import RecipeCard from '@/components/molecules/RecipeCard.vue'
 import { useTags } from '@/composables/useCatalogQueries'
 import { useListNavigation } from '@/composables/useListNavigation'
 import { useInfiniteRecipes } from '@/composables/useRecipeQueries'
@@ -52,17 +52,6 @@ const lastPagination = computed(() => {
 const total = computed(() => lastPagination.value?.total ?? displayedRecipes.value.length)
 const isEmpty = computed(() => !isLoading.value && displayedRecipes.value.length === 0)
 
-const totalTimeLabel = (recipe: Recipe): string => {
-  const totalTime = recipe.steps.reduce(
-    (total, step) =>
-      total + (step.total_time ?? (step.preparation_time ?? 0) + (step.cooking_time ?? 0) + (step.rest_time ?? 0)),
-    0,
-  )
-  if (totalTime <= 0) return '—'
-  const hours = Math.floor(totalTime / 60)
-  const minutes = totalTime % 60
-  return hours ? `${hours} h${minutes ? ` ${minutes}` : ''}` : `${minutes} min`
-}
 
 const filterState = computed(() => ({
   tag_uuid: filters.tag_uuid,
@@ -154,28 +143,24 @@ onMounted(() => {
         </div>
       </template>
 
-      <ResourceRow
-        v-for="recipe in displayedRecipes"
-        :key="recipe.uuid"
-        columns="minmax(0, 1.4fr) 76px minmax(120px, 1fr) 72px 72px 86px"
-        @click="handleRecipeClick(recipe)"
-      >
-        <strong class="recipe-list__name">{{ recipe.name }}</strong>
-        <span>{{ recipe.origin_country || '—' }}</span>
-        <span class="recipe-list__tags">{{ recipe.tags.map((tag) => tag.name).slice(0, 3).join(', ') || '—' }}</span>
-        <span>{{ recipe.favorite ? '★' : '—' }}</span>
-        <span>{{ recipe.difficulty ? `${recipe.difficulty}/5` : '—' }}</span>
-        <span class="recipe-list__time">{{ totalTimeLabel(recipe) }}</span>
-      </ResourceRow>
+      <div class="recipe-list__grid">
+        <RecipeCard
+          v-for="recipe in displayedRecipes"
+          :key="recipe.uuid"
+          :recipe="recipe"
+          @click="handleRecipeClick(recipe)"
+        />
+      </div>
     </ResourceList>
   </section>
 </template>
 
 <style scoped>
 .recipe-list {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 24px 20px 48px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 22px 24px 48px;
 }
 
 .recipe-list__header {
@@ -231,24 +216,18 @@ onMounted(() => {
   padding: 8px 10px;
 }
 
-.recipe-list__name {
-  overflow: hidden;
-  color: var(--color-text-primary);
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.recipe-list :deep(.resource-list__body) {
+  display: block;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  gap: 0;
 }
 
-.recipe-list__tags {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.recipe-list__time {
-  justify-self: end;
-  color: var(--color-text-tertiary);
-  font-weight: 650;
+.recipe-list__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
 }
 
 @media (max-width: 980px) {
@@ -261,6 +240,11 @@ onMounted(() => {
   .recipe-list__header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .recipe-list__grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
   }
 }
 </style>

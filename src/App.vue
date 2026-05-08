@@ -5,7 +5,14 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 const route = useRoute()
 const isMenuOpen = ref(false)
 
-const isSettingsRoute = computed(() => ['ingredient-settings', 'tags-home', 'tags-detail'].includes(String(route.name)))
+const isPlanningRoute = computed(() => String(route.name).startsWith('planning-'))
+const settingsRoute = computed(() => (isPlanningRoute.value ? { name: 'planning-preferences' } : { name: 'ingredient-settings' }))
+const settingsLabel = computed(() => (isPlanningRoute.value ? 'Préférences planning' : 'Réglages'))
+const isSettingsRoute = computed(() => (
+  isPlanningRoute.value
+    ? route.name === 'planning-preferences'
+    : ['ingredient-settings', 'tags-home', 'tags-detail'].includes(String(route.name))
+))
 
 const closeMenu = (): void => {
   isMenuOpen.value = false
@@ -98,10 +105,10 @@ watch(
 
         <div class="app-shell__actions">
           <RouterLink
-            to="/settings/ingredients"
+            :to="settingsRoute"
             :class="['app-shell__icon-link', { 'app-shell__icon-link--active': isSettingsRoute }]"
-            aria-label="Réglages"
-            title="Réglages"
+            :aria-label="settingsLabel"
+            :title="settingsLabel"
           >
             <span aria-hidden="true">⚙</span>
           </RouterLink>

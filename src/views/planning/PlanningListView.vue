@@ -14,6 +14,12 @@ const isSettingsOpen = ref(false)
 const enabledMealSlotCodes = ref<string[]>([])
 const mealSlotFilterInitialized = ref(false)
 
+const addDays = (value: Date, daysToAdd: number): Date => {
+  const result = new Date(value)
+  result.setDate(result.getDate() + daysToAdd)
+  return result
+}
+
 const formatDate = (value: Date): string => {
   const year = value.getFullYear()
   const month = String(value.getMonth() + 1).padStart(2, '0')
@@ -21,11 +27,10 @@ const formatDate = (value: Date): string => {
   return `${year}-${month}-${day}`
 }
 
+const periodFormatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' })
 const today = new Date()
-const defaultStart = new Date(today)
-defaultStart.setDate(today.getDate() - ((today.getDay() + 6) % 7))
-const defaultEnd = new Date(defaultStart)
-defaultEnd.setDate(defaultStart.getDate() + 14)
+const defaultStart = addDays(today, -7)
+const defaultEnd = addDays(today, 21)
 
 const filters = reactive({
   dateFrom: formatDate(defaultStart),
@@ -61,10 +66,16 @@ const availableMealSlots = computed<MealSlotDefinition[]>(() => {
 })
 
 const activeMealSlotCodes = computed(() =>
-  enabledMealSlotCodes.value.filter((code) => availableMealSlots.value.some((slot) => slot.code === code)),
+  availableMealSlots.value
+    .map((slot) => slot.code)
+    .filter((code) => enabledMealSlotCodes.value.includes(code)),
 )
 
-const visibleDateRangeLabel = computed(() => `${filters.dateFrom} → ${filters.dateTo}`)
+const visibleDateRangeLabel = computed(() => {
+  const start = new Date(`${filters.dateFrom}T12:00:00`)
+  const end = new Date(`${filters.dateTo}T12:00:00`)
+  return `${periodFormatter.format(start)} - ${periodFormatter.format(end)}`
+})
 
 const loadCalendar = async (): Promise<void> => {
   actionError.value = null
@@ -89,6 +100,15 @@ const toggleMealSlot = (code: string): void => {
   }
 }
 
+const extendPeriod = async (side: 'before' | 'after'): Promise<void> => {
+  if (side === 'before') {
+    filters.dateFrom = formatDate(addDays(new Date(`${filters.dateFrom}T12:00:00`), -7))
+  } else {
+    filters.dateTo = formatDate(addDays(new Date(`${filters.dateTo}T12:00:00`), 7))
+  }
+  await loadCalendar()
+}
+
 watch(availableMealSlots, (slots) => {
   const codes = slots.map((slot) => slot.code)
   if (!codes.length) return
@@ -111,61 +131,51 @@ onMounted(() => {
 
 <template>
   <main class="planning-page">
-    <header class="planning-page__header">
-      <div>
-        <p class="planning-page__eyebrow">Planning</p>
-        <h1>Planification des repas</h1>
-        <p class="planning-page__subtitle">{{ visibleDateRangeLabel }}</p>
+    <section class="planning-page__toolbar" aria-label="Contrôles du planning">
+      <button type="button" class="planning-page__ghost-button" :disabled="store.loading" @click="extendPeriod('before')">
+        ← Charger avant
+      </button>
+      <div class="planning-page__period">
+        <strong>Planification des repas</strong>
+        <span>{{ visibleDateRangeLabel }}</span>
       </div>
-      <div class="planning-page__header-actions">
-        <RouterLink :to="{ name: 'planning-preferences' }" class="planning-page__link">Préférences</RouterLink>
-        <div class="planning-page__settings">
-          <button
-            type="button"
-            class="planning-page__settings-trigger"
-            :aria-expanded="isSettingsOpen"
-            aria-controls="planning-meal-settings"
-            @click="isSettingsOpen = !isSettingsOpen"
+      <button type="button" class="planning-page__ghost-button" :disabled="store.loading" @click="extendPeriod('after')">
+        Charger après →
+      </button>
+      <div class="planning-page__settings">
+        <button
+          type="button"
+          class="planning-page__settings-trigger"
+          :aria-expanded="isSettingsOpen"
+          aria-controls="planning-meal-settings"
+          @click="isSettingsOpen = !isSettingsOpen"
+        >
+          <span aria-hidden="true">⚙</span>
+          <span>Paramètres</span>
+        </button>
+        <div
+          v-if="isSettingsOpen"
+          id="planning-meal-settings"
+          class="planning-page__settings-panel"
+        >
+          <p>Types de repas à afficher</p>
+          <label
+            v-for="slot in availableMealSlots"
+            :key="slot.code"
+            class="planning-page__check"
           >
-            <span aria-hidden="true">⚙</span>
-            <span>Paramètres</span>
-          </button>
-          <div
-            v-if="isSettingsOpen"
-            id="planning-meal-settings"
-            class="planning-page__settings-panel"
-          >
-            <p>Types de repas</p>
-            <label
-              v-for="slot in availableMealSlots"
-              :key="slot.code"
-              class="planning-page__check"
-            >
-              <input
-                type="checkbox"
-                :checked="activeMealSlotCodes.includes(slot.code)"
-                :disabled="activeMealSlotCodes.length === 1 && activeMealSlotCodes.includes(slot.code)"
-                @change="toggleMealSlot(slot.code)"
-              />
-              <span aria-hidden="true">✓</span>
-              <strong>{{ slot.label }}</strong>
-            </label>
-          </div>
+            <input
+              type="checkbox"
+              :checked="activeMealSlotCodes.includes(slot.code)"
+              :disabled="activeMealSlotCodes.length === 1 && activeMealSlotCodes.includes(slot.code)"
+              @change="toggleMealSlot(slot.code)"
+            />
+            <span aria-hidden="true">✓</span>
+            <strong>{{ slot.label }}</strong>
+          </label>
         </div>
       </div>
-    </header>
-
-    <form class="planning-page__filters" @submit.prevent="loadCalendar">
-      <label>
-        Début
-        <input v-model="filters.dateFrom" type="date" required />
-      </label>
-      <label>
-        Fin
-        <input v-model="filters.dateTo" type="date" required />
-      </label>
-      <button type="submit" :disabled="store.loading">Afficher</button>
-    </form>
+    </section>
 
     <p v-if="store.error" class="planning-page__error">{{ store.error }}</p>
     <p v-if="actionError" class="planning-page__error">{{ actionError }}</p>
@@ -185,84 +195,61 @@ onMounted(() => {
 <style scoped>
 .planning-page {
   width: 100%;
-  padding: 24px clamp(14px, 2vw, 28px) 48px;
-}
-
-.planning-page__header,
-.planning-page__filters {
+  height: calc(100vh - 61px);
   display: flex;
-  gap: 12px;
-  align-items: center;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 10px 12px 12px;
 }
 
-.planning-page__header {
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.planning-page__eyebrow {
-  margin: 0 0 4px;
-  color: var(--color-text-tertiary);
-  font-size: 0.9rem;
-}
-
-.planning-page h1 {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-size: clamp(1.6rem, 3vw, 2.2rem);
-  font-weight: 700;
-}
-
-.planning-page__subtitle {
-  margin: 6px 0 0;
-  color: var(--color-text-secondary);
-  font-size: 0.92rem;
-}
-
-.planning-page__header-actions {
-  display: flex;
+.planning-page__toolbar {
+  position: relative;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: auto minmax(180px, 1fr) auto auto;
   gap: 8px;
   align-items: center;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.planning-page__period {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  min-width: 0;
+}
+
+.planning-page__period strong {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--color-text-primary);
+  font-size: 0.98rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planning-page__period span {
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
 }
 
 .planning-page__settings {
   position: relative;
 }
 
-.planning-page__filters {
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-  padding: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-}
-
-.planning-page__filters label {
-  display: grid;
-  gap: 5px;
-  color: var(--color-text-secondary);
-  font-size: 0.88rem;
-}
-
-.planning-page__filters input,
-.planning-page__filters button,
-.planning-page__link,
+.planning-page__ghost-button,
 .planning-page__settings-trigger {
-  min-height: 38px;
+  min-height: 34px;
   border-radius: var(--radius-md);
   font: inherit;
 }
 
-.planning-page__filters input {
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  padding: 7px 10px;
-}
-
-.planning-page__filters button,
-.planning-page__link,
+.planning-page__ghost-button,
 .planning-page__settings-trigger {
   display: inline-flex;
   align-items: center;
@@ -272,17 +259,16 @@ onMounted(() => {
   padding: 7px 12px;
 }
 
-.planning-page__filters button {
-  align-self: end;
-  background: var(--color-primary);
-  color: #fff;
-  cursor: pointer;
-}
-
+.planning-page__ghost-button,
 .planning-page__settings-trigger {
   background: var(--color-surface);
   color: var(--color-text-primary);
   cursor: pointer;
+}
+
+.planning-page__ghost-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .planning-page__settings-panel {
@@ -355,7 +341,8 @@ onMounted(() => {
 }
 
 .planning-page__layout {
-  width: 100%;
+  min-height: 0;
+  flex: 1;
 }
 
 .planning-page__error {
@@ -369,19 +356,21 @@ onMounted(() => {
 }
 
 @media (max-width: 960px) {
-  .planning-page__header {
-    align-items: stretch;
-    flex-direction: column;
+  .planning-page {
+    height: calc(100vh - 61px);
   }
 
-  .planning-page__header-actions {
-    align-items: stretch;
-    flex-direction: column;
+  .planning-page__toolbar {
+    grid-template-columns: 1fr 1fr;
   }
 
-  .planning-page__settings-panel {
-    right: auto;
-    left: 0;
+  .planning-page__period {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .planning-page__settings {
+    justify-self: end;
   }
 }
 </style>

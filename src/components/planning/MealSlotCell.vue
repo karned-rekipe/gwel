@@ -183,22 +183,34 @@ const addNote = (): void => {
   >
     <header class="meal-slot__header">
       <strong v-if="showMealLabel !== false">{{ mealLabel }}</strong>
-      <div class="meal-slot__headcount" aria-label="Nombre de personnes du repas">
-        <span class="meal-slot__headcount-label">Pax</span>
+      <div class="meal-slot__toolbar">
+        <div class="meal-slot__headcount" aria-label="Nombre de personnes du repas">
+          <span class="meal-slot__headcount-label">Pax</span>
+          <button
+            type="button"
+            :disabled="readonly || !slot.headcount"
+            title="Moins"
+            @click="setHeadcount(Math.max((slot.headcount ?? 1) - 1, 0))"
+          >
+            −
+          </button>
+          <span class="meal-slot__headcount-value">{{ slot.headcount ?? '—' }}</span>
+          <button
+            type="button"
+            :disabled="readonly"
+            title="Plus"
+            @click="setHeadcount((slot.headcount ?? 0) + 1)"
+          >
+            +
+          </button>
+        </div>
         <button
+          v-if="!readonly"
           type="button"
-          :disabled="readonly || !slot.headcount"
-          title="Moins"
-          @click="setHeadcount(Math.max((slot.headcount ?? 1) - 1, 0))"
-        >
-          −
-        </button>
-        <span class="meal-slot__headcount-value">{{ slot.headcount ?? '—' }}</span>
-        <button
-          type="button"
-          :disabled="readonly"
-          title="Plus"
-          @click="setHeadcount((slot.headcount ?? 0) + 1)"
+          class="meal-slot__add"
+          title="Ajouter"
+          aria-label="Ajouter au repas"
+          @click="openAddModal()"
         >
           +
         </button>
@@ -217,10 +229,6 @@ const addNote = (): void => {
         @patch="emit('patch', $event)"
       />
     </div>
-
-    <footer v-if="!readonly" class="meal-slot__footer">
-      <button type="button" class="meal-slot__add" @click="openAddModal()">+ Ajouter</button>
-    </footer>
 
     <Teleport to="body">
       <div v-if="isModalOpen" class="meal-slot-modal" @click.self="closeModal" @keydown.esc="closeModal">
@@ -290,19 +298,20 @@ const addNote = (): void => {
 <style scoped>
 .meal-slot {
   min-width: 0;
-  min-height: 116px;
+  height: 100%;
+  min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 6px;
+  padding: 0;
+  background: transparent;
 }
 
 .meal-slot--empty {
-  border-style: dashed;
-  background: var(--color-surface-muted);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  background: color-mix(in srgb, var(--color-surface-muted) 80%, transparent);
 }
 
 .meal-slot--without-label .meal-slot__header {
@@ -310,11 +319,11 @@ const addNote = (): void => {
 }
 
 .meal-slot__header,
-.meal-slot__footer,
+.meal-slot__toolbar,
 .meal-slot__headcount {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .meal-slot__header {
@@ -328,11 +337,11 @@ const addNote = (): void => {
 .meal-slot__headcount-label,
 .meal-slot__headcount-value {
   color: var(--color-text-secondary);
-  font-size: 0.84rem;
+  font-size: 0.72rem;
 }
 
 .meal-slot__headcount-value {
-  min-width: 20px;
+  min-width: 14px;
   text-align: center;
 }
 
@@ -348,23 +357,23 @@ const addNote = (): void => {
 }
 
 .meal-slot__headcount button {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
 }
 
 .meal-slot__items {
   display: grid;
   align-content: start;
   gap: 6px;
-}
-
-.meal-slot__footer {
-  justify-content: flex-end;
+  overflow: auto;
 }
 
 .meal-slot__add {
-  min-height: 30px;
-  padding: 5px 10px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  padding: 0;
+  font-weight: 800;
 }
 
 .meal-slot-modal {

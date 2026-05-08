@@ -179,7 +179,7 @@ const scrollTodayIntoView = async (): Promise<boolean> => {
   const todayHead = scrollerElement?.querySelector<HTMLElement>('.week-grid__day-head--today')
   if (!scrollerElement || !todayHead) return false
 
-  scrollerElement.scrollLeft = Math.max(todayHead.offsetLeft - mealHeadWidth, 0)
+  scrollerElement.scrollLeft = Math.max(todayHead.offsetLeft, 0)
   return true
 }
 
@@ -218,7 +218,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="week-grid">
+  <section class="week-grid" :style="{ '--meal-head-width': `${mealHeadWidth}px` }">
     <button
       type="button"
       class="week-grid__load week-grid__load--before"
@@ -230,15 +230,34 @@ onMounted(() => {
       <span aria-hidden="true">←</span>
     </button>
 
+    <div class="week-grid__meal-rail" :style="{ gridTemplateRows }">
+      <div class="week-grid__corner" aria-hidden="true"></div>
+      <aside
+        v-for="slotCode in slotCodes"
+        :key="slotCode"
+        class="week-grid__meal-head"
+        :class="{ 'week-grid__meal-head--collapsed': isSlotCollapsed(slotCode) }"
+      >
+        <button
+          type="button"
+          :aria-expanded="!isSlotCollapsed(slotCode)"
+          :aria-label="isSlotCollapsed(slotCode) ? `Afficher ${mealSlotLabel(slotCode)}` : `Masquer ${mealSlotLabel(slotCode)}`"
+          @click="toggleSlotCollapse(slotCode)"
+        >
+          <span aria-hidden="true">{{ isSlotCollapsed(slotCode) ? '›' : '⌄' }}</span>
+          <strong>{{ mealSlotLabel(slotCode) }}</strong>
+        </button>
+      </aside>
+    </div>
+
     <div ref="scroller" class="week-grid__scroller">
       <div
         class="week-grid__matrix"
         :style="{
-          gridTemplateColumns: `${mealHeadWidth}px repeat(${days.length}, minmax(${dayColumnWidth}px, 1fr))`,
+          gridTemplateColumns: `repeat(${days.length}, ${dayColumnWidth}px)`,
           gridTemplateRows,
         }"
       >
-        <div class="week-grid__corner" aria-hidden="true"></div>
         <header
           v-for="day in days"
           :key="day.date"
@@ -257,20 +276,6 @@ onMounted(() => {
         </header>
 
         <template v-for="slotCode in slotCodes" :key="slotCode">
-          <aside
-            class="week-grid__meal-head"
-            :class="{ 'week-grid__meal-head--collapsed': isSlotCollapsed(slotCode) }"
-          >
-            <button
-              type="button"
-              :aria-expanded="!isSlotCollapsed(slotCode)"
-              :aria-label="isSlotCollapsed(slotCode) ? `Afficher ${mealSlotLabel(slotCode)}` : `Masquer ${mealSlotLabel(slotCode)}`"
-              @click="toggleSlotCollapse(slotCode)"
-            >
-              <span aria-hidden="true">{{ isSlotCollapsed(slotCode) ? '›' : '⌄' }}</span>
-              <strong>{{ mealSlotLabel(slotCode) }}</strong>
-            </button>
-          </aside>
           <div
             v-for="day in days"
             :key="`${day.date}:${slotCode}`"
@@ -315,7 +320,7 @@ onMounted(() => {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 24px;
+  grid-template-columns: 24px var(--meal-head-width) minmax(0, 1fr) 24px;
   gap: 4px;
 }
 
@@ -351,12 +356,26 @@ onMounted(() => {
   opacity: 0.5;
 }
 
+.week-grid__meal-rail {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  border: 1px solid var(--color-border);
+  border-right: 0;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  gap: 1px;
+  background: var(--color-border);
+}
+
 .week-grid__scroller {
   height: 100%;
   min-height: 0;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-left: 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
   background: var(--color-border);
 }
 
@@ -364,7 +383,8 @@ onMounted(() => {
   display: grid;
   gap: 1px;
   height: 100%;
-  min-width: 980px;
+  width: max-content;
+  min-width: 100%;
 }
 
 .week-grid__corner,
@@ -375,16 +395,14 @@ onMounted(() => {
 }
 
 .week-grid__corner,
-.week-grid__day-head,
-.week-grid__meal-head {
+.week-grid__day-head {
   position: sticky;
   z-index: 2;
 }
 
 .week-grid__corner {
   top: 0;
-  left: 0;
-  z-index: 4;
+  z-index: 6;
 }
 
 .week-grid__day-head {
@@ -439,9 +457,8 @@ onMounted(() => {
 }
 
 .week-grid__meal-head {
-  left: 0;
-  z-index: 3;
   padding: 9px 10px;
+  overflow: hidden;
   color: var(--color-text-secondary);
   font-size: 0.88rem;
   font-weight: 700;
@@ -507,12 +524,8 @@ onMounted(() => {
 
 @media (max-width: 760px) {
   .week-grid {
-    grid-template-columns: 22px minmax(0, 1fr) 22px;
+    grid-template-columns: 22px var(--meal-head-width) minmax(0, 1fr) 22px;
     gap: 4px;
-  }
-
-  .week-grid__matrix {
-    min-width: 820px;
   }
 
   .week-grid__cell {

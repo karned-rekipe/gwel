@@ -6,19 +6,25 @@ import type {
   IngredientAllergen,
   IngredientAllergenProfile,
   IngredientEnrichmentProfile,
+  IngredientGroup,
   IngredientMediaProfile,
   IngredientNutritionProfile,
   IngredientPackageProfile,
   IngredientPayload,
+  IngredientRayon,
   IngredientSeasonalityProfile,
   IngredientSubstitutionProfile,
   IngredientSustainabilityProfile,
   IngredientUnitConversion,
   IngredientUnitProfile,
 } from '@/types/recipe'
+import type { Supplier } from '@/types/shopping'
 
 const props = defineProps<{
   ingredient: Ingredient
+  groups?: IngredientGroup[]
+  rayons?: IngredientRayon[]
+  suppliers?: Supplier[]
   isSaving?: boolean
   error?: string
 }>()
@@ -35,6 +41,7 @@ const nutriScores = ['A', 'B', 'C', 'D', 'E', 'not_applicable', 'unknown'] as co
 const nutritionSources = ['manual', 'ciqual', 'openfoodfacts', 'ai', 'import', 'unknown'] as const
 const sustainabilitySources = ['manual', 'agribalyse', 'openfoodfacts', 'ai', 'import', 'unknown'] as const
 const allergenSources = ['manual', 'regulation', 'openfoodfacts', 'ai', 'import', 'unknown'] as const
+const unitConversionSources = ['global', 'ingredient_specific', 'package_profile'] as const
 const allergenCodes = [
   'gluten',
   'crustaceans',
@@ -55,6 +62,8 @@ const allergenPresences = ['contains', 'may_contain', 'absent', 'unknown'] as co
 const referenceUnits = ['g', 'kg', 'ml', 'cl', 'l', 'piece', 'serving', 'unknown'] as const
 const packageUnits = ['paquet', 'bouteille', 'boite', 'barquette', 'piece', 'custom'] as const
 const netUnits = ['g', 'ml', 'piece'] as const
+const packageSources = ['manual', 'ai', 'import', 'supplier', 'unknown'] as const
+const substitutionSources = ['manual', 'ai', 'import', 'unknown'] as const
 const substitutionPolicies = ['unknown', 'substitutable', 'essential_by_default'] as const
 const enrichmentStatuses = ['missing', 'partial', 'suggested', 'validated', 'rejected'] as const
 
@@ -66,15 +75,27 @@ type NutriScore = typeof nutriScores[number]
 type NutritionSource = typeof nutritionSources[number]
 type SustainabilitySource = typeof sustainabilitySources[number]
 type AllergenSource = typeof allergenSources[number]
+type UnitConversionSource = typeof unitConversionSources[number]
 type AllergenCode = typeof allergenCodes[number]
 type AllergenPresence = typeof allergenPresences[number]
 type ReferenceUnit = typeof referenceUnits[number]
 type PackageUnit = typeof packageUnits[number]
 type NetUnit = typeof netUnits[number]
+type PackageSource = typeof packageSources[number]
+type SubstitutionSource = typeof substitutionSources[number]
 type SubstitutionPolicy = typeof substitutionPolicies[number]
 type EnrichmentStatus = typeof enrichmentStatuses[number]
 
 const form = reactive({
+  name: '',
+  groupUuid: '',
+  rayonUuid: '',
+  mainSupplierUuid: '',
+  secondarySupplierUuids: '',
+  greenScore: '',
+  unit: '',
+  quantity: '',
+  legacySeasonMonths: '',
   mediaImageUri: '',
   mediaImageStatus: 'missing' as MediaStatus,
   mediaImagePrompt: '',
@@ -112,12 +133,14 @@ const form = reactive({
   substitutionPolicy: 'unknown' as SubstitutionPolicy,
   substituteIngredientUuids: '',
   substitutionNotes: '',
-  substitutionSource: 'unknown' as MediaSource,
+  substitutionSource: 'unknown' as SubstitutionSource,
   substitutionConfidence: '',
   substitutionValidated: false,
   completenessScore: '',
   enrichmentStatus: 'missing' as EnrichmentStatus,
   missingFields: '',
+  lastRunUuid: '',
+  lastEnrichedAt: '',
   validatedFields: '',
   rejectedFields: '',
 })
@@ -137,6 +160,11 @@ function numberOrNull(value: string): number | null {
   if (!trimmed) return null
   const parsed = Number(trimmed.replace(',', '.'))
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function integerOrNull(value: string): number | null {
+  const parsed = numberOrNull(value)
+  return parsed === null ? null : Math.round(parsed)
 }
 
 function confidenceOrNull(value: string): number | null {
@@ -197,18 +225,28 @@ function parseAllergens(value: string): IngredientAllergen[] | null {
 
 function formatConversions(conversions: IngredientUnitConversion[]): string {
   return conversions
-    .map((conversion) => `${conversion.from_unit}>${conversion.to_unit}=${conversion.factor}`)
+    .map((conversion) =>
+      [
+        `${conversion.from_unit}>${conversion.to_unit}=${conversion.factor}`,
+        conversion.source,
+        conversion.confidence ?? '',
+      ].join('|'),
+    )
     .join('\n')
 }
 
 function parseConversions(value: string): IngredientUnitConversion[] | null {
   const result: IngredientUnitConversion[] = []
   for (const token of splitList(value)) {
+    const conversionParts = token.split('|').map((part) => part.trim())
+    const conversionText = conversionParts[0] ?? ''
+    const sourceText = conversionParts[1] ?? 'ingredient_specific'
+    const confidenceText = conversionParts[2] ?? ''
     let fromUnit = ''
     let toUnit = ''
     let factorText = ''
-    if (token.includes('>') && token.includes('=')) {
-      const parts = token.split('=').map((part) => part.trim())
+    if (conversionText.includes('>') && conversionText.includes('=')) {
+      const parts = conversionText.split('=').map((part) => part.trim())
       if (parts.length !== 2 || !parts[0] || !parts[1]) return null
       const sourceParts = parts[0].split('>').map((part) => part.trim())
       if (sourceParts.length !== 2 || !sourceParts[0] || !sourceParts[1]) return null
@@ -216,15 +254,22 @@ function parseConversions(value: string): IngredientUnitConversion[] | null {
       toUnit = sourceParts[1]
       factorText = parts[1]
     } else {
-      const parts = token.split(':').map((part) => part.trim())
+      const parts = conversionText.split(':').map((part) => part.trim())
       if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return null
       fromUnit = parts[0]
       toUnit = parts[1]
       factorText = parts[2]
     }
     const factor = Number(factorText.replace(',', '.'))
+    if (!isOneOf(sourceText, unitConversionSources)) return null
     if (!fromUnit || !toUnit || !Number.isFinite(factor) || factor <= 0) return null
-    result.push({ from_unit: fromUnit, to_unit: toUnit, factor, source: 'ingredient_specific' })
+    result.push({
+      from_unit: fromUnit,
+      to_unit: toUnit,
+      factor,
+      source: sourceText as UnitConversionSource,
+      confidence: confidenceOrNull(confidenceText),
+    })
   }
   return result
 }
@@ -241,6 +286,8 @@ function formatPackages(packages: IngredientPackageProfile[]): string {
         item.serving_label ?? '',
         item.serving_quantity ?? '',
         item.serving_unit ?? '',
+        item.source,
+        item.validated ? 'true' : 'false',
       ].join('|'),
     )
     .join('\n')
@@ -259,12 +306,16 @@ function parsePackages(value: string): IngredientPackageProfile[] | null {
     const servingLabel = parts[5] ?? ''
     const servingQuantityText = parts[6] ?? ''
     const servingUnit = parts[7] ?? ''
+    const source = parts[8] ?? 'manual'
+    const validatedText = parts[9] ?? 'true'
     const netQuantity = Number(netQuantityText.replace(',', '.'))
     const servingsCount = numberOrNull(servingsCountText)
     const servingQuantity = numberOrNull(servingQuantityText)
     if (!label || !isOneOf(packageUnit, packageUnits) || !Number.isFinite(netQuantity) || netQuantity <= 0) return null
     if (!isOneOf(netUnit, netUnits)) return null
     if (servingUnit && !isOneOf(servingUnit, netUnits)) return null
+    if (!isOneOf(source, packageSources)) return null
+    if (!['true', 'false'].includes(validatedText)) return null
     result.push({
       label,
       package_unit: packageUnit as PackageUnit,
@@ -274,14 +325,23 @@ function parsePackages(value: string): IngredientPackageProfile[] | null {
       serving_label: nullable(servingLabel),
       serving_quantity: servingQuantity,
       serving_unit: servingUnit ? servingUnit as NetUnit : null,
-      source: 'manual',
-      validated: true,
+      source: source as PackageSource,
+      validated: validatedText === 'true',
     })
   }
   return result
 }
 
 function syncForm(ingredient: Ingredient): void {
+  form.name = ingredient.name
+  form.groupUuid = ingredient.group_uuid ?? ''
+  form.rayonUuid = ingredient.rayon_uuid ?? ''
+  form.mainSupplierUuid = ingredient.main_supplier_uuid ?? ''
+  form.secondarySupplierUuids = ingredient.secondary_supplier_uuids.join(', ')
+  form.greenScore = ingredient.green_score?.toString() ?? ''
+  form.unit = ingredient.unit ?? ''
+  form.quantity = ingredient.quantity?.toString() ?? ''
+  form.legacySeasonMonths = formatMonths(ingredient.season_months)
   form.mediaImageUri = ingredient.media_profile.main_image_uri ?? ''
   form.mediaImageStatus = ingredient.media_profile.image_status
   form.mediaImagePrompt = ingredient.media_profile.image_prompt ?? ''
@@ -325,6 +385,8 @@ function syncForm(ingredient: Ingredient): void {
   form.completenessScore = ingredient.enrichment_profile.completeness_score.toString()
   form.enrichmentStatus = ingredient.enrichment_profile.status
   form.missingFields = ingredient.enrichment_profile.missing_fields.join(', ')
+  form.lastRunUuid = ingredient.enrichment_profile.last_run_uuid ?? ''
+  form.lastEnrichedAt = ingredient.enrichment_profile.last_enriched_at ?? ''
   form.validatedFields = ingredient.enrichment_profile.validated_fields.join(', ')
   form.rejectedFields = ingredient.enrichment_profile.rejected_fields.join(', ')
 }
@@ -333,10 +395,20 @@ watch(() => props.ingredient, syncForm, { immediate: true })
 
 function buildPayload(): Partial<IngredientPayload> | null {
   formError.value = ''
+  const name = form.name.trim()
+  const legacySeasonMonths = parseMonths(form.legacySeasonMonths)
   const months = parseMonths(form.seasonalityMonths)
   const allergens = parseAllergens(form.allergens)
   const conversions = parseConversions(form.conversions)
   const packages = parsePackages(form.packages)
+  if (!name) {
+    formError.value = 'Nom obligatoire.'
+    return null
+  }
+  if (legacySeasonMonths === null) {
+    formError.value = 'Saisonnalité historique invalide.'
+    return null
+  }
   if (months === null) {
     formError.value = 'Saisonnalité invalide.'
     return null
@@ -408,15 +480,24 @@ function buildPayload(): Partial<IngredientPayload> | null {
     validated: form.substitutionValidated,
   }
   const enrichmentProfile: IngredientEnrichmentProfile = {
-    completeness_score: numberOrNull(form.completenessScore) ?? 0,
+    completeness_score: integerOrNull(form.completenessScore) ?? 0,
     status: form.enrichmentStatus,
     missing_fields: splitList(form.missingFields),
-    last_run_uuid: props.ingredient.enrichment_profile.last_run_uuid ?? null,
-    last_enriched_at: props.ingredient.enrichment_profile.last_enriched_at ?? null,
+    last_run_uuid: nullable(form.lastRunUuid),
+    last_enriched_at: nullable(form.lastEnrichedAt),
     validated_fields: splitList(form.validatedFields),
     rejected_fields: splitList(form.rejectedFields),
   }
   return {
+    name,
+    group_uuid: nullable(form.groupUuid),
+    rayon_uuid: nullable(form.rayonUuid),
+    main_supplier_uuid: nullable(form.mainSupplierUuid),
+    secondary_supplier_uuids: splitList(form.secondarySupplierUuids),
+    green_score: integerOrNull(form.greenScore),
+    unit: nullable(form.unit),
+    quantity: numberOrNull(form.quantity),
+    season_months: legacySeasonMonths,
     media_profile: mediaProfile,
     seasonality_profile: seasonalityProfile,
     nutrition_profile: nutritionProfile,
@@ -439,6 +520,57 @@ function save(): void {
 <template>
   <form class="ingredient-profile-editor" @submit.prevent="save">
     <div class="ingredient-profile-editor__grid">
+      <fieldset class="ingredient-profile-editor__section">
+        <legend>Identité</legend>
+        <label>
+          <span>Nom</span>
+          <input v-model="form.name" type="text" required />
+        </label>
+        <label>
+          <span>Unité</span>
+          <input v-model="form.unit" type="text" />
+        </label>
+        <label>
+          <span>Quantité</span>
+          <input v-model="form.quantity" type="number" step="0.1" min="0" />
+        </label>
+        <label>
+          <span>Green score</span>
+          <input v-model="form.greenScore" type="number" step="1" min="0" />
+        </label>
+        <label>
+          <span>Groupe</span>
+          <select v-model="form.groupUuid">
+            <option value="">Aucun</option>
+            <option v-for="group in groups ?? []" :key="group.uuid" :value="group.uuid">{{ group.name }}</option>
+          </select>
+        </label>
+        <label>
+          <span>Rayon</span>
+          <select v-model="form.rayonUuid">
+            <option value="">Aucun</option>
+            <option v-for="rayon in rayons ?? []" :key="rayon.uuid" :value="rayon.uuid">{{ rayon.name }}</option>
+          </select>
+        </label>
+        <label>
+          <span>Fournisseur principal</span>
+          <select v-model="form.mainSupplierUuid">
+            <option value="">Aucun</option>
+            <option v-for="supplier in suppliers ?? []" :key="supplier.uuid" :value="supplier.uuid">
+              {{ supplier.name }}
+            </option>
+          </select>
+        </label>
+        <label>
+          <span>Fournisseurs secondaires</span>
+          <input v-model="form.secondarySupplierUuids" type="text" />
+        </label>
+        <label class="ingredient-profile-editor__wide">
+          <span>Saisonnalité historique</span>
+          <input v-model="form.legacySeasonMonths" type="text" placeholder="6:2, 7:3" />
+        </label>
+      </fieldset>
+
       <fieldset class="ingredient-profile-editor__section">
         <legend>Image</legend>
         <label>
@@ -525,6 +657,10 @@ function save(): void {
             <option v-for="source in nutritionSources" :key="source" :value="source">{{ source }}</option>
           </select>
         </label>
+        <label>
+          <span>Confiance</span>
+          <input v-model="form.nutritionConfidence" type="number" step="0.01" min="0" max="100" />
+        </label>
         <label class="ingredient-profile-editor__check">
           <input v-model="form.nutritionValidated" type="checkbox" />
           <span>Validé</span>
@@ -550,6 +686,10 @@ function save(): void {
           <select v-model="form.sustainabilitySource">
             <option v-for="source in sustainabilitySources" :key="source" :value="source">{{ source }}</option>
           </select>
+        </label>
+        <label>
+          <span>Confiance</span>
+          <input v-model="form.sustainabilityConfidence" type="number" step="0.01" min="0" max="100" />
         </label>
         <label class="ingredient-profile-editor__check">
           <input v-model="form.sustainabilityValidated" type="checkbox" />
@@ -601,7 +741,7 @@ function save(): void {
         </label>
         <label class="ingredient-profile-editor__wide">
           <span>Conversions</span>
-          <textarea v-model="form.conversions" rows="3" placeholder="piece>g=55"></textarea>
+          <textarea v-model="form.conversions" rows="3" placeholder="piece>g=55|ingredient_specific|0.8"></textarea>
         </label>
       </fieldset>
 
@@ -609,7 +749,7 @@ function save(): void {
         <legend>Conditionnements</legend>
         <label class="ingredient-profile-editor__wide">
           <span>Lots</span>
-          <textarea v-model="form.packages" rows="4" placeholder="barquette|barquette|250|g|2"></textarea>
+          <textarea v-model="form.packages" rows="4" placeholder="barquette|barquette|250|g|2||||manual|true"></textarea>
         </label>
       </fieldset>
 
@@ -628,8 +768,12 @@ function save(): void {
         <label>
           <span>Source</span>
           <select v-model="form.substitutionSource">
-            <option v-for="source in mediaSources" :key="source" :value="source">{{ source }}</option>
+            <option v-for="source in substitutionSources" :key="source" :value="source">{{ source }}</option>
           </select>
+        </label>
+        <label>
+          <span>Confiance</span>
+          <input v-model="form.substitutionConfidence" type="number" step="0.01" min="0" max="100" />
         </label>
         <label class="ingredient-profile-editor__wide">
           <span>Notes</span>
@@ -656,6 +800,14 @@ function save(): void {
         <label>
           <span>Manquants</span>
           <input v-model="form.missingFields" type="text" />
+        </label>
+        <label>
+          <span>Dernier run</span>
+          <input v-model="form.lastRunUuid" type="text" />
+        </label>
+        <label>
+          <span>Dernier enrichissement</span>
+          <input v-model="form.lastEnrichedAt" type="text" />
         </label>
         <label>
           <span>Validés</span>

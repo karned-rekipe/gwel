@@ -10,6 +10,8 @@ import {
   useDeleteIngredient,
   useIngredient,
   useIngredientEnrichmentSuggestions,
+  useIngredientGroups,
+  useIngredientRayons,
   useIngredientRecipes,
   useRejectIngredientEnrichmentSuggestion,
   useRunIngredientEnrichment,
@@ -27,6 +29,8 @@ const suppliers = ref<Supplier[]>([])
 const { data: ingredient, isLoading, isError, error } = useIngredient(ingredientUuid)
 const { data: recipes, isLoading: isLoadingRecipes } = useIngredientRecipes(ingredientUuid)
 const { data: suggestions, isLoading: isLoadingSuggestions } = useIngredientEnrichmentSuggestions(ingredientUuid)
+const { data: groups } = useIngredientGroups()
+const { data: rayons } = useIngredientRayons()
 const { mutate: deleteIngredient, isPending: isDeleting } = useDeleteIngredient()
 const { mutate: updateIngredient, isPending: isSavingProfiles, error: saveProfilesError } = useUpdateIngredient()
 const { mutate: runEnrichment, isPending: isRunningEnrichment, error: runEnrichmentError } = useRunIngredientEnrichment()
@@ -295,6 +299,9 @@ onMounted(async () => {
         <h2 class="catalog-detail__panel-title">Édition manuelle V5</h2>
         <IngredientProfileEditor
           :ingredient="ingredient"
+          :groups="groups ?? []"
+          :rayons="rayons ?? []"
+          :suppliers="suppliers"
           :is-saving="isSavingProfiles"
           :error="saveProfilesError?.message"
           @save="saveProfiles"

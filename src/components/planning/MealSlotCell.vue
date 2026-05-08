@@ -32,6 +32,14 @@ const ingredientUnit = ref('')
 const addError = ref<string | null>(null)
 
 const mealLabel = computed(() => props.mealLabel ?? formatMealLabel(props.slot.slot_code))
+const slotHeadcount = computed(() => props.slot.headcount ?? null)
+const slotAvatarDots = computed(() => Array.from({ length: Math.min(slotHeadcount.value ?? 0, 4) }, (_, index) => index))
+const slotRemainingAvatars = computed(() => Math.max((slotHeadcount.value ?? 0) - slotAvatarDots.value.length, 0))
+const slotHeadcountLabel = computed(() => {
+  const headcount = slotHeadcount.value
+  if (!headcount) return ''
+  return `${headcount} personne${headcount > 1 ? 's' : ''}`
+})
 
 const defaultHeadcount = (): string => {
   if (props.slot.headcount !== null && props.slot.headcount !== undefined && props.slot.headcount > 0) {
@@ -228,9 +236,25 @@ const addNote = (): void => {
       <strong>{{ mealLabel }}</strong>
     </header>
 
-    <span v-if="collapsed && slot.items.length" class="meal-slot__collapsed-count">
-      {{ slot.items.length }}
-    </span>
+    <template v-if="collapsed">
+      <span v-if="slot.items.length" class="meal-slot__collapsed-count">
+        {{ slot.items.length }}
+      </span>
+      <div
+        v-else-if="slotHeadcount"
+        class="meal-slot__empty-participants meal-slot__empty-participants--collapsed"
+        :aria-label="slotHeadcountLabel"
+      >
+        <span class="meal-slot__empty-pax">
+          <span aria-hidden="true">👤</span>
+          {{ slotHeadcount }}
+        </span>
+        <span v-if="slotAvatarDots.length" class="meal-slot__empty-avatars" aria-hidden="true">
+          <span v-for="dot in slotAvatarDots" :key="dot"></span>
+          <strong v-if="slotRemainingAvatars">+{{ slotRemainingAvatars }}</strong>
+        </span>
+      </div>
+    </template>
 
     <div v-else-if="slot.items.length" class="meal-slot__items">
       <MealItemRow
@@ -242,6 +266,19 @@ const addNote = (): void => {
         :slot-code="slot.slot_code"
         :readonly="readonly"
       />
+    </div>
+
+    <div v-else-if="slotHeadcount" class="meal-slot__empty-state">
+      <div class="meal-slot__empty-participants" :aria-label="slotHeadcountLabel">
+        <span class="meal-slot__empty-pax">
+          <span aria-hidden="true">👤</span>
+          {{ slotHeadcount }}
+        </span>
+        <span v-if="slotAvatarDots.length" class="meal-slot__empty-avatars" aria-hidden="true">
+          <span v-for="dot in slotAvatarDots" :key="dot"></span>
+          <strong v-if="slotRemainingAvatars">+{{ slotRemainingAvatars }}</strong>
+        </span>
+      </div>
     </div>
 
     <Teleport to="body">
@@ -407,6 +444,66 @@ const addNote = (): void => {
   overflow: auto;
 }
 
+.meal-slot__empty-state {
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.meal-slot__empty-participants {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 16%, var(--color-border));
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+}
+
+.meal-slot__empty-participants--collapsed {
+  padding: 3px 7px;
+}
+
+.meal-slot__empty-pax {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.meal-slot__empty-avatars {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding-left: 5px;
+}
+
+.meal-slot__empty-avatars span,
+.meal-slot__empty-avatars strong {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -5px;
+  border: 1px solid var(--color-surface);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--color-surface));
+}
+
+.meal-slot__empty-avatars strong {
+  width: auto;
+  min-width: 18px;
+  padding: 0 4px;
+  color: var(--color-primary);
+  font-size: 0.58rem;
+  line-height: 1;
+}
+
 .meal-slot__collapsed-count {
   min-width: 20px;
   min-height: 20px;
@@ -491,8 +588,9 @@ const addNote = (): void => {
 
 .meal-slot-modal__planned-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, 170px);
   gap: 8px;
+  justify-content: start;
 }
 
 .meal-slot-modal__planned-item {

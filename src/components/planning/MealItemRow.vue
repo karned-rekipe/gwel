@@ -43,6 +43,11 @@ const effectiveHeadcount = computed(() => props.item.headcount ?? props.fallback
 const itemUsesPax = computed(() => props.item.item_type === 'recipe' || props.item.item_type === 'ingredient')
 const avatarDots = computed(() => Array.from({ length: Math.min(effectiveHeadcount.value ?? 0, 4) }, (_, index) => index))
 const remainingAvatars = computed(() => Math.max((effectiveHeadcount.value ?? 0) - avatarDots.value.length, 0))
+const participantsLabel = computed(() => {
+  const headcount = effectiveHeadcount.value
+  if (!headcount) return '? personnes'
+  return `${headcount} personne${headcount > 1 ? 's' : ''}`
+})
 
 const title = computed(() => {
   if (props.item.item_type === 'recipe') return props.item.recipe_snapshot?.title || 'Recette'
@@ -58,11 +63,6 @@ const durationLabel = computed(() =>
 )
 
 const detail = computed(() => {
-  if (props.item.item_type === 'ingredient') {
-    const quantity = props.item.ingredient_quantity ?? 0
-    const unit = props.item.ingredient_unit ?? ''
-    return effectiveHeadcount.value ? `${quantity} ${unit} / pax` : `${quantity} ${unit}`
-  }
   if (props.item.note) return props.item.note
   return ''
 })
@@ -89,13 +89,13 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
       <span v-if="detail">{{ detail }}</span>
     </div>
 
-    <div v-if="itemUsesPax" class="meal-item__participants" :aria-label="`${effectiveHeadcount ?? '?'} personnes`">
+    <div v-if="itemUsesPax" class="meal-item__participants" :aria-label="participantsLabel">
       <span class="meal-item__pax">
         <span aria-hidden="true">👤</span>
         {{ effectiveHeadcount ?? '?' }}
       </span>
       <span v-if="durationLabel" class="meal-item__duration">{{ durationLabel }}</span>
-      <span v-if="avatarDots.length > 1" class="meal-item__avatars" aria-hidden="true">
+      <span v-if="avatarDots.length" class="meal-item__avatars" aria-hidden="true">
         <span v-for="dot in avatarDots" :key="dot"></span>
         <strong v-if="remainingAvatars">+{{ remainingAvatars }}</strong>
       </span>

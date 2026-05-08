@@ -53,6 +53,9 @@ const title = computed(() => {
 })
 
 const thumbnailInitial = computed(() => title.value.trim().charAt(0).toLocaleUpperCase('fr-FR') || 'R')
+const durationLabel = computed(() =>
+  props.item.recipe_snapshot?.total_duration_min ? `${props.item.recipe_snapshot.total_duration_min} min` : '',
+)
 
 const detail = computed(() => {
   if (props.item.item_type === 'ingredient') {
@@ -61,7 +64,6 @@ const detail = computed(() => {
     return effectiveHeadcount.value ? `${quantity} ${unit} / pax` : `${quantity} ${unit}`
   }
   if (props.item.note) return props.item.note
-  if (props.item.recipe_snapshot?.total_duration_min) return `${props.item.recipe_snapshot.total_duration_min} min`
   return ''
 })
 
@@ -92,6 +94,7 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
         <span aria-hidden="true">👤</span>
         {{ effectiveHeadcount ?? '?' }}
       </span>
+      <span v-if="durationLabel" class="meal-item__duration">{{ durationLabel }}</span>
       <span v-if="avatarDots.length > 1" class="meal-item__avatars" aria-hidden="true">
         <span v-for="dot in avatarDots" :key="dot"></span>
         <strong v-if="remainingAvatars">+{{ remainingAvatars }}</strong>
@@ -173,6 +176,16 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
   color: var(--color-primary);
   font-size: 0.72rem;
   font-weight: 700;
+}
+
+.meal-item__duration {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.7rem;
+  font-weight: 650;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .meal-item__avatars {

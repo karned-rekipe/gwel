@@ -401,6 +401,7 @@ const addNote = (): void => {
 
 .meal-slot__items {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: start;
   gap: 6px;
   overflow: auto;
@@ -608,6 +609,7 @@ const addNote = (): void => {
 }
 
 @media (max-width: 520px) {
+  .meal-slot__items,
   .meal-slot-modal__tabs,
   .meal-slot-modal__inline-fields,
   .meal-slot-modal__headcount-row {

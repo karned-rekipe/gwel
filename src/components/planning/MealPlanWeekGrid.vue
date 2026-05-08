@@ -21,7 +21,7 @@ const scroller = ref<HTMLElement | null>(null)
 const collapsedSlotCodes = ref<string[]>([])
 const hasAppliedInitialScroll = ref(false)
 const mealHeadWidth = 104
-const dayColumnWidth = 184
+const dayColumnWidth = 360
 const dayDurationMs = 24 * 60 * 60 * 1000
 
 const dayFormatter = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })

@@ -252,20 +252,18 @@ const addNote = (): void => {
         <span aria-hidden="true">🍽</span>
         {{ plannedItemCount }}
       </span>
-      <div
+      <span v-if="slotAvatarDots.length" class="meal-slot__headcount-avatars" aria-hidden="true">
+        <span v-for="dot in slotAvatarDots" :key="dot"></span>
+        <strong v-if="slotRemainingAvatars">+{{ slotRemainingAvatars }}</strong>
+      </span>
+      <span
         v-if="slotHeadcount"
-        class="meal-slot__headcount-indicator"
+        class="meal-slot__headcount-pax"
         :aria-label="slotHeadcountLabel"
       >
-        <span class="meal-slot__headcount-pax">
-          <span aria-hidden="true">👤</span>
-          {{ slotHeadcount }}
-        </span>
-        <span v-if="slotAvatarDots.length" class="meal-slot__headcount-avatars" aria-hidden="true">
-          <span v-for="dot in slotAvatarDots" :key="dot"></span>
-          <strong v-if="slotRemainingAvatars">+{{ slotRemainingAvatars }}</strong>
-        </span>
-      </div>
+        <span aria-hidden="true">👤</span>
+        {{ slotHeadcount }}
+      </span>
     </div>
 
     <div v-if="!collapsed && slot.items.length" class="meal-slot__items">
@@ -462,13 +460,13 @@ const addNote = (): void => {
 }
 
 .meal-slot__planned-count,
-.meal-slot__headcount-indicator {
+.meal-slot__headcount-pax,
+.meal-slot__headcount-avatars {
   position: absolute;
   top: 0;
   display: inline-flex;
   align-items: center;
   min-height: 22px;
-  color: var(--color-primary);
   font-size: 0.72rem;
   font-weight: 750;
   line-height: 1;
@@ -477,27 +475,22 @@ const addNote = (): void => {
 .meal-slot__planned-count {
   left: 0;
   gap: 4px;
+  color: var(--color-primary);
 }
 
-.meal-slot__headcount-indicator {
+.meal-slot__headcount-avatars {
   left: 50%;
-  max-width: min(72%, 150px);
-  gap: 8px;
+  max-width: min(46%, 92px);
+  overflow: hidden;
+  padding-left: 5px;
   transform: translateX(-50%);
 }
 
 .meal-slot__headcount-pax {
-  display: inline-flex;
+  right: 0;
   align-items: center;
   gap: 3px;
-  flex: 0 0 auto;
-}
-
-.meal-slot__headcount-avatars {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  padding-left: 5px;
+  color: var(--color-primary);
 }
 
 .meal-slot__headcount-avatars span,

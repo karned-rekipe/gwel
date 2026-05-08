@@ -3,7 +3,12 @@ import { createHttpClient, unwrapApiResponse } from '@/services/http'
 import type { ApiResponse, PaginatedResponse } from '@/types/api'
 import type { IngredientEnrichmentRun, IngredientEnrichmentRunResult } from '@/types/recipe'
 
-const enrichmentAgentApi = createHttpClient(`${appConfig.services.ingredientEnrichmentAgentApiBaseUrl}/v1`)
+const INGREDIENT_ENRICHMENT_TIMEOUT_MS = 120000
+
+const enrichmentAgentApi = createHttpClient(
+  `${appConfig.services.ingredientEnrichmentAgentApiBaseUrl}/v1`,
+  INGREDIENT_ENRICHMENT_TIMEOUT_MS,
+)
 
 export const ingredientEnrichmentAgentService = {
   async listRuns(params: {

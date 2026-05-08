@@ -78,6 +78,7 @@ const { mutate: runEnrichmentBatch, isPending: isRunningEnrichmentBatch } = useR
 const total = computed(() => pagination.value?.total ?? ingredients.value.length)
 const hasNext = computed(() => pagination.value?.has_next ?? false)
 const filteredIngredients = computed(() => ingredients.value.filter(matchesQualityFilter))
+const visibleIncompleteIngredients = computed(() => filteredIngredients.value.filter(isIngredientIncomplete))
 const isEmpty = computed(() => !isLoading.value && filteredIngredients.value.length === 0)
 const formModalTitle = computed(() => editingUuid.value ? 'Modifier un ingrédient' : 'Créer un ingrédient')
 const supplierByUuid = computed(() => new Map(suppliers.value.map((supplier) => [supplier.uuid, supplier.name] as const)))
@@ -117,6 +118,12 @@ function matchesQualityFilter(ingredient: Ingredient): boolean {
   }
 }
 
+function isIngredientIncomplete(ingredient: Ingredient): boolean {
+  return ingredient.enrichment_profile.missing_fields.length > 0
+    || ingredient.enrichment_profile.status === 'missing'
+    || ingredient.enrichment_profile.status === 'partial'
+}
+
 const scoreLabel = (ingredient: Ingredient): string => `${ingredient.enrichment_profile.completeness_score} %`
 
 const seasonLabel = (ingredient: Ingredient): string => {
@@ -149,9 +156,7 @@ const aiLabel = (ingredient: Ingredient): string =>
 
 const enrichVisibleMissingIngredients = (): void => {
   enrichmentMessage.value = ''
-  const ingredientUuids = filteredIngredients.value
-    .filter((ingredient) => ingredient.enrichment_profile.missing_fields.length > 0)
-    .map((ingredient) => ingredient.uuid)
+  const ingredientUuids = visibleIncompleteIngredients.value.map((ingredient) => ingredient.uuid)
 
   if (!ingredientUuids.length) {
     enrichmentMessage.value = 'Aucun ingrédient incomplet dans la liste filtrée.'
@@ -393,7 +398,7 @@ onMounted(async () => {
             </label>
             <AppButton
               variant="secondary"
-              :disabled="isRunningEnrichmentBatch || !filteredIngredients.length"
+              :disabled="isRunningEnrichmentBatch || !visibleIncompleteIngredients.length"
               @click="enrichVisibleMissingIngredients"
             >
               {{ isRunningEnrichmentBatch ? 'Enrichissement…' : 'Enrichir les manquants' }}

@@ -258,24 +258,28 @@ const addNote = (): void => {
 
     <div v-if="hasSlotIndicators" class="meal-slot__indicators">
       <span
-        v-if="plannedItemCount"
         class="meal-slot__planned-count"
-        :aria-label="plannedItemLabel"
+        :aria-label="plannedItemCount ? plannedItemLabel : undefined"
+        :aria-hidden="plannedItemCount ? undefined : true"
       >
-        <span aria-hidden="true">🍽</span>
-        {{ plannedItemCount }}
+        <template v-if="plannedItemCount">
+          <span aria-hidden="true">🍽</span>
+          {{ plannedItemCount }}
+        </template>
       </span>
-      <span v-if="slotAvatarDots.length" class="meal-slot__headcount-avatars" aria-hidden="true">
+      <span class="meal-slot__headcount-avatars" aria-hidden="true">
         <span v-for="dot in slotAvatarDots" :key="dot"></span>
         <strong v-if="slotRemainingAvatars">+{{ slotRemainingAvatars }}</strong>
       </span>
       <span
-        v-if="slotHeadcount"
         class="meal-slot__headcount-pax"
-        :aria-label="slotHeadcountLabel"
+        :aria-label="slotHeadcount ? slotHeadcountLabel : undefined"
+        :aria-hidden="slotHeadcount ? undefined : true"
       >
-        <span aria-hidden="true">👤</span>
-        {{ slotHeadcount }}
+        <template v-if="slotHeadcount">
+          <span aria-hidden="true">👤</span>
+          {{ slotHeadcount }}
+        </template>
       </span>
     </div>
 

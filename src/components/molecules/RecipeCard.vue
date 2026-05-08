@@ -31,6 +31,14 @@ const totalTimeLabel = computed(() => {
 const originFlag = computed(() => countryFlagFrom(props.recipe.origin_country))
 const visibleTags = computed(() => props.recipe.tags.slice(0, 2))
 const hiddenTagCount = computed(() => Math.max(props.recipe.tags.length - visibleTags.value.length, 0))
+
+const scoreFrom = (value?: number | null): number => {
+  if (!value || !Number.isFinite(value)) return 0
+  return Math.min(5, Math.max(1, Math.trunc(value)))
+}
+
+const difficultyScore = computed(() => scoreFrom(props.recipe.difficulty))
+const priceScore = computed(() => scoreFrom(props.recipe.price))
 </script>
 
 <template>
@@ -83,15 +91,24 @@ const hiddenTagCount = computed(() => Math.max(props.recipe.tags.length - visibl
       </div>
 
       <div class="recipe-card__footer">
-        <span v-if="totalTimeLabel" class="recipe-card__time">
-          <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="recipe-card__time-icon">
-            <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5"/>
-            <path d="M8 5v3.5l2 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          {{ totalTimeLabel }}
+        <span class="recipe-card__metric recipe-card__metric--difficulty" :aria-label="difficultyScore ? `Difficulté ${difficultyScore} sur 5` : undefined">
+          <template v-if="difficultyScore">
+            <span v-for="index in difficultyScore" :key="`difficulty-${index}`" aria-hidden="true">👨‍🍳</span>
+          </template>
         </span>
-        <span v-if="recipe.difficulty" class="recipe-card__difficulty" :aria-label="`Difficulté ${recipe.difficulty} sur 5`">
-          {{ '●'.repeat(recipe.difficulty) }}<span class="recipe-card__difficulty-empty">{{ '○'.repeat(5 - recipe.difficulty) }}</span>
+        <span class="recipe-card__metric recipe-card__metric--time">
+          <template v-if="totalTimeLabel">
+            <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="recipe-card__time-icon">
+              <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M8 5v3.5l2 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            {{ totalTimeLabel }}
+          </template>
+        </span>
+        <span class="recipe-card__metric recipe-card__metric--price" :aria-label="priceScore ? `Prix ${priceScore} sur 5` : undefined">
+          <template v-if="priceScore">
+            <span v-for="index in priceScore" :key="`price-${index}`" aria-hidden="true">€</span>
+          </template>
         </span>
       </div>
     </div>
@@ -243,33 +260,46 @@ const hiddenTagCount = computed(() => Math.max(props.recipe.tags.length - visibl
 }
 
 .recipe-card__footer {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   margin-top: auto;
 }
 
-.recipe-card__time {
-  display: flex;
+.recipe-card__metric {
+  min-width: 0;
+  min-height: 16px;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 3px;
   color: var(--color-text-secondary);
   font-size: 0.72rem;
   font-weight: 550;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.recipe-card__metric--difficulty {
+  justify-self: start;
+  color: var(--color-primary);
+  font-size: 0.68rem;
+}
+
+.recipe-card__metric--time {
+  justify-self: center;
+  gap: 5px;
+}
+
+.recipe-card__metric--price {
+  justify-self: end;
+  color: var(--color-primary);
+  font-weight: 750;
 }
 
 .recipe-card__time-icon {
   width: 13px;
   height: 13px;
   flex-shrink: 0;
-}
-
-.recipe-card__difficulty {
-  font-size: 0.56rem;
-  color: var(--color-primary);
-}
-
-.recipe-card__difficulty-empty {
-  color: var(--color-border-hover);
 }
 </style>

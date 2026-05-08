@@ -19,6 +19,8 @@ const emit = defineEmits<{
 
 const scroller = ref<HTMLElement | null>(null)
 const collapsedSlotCodes = ref<string[]>([])
+const mealHeadWidth = 104
+const dayColumnWidth = 184
 
 const dayFormatter = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
 const shortDayFormatter = new Intl.DateTimeFormat('fr-FR', { weekday: 'short' })
@@ -169,8 +171,7 @@ const scrollTodayIntoView = async (): Promise<void> => {
   const todayHead = scrollerElement?.querySelector<HTMLElement>('.week-grid__day-head--today')
   if (!scrollerElement || !todayHead) return
 
-  const stickyMealColumnWidth = 118
-  scrollerElement.scrollLeft = Math.max(todayHead.offsetLeft - stickyMealColumnWidth, 0)
+  scrollerElement.scrollLeft = Math.max(todayHead.offsetLeft - mealHeadWidth, 0)
 }
 
 watch(
@@ -203,7 +204,7 @@ onMounted(() => {
       <div
         class="week-grid__matrix"
         :style="{
-          gridTemplateColumns: `118px repeat(${days.length}, minmax(148px, 1fr))`,
+          gridTemplateColumns: `${mealHeadWidth}px repeat(${days.length}, minmax(${dayColumnWidth}px, 1fr))`,
           gridTemplateRows,
         }"
       >
@@ -287,8 +288,8 @@ onMounted(() => {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 28px;
-  gap: 6px;
+  grid-template-columns: 24px minmax(0, 1fr) 24px;
+  gap: 4px;
 }
 
 .week-grid__load {
@@ -413,7 +414,7 @@ onMounted(() => {
 .week-grid__meal-head {
   left: 0;
   z-index: 3;
-  padding: 10px 12px;
+  padding: 9px 10px;
   color: var(--color-text-secondary);
   font-size: 0.88rem;
   font-weight: 700;
@@ -494,7 +495,7 @@ onMounted(() => {
 
 @media (max-width: 760px) {
   .week-grid {
-    grid-template-columns: 24px minmax(0, 1fr) 24px;
+    grid-template-columns: 22px minmax(0, 1fr) 22px;
     gap: 4px;
   }
 

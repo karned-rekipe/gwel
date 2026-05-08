@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Recipe } from '@/types/recipe'
+import { countryFlagFrom } from '@/utils/countryFlags'
 
 const props = defineProps<{
   recipe: Recipe
@@ -26,6 +27,9 @@ const totalTimeLabel = computed(() => {
   if (hours === 0) return `${minutes} min`
   return minutes > 0 ? `${hours} h ${minutes}` : `${hours} h`
 })
+
+const originFlag = computed(() => countryFlagFrom(props.recipe.origin_country))
+const hasImageBadges = computed(() => props.recipe.favorite || Boolean(originFlag.value))
 </script>
 
 <template>
@@ -53,13 +57,18 @@ const totalTimeLabel = computed(() => {
         </svg>
       </div>
 
-      <div v-if="recipe.favorite" class="recipe-card__favorite" aria-label="Recette favorite">
-        ★
+      <div v-if="hasImageBadges" class="recipe-card__badges">
+        <span v-if="recipe.favorite" class="recipe-card__badge recipe-card__badge--favorite" title="Recette favorite">
+          ★
+        </span>
+        <span v-if="originFlag" class="recipe-card__badge" :title="recipe.origin_country ?? 'Origine renseignée'">
+          {{ originFlag }}
+        </span>
       </div>
     </div>
 
     <div class="recipe-card__body">
-      <h3 class="recipe-card__title">{{ recipe.name }}</h3>
+      <h3 class="recipe-card__title" :title="recipe.name">{{ recipe.name }}</h3>
 
       <div class="recipe-card__meta">
         <span v-for="tag in recipe.tags.slice(0, 2)" :key="tag.uuid" class="recipe-card__tag">
@@ -146,22 +155,36 @@ const totalTimeLabel = computed(() => {
   opacity: 0.5;
 }
 
-.recipe-card__favorite {
+.recipe-card__badges {
   position: absolute;
   top: 8px;
-  right: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.recipe-card__badge {
+  min-width: 28px;
   width: 28px;
   height: 28px;
-  border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(4px);
+  color: var(--color-primary);
   font-size: 0.9rem;
-  color: #f5a623;
+  font-weight: 800;
+  line-height: 1;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
-  pointer-events: none;
+}
+
+.recipe-card__badge--favorite {
+  color: #f5a623;
 }
 
 .recipe-card__body {
@@ -174,11 +197,13 @@ const totalTimeLabel = computed(() => {
 
 .recipe-card__title {
   margin: 0;
+  min-height: calc(0.86rem * 1.24 * 2);
   color: var(--color-text-primary);
   font-size: 0.86rem;
   font-weight: 650;
   line-height: 1.24;
   overflow: hidden;
+  text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;

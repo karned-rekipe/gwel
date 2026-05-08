@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { recipeService } from '@/services/recipeService'
 import type { MealItem, SlotCode } from '@/types/mealPlan'
 import type { Recipe } from '@/types/recipe'
+import { countryFlagFrom } from '@/utils/countryFlags'
 
 const recipeCache = new Map<string, Recipe | null>()
 const recipeRequests = new Map<string, Promise<Recipe | null>>()
@@ -38,11 +39,16 @@ const props = defineProps<{
 }>()
 
 const thumbnailUri = ref<string | null>(null)
+const recipeDetails = ref<Recipe | null>(null)
 
 const effectiveHeadcount = computed(() => props.item.headcount ?? props.fallbackHeadcount ?? null)
+const isRecipeItem = computed(() => props.item.item_type === 'recipe')
 const itemUsesPax = computed(() => props.item.item_type === 'recipe' || props.item.item_type === 'ingredient')
 const avatarDots = computed(() => Array.from({ length: Math.min(effectiveHeadcount.value ?? 0, 4) }, (_, index) => index))
 const remainingAvatars = computed(() => Math.max((effectiveHeadcount.value ?? 0) - avatarDots.value.length, 0))
+const recipeOriginLabel = computed(() => recipeDetails.value?.origin_country?.trim() || '')
+const recipeOriginFlag = computed(() => countryFlagFrom(recipeOriginLabel.value))
+const showRecipeBadges = computed(() => isRecipeItem.value && (recipeDetails.value?.favorite || recipeOriginFlag.value))
 const participantsLabel = computed(() => {
   const headcount = effectiveHeadcount.value
   if (!headcount) return '? personnes'
@@ -69,9 +75,11 @@ const detail = computed(() => {
 
 watch(() => props.item.recipe_uuid, async (uuid) => {
   thumbnailUri.value = null
+  recipeDetails.value = null
   if (!uuid) return
   const recipe = await loadRecipe(uuid)
   if (props.item.recipe_uuid === uuid) {
+    recipeDetails.value = recipe
     thumbnailUri.value = recipe?.main_image ?? null
   }
 }, { immediate: true })
@@ -82,10 +90,16 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
     <div class="meal-item__thumbnail" aria-hidden="true">
       <img v-if="thumbnailUri" :src="thumbnailUri" :alt="title" />
       <span v-else>{{ thumbnailInitial }}</span>
+      <span v-if="showRecipeBadges" class="meal-item__badges">
+        <span v-if="recipeDetails?.favorite" class="meal-item__badge" title="Favori">★</span>
+        <span v-if="recipeOriginFlag" class="meal-item__badge" :title="recipeOriginLabel">
+          {{ recipeOriginFlag }}
+        </span>
+      </span>
     </div>
 
     <div class="meal-item__body">
-      <strong>{{ title }}</strong>
+      <strong :title="title">{{ title }}</strong>
       <span v-if="detail">{{ detail }}</span>
     </div>
 
@@ -106,6 +120,7 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
 <style scoped>
 .meal-item {
   min-height: 0;
+  overflow: hidden;
   display: grid;
   grid-template-rows: minmax(44px, 1fr) auto auto;
   gap: 5px;
@@ -116,6 +131,7 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
 }
 
 .meal-item__thumbnail {
+  position: relative;
   min-height: 44px;
   overflow: hidden;
   display: grid;
@@ -134,10 +150,40 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
   object-fit: cover;
 }
 
+.meal-item__badges {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.meal-item__badge {
+  min-width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-border) 58%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  color: var(--color-primary);
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+}
+
 .meal-item__body {
   min-width: 0;
+  min-height: 1.94rem;
+  max-height: 2.72rem;
+  overflow: hidden;
   display: grid;
   gap: 1px;
+  align-content: start;
 }
 
 .meal-item__body strong,
@@ -148,6 +194,7 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
 .meal-item__body strong {
   display: -webkit-box;
   overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--color-text-primary);
   font-size: 0.82rem;
   font-weight: 700;
@@ -157,8 +204,11 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
 }
 
 .meal-item__body span {
+  overflow: hidden;
   color: var(--color-text-secondary);
   font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .meal-item__participants {

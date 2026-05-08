@@ -408,19 +408,26 @@ const addNote = (): void => {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 6px;
   padding: 0;
   background: transparent;
 }
 
+.meal-slot:not(.meal-slot--with-indicators) {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .meal-slot--without-label {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.meal-slot--without-label:not(.meal-slot--with-indicators) {
   grid-template-rows: minmax(0, 1fr);
 }
 
 .meal-slot--collapsed {
-  display: grid;
-  place-items: center;
+  align-items: center;
   padding: 0;
 }
 
@@ -461,6 +468,7 @@ const addNote = (): void => {
 }
 
 .meal-slot__items {
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: start;
@@ -468,26 +476,19 @@ const addNote = (): void => {
   overflow: auto;
 }
 
-.meal-slot--with-indicators:not(.meal-slot--collapsed) .meal-slot__items,
-.meal-slot--with-indicators:not(.meal-slot--collapsed) .meal-slot__empty-state {
-  padding-top: 28px;
-}
-
 .meal-slot__indicators {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  left: 6px;
-  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
   min-height: 22px;
+  min-width: 0;
   pointer-events: none;
 }
 
 .meal-slot__planned-count,
 .meal-slot__headcount-pax,
 .meal-slot__headcount-avatars {
-  position: absolute;
-  top: 0;
   display: inline-flex;
   align-items: center;
   min-height: 22px;
@@ -497,21 +498,20 @@ const addNote = (): void => {
 }
 
 .meal-slot__planned-count {
-  left: 0;
+  justify-self: start;
   gap: 4px;
   color: var(--color-primary);
 }
 
 .meal-slot__headcount-avatars {
-  left: 50%;
-  max-width: min(46%, 92px);
+  justify-self: center;
+  max-width: 92px;
   overflow: hidden;
   padding-left: 5px;
-  transform: translateX(-50%);
 }
 
 .meal-slot__headcount-pax {
-  right: 0;
+  justify-self: end;
   align-items: center;
   gap: 3px;
   color: var(--color-primary);

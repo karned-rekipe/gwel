@@ -3,9 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppButton from '@/components/atoms/AppButton.vue'
 import AppInput from '@/components/atoms/AppInput.vue'
-import IconActionButton from '@/components/resources/IconActionButton.vue'
-import ResourceList from '@/components/resources/ResourceList.vue'
-import ResourceRow from '@/components/resources/ResourceRow.vue'
+import IngredientCard from '@/components/ingredients/IngredientCard.vue'
 import ResourceSearchBar from '@/components/resources/ResourceSearchBar.vue'
 import {
   useCreateIngredient,
@@ -21,11 +19,11 @@ import {
 import { useListNavigation } from '@/composables/useListNavigation'
 import { ingredientService } from '@/services/ingredientService'
 import { shoppingService } from '@/services/shoppingService'
-import type { DuplicateGroup, Ingredient } from '@/types/recipe'
 import type { PaginationInfo } from '@/types/api'
+import type { DuplicateGroup, Ingredient } from '@/types/recipe'
 import type { Supplier } from '@/types/shopping'
 
-const PER_PAGE = 50
+const PER_PAGE = 72
 type QualityFilter =
   | 'all'
   | 'missing'
@@ -49,6 +47,7 @@ const isLoading = ref(false)
 const isFetchingMore = ref(false)
 const loadError = ref('')
 const editingUuid = ref<string | null>(null)
+const selectedIngredient = ref<Ingredient | null>(null)
 const isFormModalOpen = ref(false)
 const isDedupeModalOpen = ref(false)
 const deleteError = ref('')
@@ -75,14 +74,15 @@ const { mutate: mergeDuplicates, isPending: isMerging } = useMergeIngredientDupl
 const { mutate: runIngredientEnrichment, isPending: isRunningIngredientEnrichment } = useRunIngredientEnrichment()
 const { mutate: runEnrichmentBatch, isPending: isRunningEnrichmentBatch } = useRunIngredientEnrichmentBatch()
 
-const total = computed(() => pagination.value?.total ?? ingredients.value.length)
-const hasNext = computed(() => pagination.value?.has_next ?? false)
-const filteredIngredients = computed(() => ingredients.value.filter(matchesQualityFilter))
-const visibleIncompleteIngredients = computed(() => filteredIngredients.value.filter(isIngredientIncomplete))
-const isEmpty = computed(() => !isLoading.value && filteredIngredients.value.length === 0)
-const formModalTitle = computed(() => editingUuid.value ? 'Modifier un ingrédient' : 'Créer un ingrédient')
-const secondarySuppliers = computed(() => suppliers.value.filter((supplier) => supplier.uuid !== form.mainSupplierUuid))
 const currentMonth = new Date().getMonth() + 1
+const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
+const enrichedAtFormatter = new Intl.DateTimeFormat('fr-FR', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+})
 const fieldLabels: Record<string, string> = {
   media_profile: 'Image',
   seasonality_profile: 'Saisonnalité',
@@ -94,6 +94,19 @@ const fieldLabels: Record<string, string> = {
   substitution_profile: 'Substitutions',
   enrichment_profile: 'Complétude',
 }
+
+const total = computed(() => pagination.value?.total ?? ingredients.value.length)
+const hasNext = computed(() => pagination.value?.has_next ?? false)
+const filteredIngredients = computed(() => ingredients.value.filter(matchesQualityFilter))
+const visibleIncompleteIngredients = computed(() => filteredIngredients.value.filter(isIngredientIncomplete))
+const isEmpty = computed(() => !isLoading.value && filteredIngredients.value.length === 0)
+const formModalTitle = computed(() => editingUuid.value ? 'Modifier un ingrédient' : 'Créer un ingrédient')
+const secondarySuppliers = computed(() => suppliers.value.filter((supplier) => supplier.uuid !== form.mainSupplierUuid))
+const supplierByUuid = computed(() => new Map(suppliers.value.map((supplier) => [supplier.uuid, supplier.name] as const)))
+const resultSummary = computed(() => {
+  const totalText = total.value > ingredients.value.length ? `sur ${total.value}` : ''
+  return `${filteredIngredients.value.length} affiché${filteredIngredients.value.length > 1 ? 's' : ''} ${totalText}`.trim()
+})
 
 function matchesQualityFilter(ingredient: Ingredient): boolean {
   switch (qualityFilter.value) {
@@ -132,9 +145,6 @@ function isIngredientIncomplete(ingredient: Ingredient): boolean {
 const hasSupplier = (ingredient: Ingredient): boolean =>
   Boolean(ingredient.main_supplier_uuid || ingredient.secondary_supplier_uuids.length)
 
-const supplierStatusLabel = (ingredient: Ingredient): string =>
-  hasSupplier(ingredient) ? 'Fournisseur déterminé' : 'Aucun fournisseur'
-
 const fieldLabel = (field: string): string => fieldLabels[field] ?? field
 
 const missingFields = (ingredient: Ingredient): string[] => ingredient.enrichment_profile.missing_fields
@@ -154,8 +164,100 @@ const missingStatusLabel = (ingredient: Ingredient): string => {
 const hasPendingAiSuggestion = (ingredient: Ingredient): boolean =>
   ingredient.enrichment_profile.status === 'suggested'
 
-const aiStatusLabel = (ingredient: Ingredient): string =>
-  hasPendingAiSuggestion(ingredient) ? 'Suggestion IA à valider' : `IA ${ingredient.enrichment_profile.status}`
+const hasIngredientAlert = (ingredient: Ingredient): boolean =>
+  hasMissingFields(ingredient) || hasPendingAiSuggestion(ingredient)
+
+const ingredientAlertLabel = (ingredient: Ingredient): string => {
+  if (hasPendingAiSuggestion(ingredient)) return 'Suggestion IA à valider'
+  return missingStatusLabel(ingredient)
+}
+
+const cardStatusLabel = (ingredient: Ingredient): string => {
+  if (hasPendingAiSuggestion(ingredient)) return 'Suggestion IA'
+  if (hasMissingFields(ingredient)) return 'À compléter'
+  return ''
+}
+
+const ingredientImageUrl = (ingredient: Ingredient): string | null =>
+  ingredient.media_profile.main_image_uri?.trim() || null
+
+const supplierName = (uuid: string | null | undefined): string => {
+  if (!uuid) return '—'
+  return supplierByUuid.value.get(uuid) ?? 'Fournisseur inconnu'
+}
+
+const supplierSummary = (ingredient: Ingredient): string => {
+  const names = [
+    supplierName(ingredient.main_supplier_uuid),
+    ...ingredient.secondary_supplier_uuids.map((uuid) => supplierName(uuid)),
+  ].filter((name) => name !== '—')
+  return names.length ? names.join(', ') : 'Aucun fournisseur'
+}
+
+const seasonalityLabel = (ingredient: Ingredient): string => {
+  const profile = ingredient.seasonality_profile
+  if (profile.availability_type === 'unknown') return 'Inconnue'
+  if (profile.availability_type === 'year_round') return 'Toute saison'
+  if (profile.availability_type === 'not_applicable') return 'Non applicable'
+
+  const months = Object.entries(profile.months)
+    .filter(([, score]) => Number(score) > 0)
+    .map(([month]) => monthLabels[Number(month) - 1])
+    .filter((label): label is string => Boolean(label))
+
+  return months.length ? months.join(', ') : 'Saison non renseignée'
+}
+
+const nutritionLabel = (ingredient: Ingredient): string => {
+  const profile = ingredient.nutrition_profile
+  const kcal = profile.kcal_per_100g ?? profile.kcal_per_100ml
+  if (kcal === null || kcal === undefined) return `Nutri-Score ${profile.nutri_score}`
+  return `${kcal} kcal/100 ${profile.kcal_per_100g !== null ? 'g' : 'ml'}`
+}
+
+const carbonLabel = (ingredient: Ingredient): string => {
+  const carbon = ingredient.sustainability_profile.carbon_kg_co2e_per_kg
+  return carbon === null || carbon === undefined ? 'Non évalué' : `${carbon} kg CO2e/kg`
+}
+
+const allergenLabel = (ingredient: Ingredient): string => {
+  const present = ingredient.allergen_profile.allergens.filter((allergen) =>
+    ['contains', 'may_contain'].includes(allergen.presence),
+  )
+  return present.length ? present.map((allergen) => allergen.code).join(', ') : 'Non évalué'
+}
+
+const unitLabel = (ingredient: Ingredient): string => {
+  const profile = ingredient.unit_profile
+  if (profile.reference_unit === 'unknown' && !ingredient.unit) return 'Non évalué'
+  return [profile.reference_unit !== 'unknown' ? profile.reference_unit : ingredient.unit, profile.allowed_units.join(', ')]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+const packageLabel = (ingredient: Ingredient): string =>
+  ingredient.package_profiles.length
+    ? ingredient.package_profiles.map((item) => `${item.label} ${item.net_quantity} ${item.net_unit}`).join(' ; ')
+    : 'Aucun'
+
+const substitutionLabel = (ingredient: Ingredient): string => {
+  const profile = ingredient.substitution_profile
+  if (profile.default_policy === 'unknown') return 'Non évaluée'
+  if (profile.default_policy === 'essential_by_default') return 'Essentiel par défaut'
+  return profile.substitute_ingredient_uuids.length
+    ? `${profile.substitute_ingredient_uuids.length} substitution(s)`
+    : 'Substituable'
+}
+
+const completenessLabel = (ingredient: Ingredient): string =>
+  `${ingredient.enrichment_profile.completeness_score} % · ${ingredient.enrichment_profile.status}`
+
+const lastEnrichedLabel = (ingredient: Ingredient): string => {
+  const value = ingredient.enrichment_profile.last_enriched_at
+  if (!value) return 'Jamais'
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? value : enrichedAtFormatter.format(parsed)
+}
 
 const enrichVisibleMissingIngredients = (): void => {
   enrichmentMessage.value = ''
@@ -191,6 +293,11 @@ const fetchPage = async (page: number, append: boolean): Promise<void> => {
   ingredients.value = append ? [...ingredients.value, ...response.data] : response.data
 }
 
+const syncSelectedIngredient = (): void => {
+  if (!selectedIngredient.value) return
+  selectedIngredient.value = ingredients.value.find((ingredient) => ingredient.uuid === selectedIngredient.value?.uuid) ?? null
+}
+
 const reload = async (pageCount = 1): Promise<void> => {
   isLoading.value = true
   loadError.value = ''
@@ -199,6 +306,7 @@ const reload = async (pageCount = 1): Promise<void> => {
     for (let page = 1; page <= pageCount; page += 1) {
       await fetchPage(page, page > 1)
     }
+    syncSelectedIngredient()
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : 'Chargement impossible.'
   } finally {
@@ -239,6 +347,7 @@ const resetForm = (): void => {
 
 const openCreateModal = (): void => {
   resetForm()
+  selectedIngredient.value = null
   isFormModalOpen.value = true
 }
 
@@ -251,6 +360,11 @@ const editIngredient = (ingredient: Ingredient): void => {
   form.mainSupplierUuid = ingredient.main_supplier_uuid ?? ''
   form.secondarySupplierUuids = ingredient.secondary_supplier_uuids ?? []
   isFormModalOpen.value = true
+}
+
+const editIngredientFromInfo = (ingredient: Ingredient): void => {
+  selectedIngredient.value = null
+  editIngredient(ingredient)
 }
 
 const closeFormModal = (): void => {
@@ -273,8 +387,12 @@ const submit = (): void => {
   if (!payload.name) return
 
   const onSuccess = async (): Promise<void> => {
+    const selectedUuid = editingUuid.value
     closeFormModal()
     await reload(currentPage.value)
+    if (selectedUuid) {
+      selectedIngredient.value = ingredients.value.find((ingredient) => ingredient.uuid === selectedUuid) ?? null
+    }
     await refetchDuplicates()
   }
 
@@ -304,9 +422,11 @@ const enrichIngredient = (ingredient: Ingredient): void => {
 }
 
 const removeIngredient = (ingredient: Ingredient): void => {
+  if (!window.confirm(`Supprimer ${ingredient.name} ?`)) return
   deleteError.value = ''
   deleteIngredient(ingredient.uuid, {
     onSuccess: async () => {
+      selectedIngredient.value = null
       await reload(currentPage.value)
       await refetchDuplicates()
     },
@@ -317,6 +437,11 @@ const removeIngredient = (ingredient: Ingredient): void => {
 }
 
 const openIngredient = (ingredient: Ingredient): void => {
+  selectedIngredient.value = ingredient
+  navigation.save({ search: searchTerm.value, page: currentPage.value, selectedUuid: ingredient.uuid })
+}
+
+const openFullIngredient = (ingredient: Ingredient): void => {
   navigation.navigateToDetail(
     router,
     { name: 'ingredients-detail', params: { id: ingredient.uuid } },
@@ -347,6 +472,7 @@ const mergeDuplicateGroup = (group: DuplicateGroup): void => {
 watch(searchTerm, async () => {
   navigation.save({ search: searchTerm.value, page: 1 })
   currentPage.value = 1
+  selectedIngredient.value = null
   await reload(1)
 })
 
@@ -364,149 +490,217 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="resource-page">
-    <p v-if="deleteError" class="resource-page__error">{{ deleteError }}</p>
-    <p v-if="enrichmentMessage" class="resource-page__notice">{{ enrichmentMessage }}</p>
+  <main class="ingredient-page">
+    <header class="ingredient-page__header">
+      <div>
+        <p>Catalogue</p>
+        <h1>Mes ingrédients</h1>
+        <span>{{ resultSummary }}</span>
+      </div>
+      <AppButton @click="openCreateModal">Nouvel ingrédient</AppButton>
+    </header>
 
-    <ResourceList
-      :is-loading="isLoading"
-      :is-error="!!loadError"
-      :error-message="loadError"
-      :is-empty="isEmpty"
-      :loaded-count="ingredients.length"
-      :total="total"
-      :per-page="PER_PAGE"
-      :has-next="hasNext"
-      :is-fetching-more="isFetchingMore"
-      @load-more="loadMore"
-      @load-remaining="loadRemaining"
-    >
-      <template #toolbar>
-        <ResourceSearchBar v-model="searchTerm" placeholder="Rechercher un ingrédient">
-          <div class="resource-page__toolbar-actions">
-            <AppButton @click="openCreateModal">Nouvel ingrédient</AppButton>
-            <label class="resource-page__filter">
-              <span>Qualité</span>
-              <select v-model="qualityFilter">
-                <option value="all">Tous</option>
-                <option value="missing">Informations manquantes</option>
-                <option value="without_image">Sans image</option>
-                <option value="season_now">De saison</option>
-                <option value="with_allergen">Contient allergène</option>
-                <option value="nutrition_unknown">Nutrition inconnue</option>
-                <option value="carbon_unknown">Carbone inconnu</option>
-                <option value="conversion_missing">Conversion manquante</option>
-                <option value="ai_suggestion">Suggestion IA</option>
-              </select>
-            </label>
-            <AppButton
-              variant="secondary"
-              :disabled="isRunningEnrichmentBatch || !visibleIncompleteIngredients.length"
-              @click="enrichVisibleMissingIngredients"
-            >
-              {{ isRunningEnrichmentBatch ? 'Enrichissement…' : 'Enrichir les manquants' }}
-            </AppButton>
-            <AppButton
-              variant="secondary"
-              :disabled="!duplicateGroups?.length"
-              @click="isDedupeModalOpen = true"
-            >
-              Fusion
-            </AppButton>
-            <router-link :to="{ name: 'ingredient-settings' }" class="resource-page__settings" title="Réglages ingrédients">
-              ⚙
-            </router-link>
-          </div>
-        </ResourceSearchBar>
-      </template>
+    <p v-if="deleteError" class="ingredient-page__error">{{ deleteError }}</p>
+    <p v-if="enrichmentMessage" class="ingredient-page__notice">{{ enrichmentMessage }}</p>
 
-      <ResourceRow
-        v-for="ingredient in filteredIngredients"
-        :key="ingredient.uuid"
-        class="resource-page__row--compact"
-        columns="minmax(0, 1fr) 116px 64px minmax(116px, auto)"
-        @click="openIngredient(ingredient)"
-      >
-        <div class="resource-page__identity">
-          <strong class="resource-page__primary">{{ ingredient.name }}</strong>
+    <section class="ingredient-page__toolbar" aria-label="Filtres ingrédients">
+      <ResourceSearchBar v-model="searchTerm" placeholder="Rechercher un ingrédient">
+        <div class="ingredient-page__toolbar-actions">
+          <label class="ingredient-page__filter">
+            <span>Qualité</span>
+            <select v-model="qualityFilter">
+              <option value="all">Tous</option>
+              <option value="missing">Informations manquantes</option>
+              <option value="without_image">Sans image</option>
+              <option value="season_now">De saison</option>
+              <option value="with_allergen">Contient allergène</option>
+              <option value="nutrition_unknown">Nutrition inconnue</option>
+              <option value="carbon_unknown">Carbone inconnu</option>
+              <option value="conversion_missing">Conversion manquante</option>
+              <option value="ai_suggestion">Suggestion IA</option>
+            </select>
+          </label>
+          <AppButton
+            variant="secondary"
+            :disabled="isRunningEnrichmentBatch || !visibleIncompleteIngredients.length"
+            @click="enrichVisibleMissingIngredients"
+          >
+            {{ isRunningEnrichmentBatch ? 'Enrichissement…' : 'Enrichir les manquants' }}
+          </AppButton>
+          <AppButton
+            variant="secondary"
+            :disabled="!duplicateGroups?.length"
+            @click="isDedupeModalOpen = true"
+          >
+            Fusion
+          </AppButton>
+          <router-link :to="{ name: 'ingredient-settings' }" class="ingredient-page__settings" title="Réglages ingrédients">
+            ⚙
+          </router-link>
         </div>
-        <span class="resource-page__indicators">
-          <span
-            class="resource-page__indicator"
-            :class="{ 'resource-page__indicator--warning': hasMissingFields(ingredient) }"
-            :title="missingStatusLabel(ingredient)"
-            :aria-label="missingStatusLabel(ingredient)"
-          >
-            {{ hasMissingFields(ingredient) ? '!' : '✓' }}
-          </span>
-          <span
-            class="resource-page__indicator"
-            :class="{ 'resource-page__indicator--success': hasSupplier(ingredient) }"
-            :title="supplierStatusLabel(ingredient)"
-            :aria-label="supplierStatusLabel(ingredient)"
-          >
-            {{ hasSupplier(ingredient) ? '✓' : '—' }}
-          </span>
-          <span
-            class="resource-page__indicator"
-            :class="{ 'resource-page__indicator--active': hasPendingAiSuggestion(ingredient) }"
-            :title="aiStatusLabel(ingredient)"
-            :aria-label="aiStatusLabel(ingredient)"
-          >
-            {{ hasPendingAiSuggestion(ingredient) ? 'IA' : '—' }}
-          </span>
-        </span>
-        <span class="resource-page__unit">{{ ingredient.unit || '—' }}</span>
-        <span class="resource-page__row-actions">
-          <IconActionButton
-            label="Enrichir avec IA"
-            icon="IA"
-            :disabled="isRunningIngredientEnrichment && activeEnrichmentUuid === ingredient.uuid"
-            @click="enrichIngredient(ingredient)"
-          />
-          <IconActionButton label="Modifier" icon="✎" @click="editIngredient(ingredient)" />
-          <IconActionButton label="Supprimer" icon="×" variant="danger" :disabled="isDeleting" @click="removeIngredient(ingredient)" />
-        </span>
-      </ResourceRow>
-    </ResourceList>
+      </ResourceSearchBar>
+    </section>
 
-    <div v-if="isFormModalOpen" class="resource-page__modal-backdrop" @click.self="closeFormModal">
-      <section class="resource-page__modal" role="dialog" aria-modal="true" :aria-label="formModalTitle">
-        <header class="resource-page__modal-header">
-          <h2>{{ formModalTitle }}</h2>
-          <button type="button" class="resource-page__modal-close" aria-label="Fermer" @click="closeFormModal">×</button>
+    <section class="ingredient-page__content" aria-live="polite">
+      <p v-if="isLoading" class="ingredient-page__state">Chargement…</p>
+      <p v-else-if="loadError" class="ingredient-page__state ingredient-page__state--error">{{ loadError }}</p>
+      <p v-else-if="isEmpty" class="ingredient-page__state">Aucun ingrédient.</p>
+      <div v-else class="ingredient-page__grid">
+        <IngredientCard
+          v-for="ingredient in filteredIngredients"
+          :key="ingredient.uuid"
+          :name="ingredient.name"
+          :image-url="ingredientImageUrl(ingredient)"
+          :has-alert="hasIngredientAlert(ingredient)"
+          :alert-label="ingredientAlertLabel(ingredient)"
+          :status-label="cardStatusLabel(ingredient)"
+          @click="openIngredient(ingredient)"
+        />
+      </div>
+
+      <footer v-if="hasNext && total > ingredients.length" class="ingredient-page__footer">
+        <AppButton variant="secondary" :disabled="isFetchingMore" @click="loadMore">
+          {{ isFetchingMore ? 'Chargement…' : `Charger ${Math.min(PER_PAGE, total - ingredients.length)} ingrédients` }}
+        </AppButton>
+        <AppButton variant="secondary" :disabled="isFetchingMore" @click="loadRemaining">
+          Charger les {{ total - ingredients.length }} restants
+        </AppButton>
+      </footer>
+    </section>
+
+    <div v-if="selectedIngredient" class="ingredient-page__modal-backdrop" @click.self="selectedIngredient = null">
+      <section class="ingredient-page__modal ingredient-page__modal--info" role="dialog" aria-modal="true" :aria-label="`Fiche ${selectedIngredient.name}`">
+        <header class="ingredient-page__modal-header">
+          <h2>{{ selectedIngredient.name }}</h2>
+          <button type="button" class="ingredient-page__modal-close" aria-label="Fermer" @click="selectedIngredient = null">×</button>
         </header>
-        <form class="resource-page__modal-form" @submit.prevent="submit">
+
+        <div class="ingredient-page__info">
+          <div class="ingredient-page__info-visual">
+            <img
+              v-if="ingredientImageUrl(selectedIngredient)"
+              :src="ingredientImageUrl(selectedIngredient) ?? ''"
+              :alt="selectedIngredient.name"
+            />
+            <span v-else aria-hidden="true">{{ selectedIngredient.name.charAt(0).toLocaleUpperCase('fr-FR') }}</span>
+          </div>
+
+          <div class="ingredient-page__info-main">
+            <div class="ingredient-page__chips">
+              <span>{{ completenessLabel(selectedIngredient) }}</span>
+              <span>{{ selectedIngredient.unit || 'Unité non renseignée' }}</span>
+              <span>{{ selectedIngredient.group?.name || 'Groupe non renseigné' }}</span>
+              <span>{{ selectedIngredient.rayon?.name || 'Rayon non renseigné' }}</span>
+              <span>{{ hasSupplier(selectedIngredient) ? 'Fournisseur renseigné' : 'Sans fournisseur' }}</span>
+            </div>
+
+            <p v-if="hasIngredientAlert(selectedIngredient)" class="ingredient-page__alert">
+              {{ ingredientAlertLabel(selectedIngredient) }}
+            </p>
+
+            <div class="ingredient-page__modal-actions">
+              <AppButton
+                variant="secondary"
+                :disabled="isRunningIngredientEnrichment && activeEnrichmentUuid === selectedIngredient.uuid"
+                @click="enrichIngredient(selectedIngredient)"
+              >
+                {{ isRunningIngredientEnrichment && activeEnrichmentUuid === selectedIngredient.uuid ? 'Enrichissement…' : 'IA' }}
+              </AppButton>
+              <AppButton variant="secondary" @click="editIngredientFromInfo(selectedIngredient)">Modifier</AppButton>
+              <AppButton variant="secondary" @click="openFullIngredient(selectedIngredient)">Fiche complète</AppButton>
+              <AppButton variant="danger" :disabled="isDeleting" @click="removeIngredient(selectedIngredient)">Supprimer</AppButton>
+            </div>
+          </div>
+        </div>
+
+        <div class="ingredient-page__info-grid">
+          <article class="ingredient-page__info-tile">
+            <span>Image</span>
+            <strong>{{ selectedIngredient.media_profile.image_status }}</strong>
+            <small>{{ selectedIngredient.media_profile.source }}</small>
+          </article>
+          <article class="ingredient-page__info-tile">
+            <span>Saisonnalité</span>
+            <strong>{{ seasonalityLabel(selectedIngredient) }}</strong>
+            <small>{{ selectedIngredient.seasonality_profile.source }}</small>
+          </article>
+          <article class="ingredient-page__info-tile">
+            <span>Nutrition</span>
+            <strong>{{ nutritionLabel(selectedIngredient) }}</strong>
+            <small>Nutri-Score {{ selectedIngredient.nutrition_profile.nutri_score }}</small>
+          </article>
+          <article class="ingredient-page__info-tile">
+            <span>Environnement</span>
+            <strong>{{ carbonLabel(selectedIngredient) }}</strong>
+            <small>{{ selectedIngredient.sustainability_profile.source }}</small>
+          </article>
+          <article class="ingredient-page__info-tile">
+            <span>Allergènes</span>
+            <strong>{{ allergenLabel(selectedIngredient) }}</strong>
+            <small>{{ selectedIngredient.allergen_profile.source }}</small>
+          </article>
+          <article class="ingredient-page__info-tile">
+            <span>Unités</span>
+            <strong>{{ unitLabel(selectedIngredient) }}</strong>
+            <small>{{ selectedIngredient.unit_profile.conversions.length }} conversion(s)</small>
+          </article>
+          <article class="ingredient-page__info-tile">
+            <span>Conditionnements</span>
+            <strong>{{ packageLabel(selectedIngredient) }}</strong>
+          </article>
+          <article class="ingredient-page__info-tile">
+            <span>Substitutions</span>
+            <strong>{{ substitutionLabel(selectedIngredient) }}</strong>
+          </article>
+          <article class="ingredient-page__info-tile">
+            <span>Fournisseurs</span>
+            <strong>{{ supplierSummary(selectedIngredient) }}</strong>
+          </article>
+          <article class="ingredient-page__info-tile">
+            <span>Dernier enrichissement</span>
+            <strong>{{ lastEnrichedLabel(selectedIngredient) }}</strong>
+          </article>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="isFormModalOpen" class="ingredient-page__modal-backdrop" @click.self="closeFormModal">
+      <section class="ingredient-page__modal" role="dialog" aria-modal="true" :aria-label="formModalTitle">
+        <header class="ingredient-page__modal-header">
+          <h2>{{ formModalTitle }}</h2>
+          <button type="button" class="ingredient-page__modal-close" aria-label="Fermer" @click="closeFormModal">×</button>
+        </header>
+        <form class="ingredient-page__modal-form" @submit.prevent="submit">
           <AppInput id="ingredient-name" v-model="form.name" label="Nom" placeholder="Tomate" required />
           <AppInput id="ingredient-unit" v-model="form.unit" label="Unité" placeholder="g" />
-          <label class="resource-page__field">
+          <label class="ingredient-page__field">
             <span>Groupe</span>
             <select v-model="form.groupUuid">
               <option value="">Aucun</option>
               <option v-for="group in groups ?? []" :key="group.uuid" :value="group.uuid">{{ group.name }}</option>
             </select>
           </label>
-          <label class="resource-page__field">
+          <label class="ingredient-page__field">
             <span>Rayon</span>
             <select v-model="form.rayonUuid">
               <option value="">Aucun</option>
               <option v-for="rayon in rayons ?? []" :key="rayon.uuid" :value="rayon.uuid">{{ rayon.name }}</option>
             </select>
           </label>
-          <label class="resource-page__field">
+          <label class="ingredient-page__field">
             <span>Fournisseur principal</span>
             <select v-model="form.mainSupplierUuid">
               <option value="">Aucun</option>
               <option v-for="supplier in suppliers" :key="supplier.uuid" :value="supplier.uuid">{{ supplier.name }}</option>
             </select>
           </label>
-          <label class="resource-page__field">
+          <label class="ingredient-page__field">
             <span>Fournisseurs secondaires</span>
             <select v-model="form.secondarySupplierUuids" multiple>
               <option v-for="supplier in secondarySuppliers" :key="supplier.uuid" :value="supplier.uuid">{{ supplier.name }}</option>
             </select>
           </label>
-          <div class="resource-page__modal-actions">
+          <div class="ingredient-page__modal-actions">
             <AppButton type="button" variant="secondary" @click="closeFormModal">Annuler</AppButton>
             <AppButton type="submit" :disabled="!form.name.trim() || isCreating || isUpdating">
               {{ editingUuid ? 'Enregistrer' : 'Créer' }}
@@ -516,14 +710,14 @@ onMounted(async () => {
       </section>
     </div>
 
-    <div v-if="isDedupeModalOpen" class="resource-page__modal-backdrop" @click.self="isDedupeModalOpen = false">
-      <section class="resource-page__modal resource-page__modal--dedupe" role="dialog" aria-modal="true" aria-label="Fusion des doublons">
-        <header class="resource-page__modal-header">
+    <div v-if="isDedupeModalOpen" class="ingredient-page__modal-backdrop" @click.self="isDedupeModalOpen = false">
+      <section class="ingredient-page__modal ingredient-page__modal--dedupe" role="dialog" aria-modal="true" aria-label="Fusion des doublons">
+        <header class="ingredient-page__modal-header">
           <h2>Fusion des doublons</h2>
-          <button type="button" class="resource-page__modal-close" aria-label="Fermer" @click="isDedupeModalOpen = false">×</button>
+          <button type="button" class="ingredient-page__modal-close" aria-label="Fermer" @click="isDedupeModalOpen = false">×</button>
         </header>
-        <div v-if="duplicateGroups?.length" class="resource-page__dedupe">
-          <article v-for="group in duplicateGroups" :key="group.normalized_name" class="resource-page__dedupe-row">
+        <div v-if="duplicateGroups?.length" class="ingredient-page__dedupe">
+          <article v-for="group in duplicateGroups" :key="group.normalized_name" class="ingredient-page__dedupe-row">
             <div>
               <strong>{{ group.normalized_name }}</strong>
               <span>{{ group.items.length }} doublons</span>
@@ -536,30 +730,82 @@ onMounted(async () => {
             </AppButton>
           </article>
         </div>
-        <p v-else class="resource-page__notice">Aucun doublon détecté.</p>
+        <p v-else class="ingredient-page__notice ingredient-page__notice--modal">Aucun doublon détecté.</p>
       </section>
     </div>
   </main>
 </template>
 
 <style scoped>
-.resource-page {
-  max-width: 1180px;
+.ingredient-page {
+  width: min(1440px, calc(100vw - 32px));
   margin: 0 auto;
-  padding: 18px 20px 48px;
+  padding: 18px 0 48px;
 }
 
-.resource-page__field {
+.ingredient-page__header {
+  display: flex;
+  gap: 16px;
+  align-items: end;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.ingredient-page__header div {
+  min-width: 0;
+}
+
+.ingredient-page__header p,
+.ingredient-page__header span {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-weight: 650;
+}
+
+.ingredient-page__header p {
+  font-size: 0.86rem;
+}
+
+.ingredient-page__header h1 {
+  margin: 3px 0 3px;
+  color: var(--color-text-primary);
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.ingredient-page__toolbar {
+  margin-bottom: 14px;
+}
+
+.ingredient-page__toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.ingredient-page__filter {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.ingredient-page__field {
   display: grid;
   gap: 8px;
   color: var(--color-text-secondary);
   font-size: 0.86rem;
-  font-weight: 600;
+  font-weight: 650;
 }
 
-.resource-page__field select,
-.resource-page__filter select,
-.resource-page__dedupe select {
+.ingredient-page__field select,
+.ingredient-page__filter select,
+.ingredient-page__dedupe select {
   min-height: 38px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -569,35 +815,11 @@ onMounted(async () => {
   padding: 8px 10px;
 }
 
-.resource-page__field select[multiple] {
+.ingredient-page__field select[multiple] {
   min-height: 84px;
 }
 
-.resource-page__actions,
-.resource-page__row-actions,
-.resource-page__modal-actions {
-  display: flex;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.resource-page__toolbar-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.resource-page__filter {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  color: var(--color-text-secondary);
-  font-size: 0.86rem;
-  font-weight: 600;
-}
-
-.resource-page__settings {
+.ingredient-page__settings {
   width: 38px;
   height: 38px;
   display: inline-flex;
@@ -610,118 +832,51 @@ onMounted(async () => {
   text-decoration: none;
 }
 
-.resource-page__row--compact {
-  min-height: 38px;
-  padding-block: 4px;
-}
-
-.resource-page__identity {
+.ingredient-page__content {
   display: grid;
-  min-width: 0;
+  gap: 14px;
 }
 
-.resource-page__primary {
-  overflow: hidden;
-  color: var(--color-text-primary);
+.ingredient-page__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ingredient-page__state {
+  margin: 0;
+  padding: 18px 0;
+  color: var(--color-text-secondary);
   font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.resource-page__indicators {
+.ingredient-page__state--error,
+.ingredient-page__error {
+  color: var(--color-danger);
+}
+
+.ingredient-page__error,
+.ingredient-page__notice {
+  margin: 0 0 10px;
+  font-weight: 650;
+}
+
+.ingredient-page__notice {
+  color: var(--color-text-secondary);
+}
+
+.ingredient-page__notice--modal {
+  padding: 16px 18px 18px;
+}
+
+.ingredient-page__footer {
   display: flex;
-  gap: 6px;
-  align-items: center;
-  justify-content: center;
-}
-
-.resource-page__indicator {
-  display: inline-flex;
-  width: 28px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: var(--color-surface-muted);
-  color: var(--color-text-tertiary);
-  font-size: 0.75rem;
-  font-weight: 750;
-  line-height: 1;
-}
-
-.resource-page__indicator--warning {
-  border-color: color-mix(in srgb, var(--color-danger) 34%, transparent);
-  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
-  color: var(--color-danger);
-}
-
-.resource-page__indicator--success {
-  border-color: color-mix(in srgb, var(--color-success) 36%, transparent);
-  background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface));
-  color: var(--color-success);
-}
-
-.resource-page__indicator--active {
-  border-color: color-mix(in srgb, var(--color-primary) 36%, transparent);
-  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
-  color: var(--color-primary);
-}
-
-.resource-page__unit {
-  overflow: hidden;
-  color: var(--color-text-secondary);
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.resource-page__error {
-  margin: 0 0 10px;
-  color: var(--color-danger);
-  font-weight: 650;
-}
-
-.resource-page__notice {
-  margin: 0 0 10px;
-  color: var(--color-text-secondary);
-  font-weight: 650;
-}
-
-.resource-page__dedupe {
-  display: grid;
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-border);
-}
-
-.resource-page__dedupe-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px) auto;
+  flex-wrap: wrap;
   gap: 8px;
-  align-items: center;
-  padding: 8px 10px;
-  background: var(--color-surface);
+  justify-content: center;
 }
 
-.resource-page__dedupe-row div {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.resource-page__dedupe-row strong {
-  color: var(--color-text-primary);
-}
-
-.resource-page__dedupe-row span {
-  color: var(--color-text-secondary);
-  font-size: 0.84rem;
-}
-
-.resource-page__modal-backdrop {
+.ingredient-page__modal-backdrop {
   position: fixed;
   z-index: 60;
   inset: 0;
@@ -731,9 +886,9 @@ onMounted(async () => {
   background: rgba(15, 23, 42, 0.36);
 }
 
-.resource-page__modal {
+.ingredient-page__modal {
   width: min(760px, 100%);
-  max-height: min(720px, calc(100vh - 40px));
+  max-height: min(760px, calc(100vh - 40px));
   overflow: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -741,11 +896,12 @@ onMounted(async () => {
   box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22);
 }
 
-.resource-page__modal--dedupe {
-  width: min(880px, 100%);
+.ingredient-page__modal--info,
+.ingredient-page__modal--dedupe {
+  width: min(920px, 100%);
 }
 
-.resource-page__modal-header {
+.ingredient-page__modal-header {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -758,13 +914,14 @@ onMounted(async () => {
   background: var(--color-surface);
 }
 
-.resource-page__modal-header h2 {
+.ingredient-page__modal-header h2 {
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--color-text-primary);
-  font-size: 1.12rem;
+  font-size: 1.15rem;
 }
 
-.resource-page__modal-close {
+.ingredient-page__modal-close {
   width: 36px;
   height: 36px;
   border: 1px solid var(--color-border);
@@ -778,45 +935,223 @@ onMounted(async () => {
   line-height: 1;
 }
 
-.resource-page__modal-form,
-.resource-page__modal .resource-page__dedupe,
-.resource-page__modal > .resource-page__notice {
+.ingredient-page__info {
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px;
+}
+
+.ingredient-page__info-visual {
+  aspect-ratio: 1;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--color-success) 18%, transparent), transparent 34%),
+    linear-gradient(135deg, var(--color-surface-muted), color-mix(in srgb, var(--color-primary) 7%, var(--color-surface)));
+  color: var(--color-text-tertiary);
+  font-size: 4rem;
+  font-weight: 800;
+}
+
+.ingredient-page__info-visual img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.ingredient-page__info-main {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.ingredient-page__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.ingredient-page__chips span {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 9px;
+}
+
+.ingredient-page__alert {
+  margin: 0;
+  border-left: 3px solid var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+  color: var(--color-danger);
+  font-weight: 700;
+  padding: 9px 10px;
+}
+
+.ingredient-page__modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.ingredient-page__info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin: 0 18px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-border);
+}
+
+.ingredient-page__info-tile {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  align-content: start;
+  padding: 12px;
+  background: var(--color-surface);
+}
+
+.ingredient-page__info-tile span,
+.ingredient-page__info-tile small {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ingredient-page__info-tile strong {
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.ingredient-page__modal-form,
+.ingredient-page__dedupe {
   margin: 0;
   padding: 16px 18px 18px;
 }
 
-.resource-page__modal-form {
+.ingredient-page__modal-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
-.resource-page__modal-actions {
+.ingredient-page__modal-form .ingredient-page__modal-actions {
   grid-column: 1 / -1;
   padding-top: 4px;
 }
 
+.ingredient-page__dedupe {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-border);
+}
+
+.ingredient-page__dedupe-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--color-surface);
+}
+
+.ingredient-page__dedupe-row div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ingredient-page__dedupe-row strong {
+  color: var(--color-text-primary);
+}
+
+.ingredient-page__dedupe-row span {
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+}
+
+@media (min-width: 640px) {
+  .ingredient-page__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 860px) {
+  .ingredient-page__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1120px) {
+  .ingredient-page__grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1320px) {
+  .ingredient-page__grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 860px) {
+  .ingredient-page {
+    width: min(100% - 24px, 100%);
+    padding-top: 14px;
+  }
+
+  .ingredient-page__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   :deep(.resource-search) {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .resource-page__dedupe-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .resource-page__toolbar-actions,
-  .resource-page__filter {
+  .ingredient-page__toolbar-actions,
+  .ingredient-page__filter {
     width: 100%;
-  }
-
-  .resource-page__toolbar-actions,
-  .resource-page__filter {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .resource-page__modal-form {
+  .ingredient-page__settings {
+    width: 100%;
+  }
+
+  .ingredient-page__info {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ingredient-page__info-visual {
+    max-height: 320px;
+  }
+
+  .ingredient-page__info-grid,
+  .ingredient-page__modal-form,
+  .ingredient-page__dedupe-row {
     grid-template-columns: minmax(0, 1fr);
   }
 }

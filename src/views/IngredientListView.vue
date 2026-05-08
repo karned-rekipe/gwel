@@ -83,6 +83,17 @@ const isEmpty = computed(() => !isLoading.value && filteredIngredients.value.len
 const formModalTitle = computed(() => editingUuid.value ? 'Modifier un ingrédient' : 'Créer un ingrédient')
 const secondarySuppliers = computed(() => suppliers.value.filter((supplier) => supplier.uuid !== form.mainSupplierUuid))
 const currentMonth = new Date().getMonth() + 1
+const fieldLabels: Record<string, string> = {
+  media_profile: 'Image',
+  seasonality_profile: 'Saisonnalité',
+  nutrition_profile: 'Nutrition',
+  sustainability_profile: 'Environnement',
+  allergen_profile: 'Allergènes',
+  unit_profile: 'Unités',
+  package_profiles: 'Conditionnements',
+  substitution_profile: 'Substitutions',
+  enrichment_profile: 'Complétude',
+}
 
 function matchesQualityFilter(ingredient: Ingredient): boolean {
   switch (qualityFilter.value) {
@@ -118,41 +129,33 @@ function isIngredientIncomplete(ingredient: Ingredient): boolean {
     || ingredient.enrichment_profile.status === 'partial'
 }
 
-const scoreLabel = (ingredient: Ingredient): string => `${ingredient.enrichment_profile.completeness_score} %`
-
-const seasonLabel = (ingredient: Ingredient): string => {
-  if (ingredient.seasonality_profile.availability_type === 'year_round') return 'Saison'
-  if (Number(ingredient.seasonality_profile.months[currentMonth] ?? 0) > 0) return 'Saison'
-  if (ingredient.seasonality_profile.availability_type === 'unknown') return 'Saison ?'
-  return 'Hors saison'
-}
-
-const nutritionLabel = (ingredient: Ingredient): string => {
-  if (ingredient.nutrition_profile.nutri_score !== 'unknown') return `Nutri ${ingredient.nutrition_profile.nutri_score}`
-  if (ingredient.nutrition_profile.kcal_per_100g !== null) return `${ingredient.nutrition_profile.kcal_per_100g} kcal`
-  return 'Nutri ?'
-}
-
-const carbonLabel = (ingredient: Ingredient): string =>
-  ingredient.sustainability_profile.carbon_kg_co2e_per_kg === null
-    ? 'CO2 ?'
-    : `${ingredient.sustainability_profile.carbon_kg_co2e_per_kg} CO2e`
-
-const allergenLabel = (ingredient: Ingredient): string => {
-  const count = ingredient.allergen_profile.allergens.filter((allergen) =>
-    ['contains', 'may_contain'].includes(allergen.presence),
-  ).length
-  return count ? `${count} allergène${count > 1 ? 's' : ''}` : 'Allergènes ?'
-}
-
-const aiLabel = (ingredient: Ingredient): string =>
-  ingredient.enrichment_profile.status === 'suggested' ? 'IA à valider' : ingredient.enrichment_profile.status
-
 const hasSupplier = (ingredient: Ingredient): boolean =>
   Boolean(ingredient.main_supplier_uuid || ingredient.secondary_supplier_uuids.length)
 
 const supplierStatusLabel = (ingredient: Ingredient): string =>
   hasSupplier(ingredient) ? 'Fournisseur déterminé' : 'Aucun fournisseur'
+
+const fieldLabel = (field: string): string => fieldLabels[field] ?? field
+
+const missingFields = (ingredient: Ingredient): string[] => ingredient.enrichment_profile.missing_fields
+
+const hasMissingFields = (ingredient: Ingredient): boolean =>
+  missingFields(ingredient).length > 0 || ['missing', 'partial'].includes(ingredient.enrichment_profile.status)
+
+const missingStatusLabel = (ingredient: Ingredient): string => {
+  const fields = missingFields(ingredient)
+  if (fields.length) {
+    return `${fields.length} champ${fields.length > 1 ? 's' : ''} manquant${fields.length > 1 ? 's' : ''} : ${fields.map(fieldLabel).join(', ')}`
+  }
+  if (hasMissingFields(ingredient)) return `Fiche ${ingredient.enrichment_profile.status}`
+  return 'Aucun champ manquant'
+}
+
+const hasPendingAiSuggestion = (ingredient: Ingredient): boolean =>
+  ingredient.enrichment_profile.status === 'suggested'
+
+const aiStatusLabel = (ingredient: Ingredient): string =>
+  hasPendingAiSuggestion(ingredient) ? 'Suggestion IA à valider' : `IA ${ingredient.enrichment_profile.status}`
 
 const enrichVisibleMissingIngredients = (): void => {
   enrichmentMessage.value = ''
@@ -420,33 +423,40 @@ onMounted(async () => {
       <ResourceRow
         v-for="ingredient in filteredIngredients"
         :key="ingredient.uuid"
-        columns="minmax(0, 1.3fr) minmax(150px, 1fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) 42px 70px minmax(116px, auto)"
+        class="resource-page__row--compact"
+        columns="minmax(0, 1fr) 116px 64px minmax(116px, auto)"
         @click="openIngredient(ingredient)"
       >
         <div class="resource-page__identity">
           <strong class="resource-page__primary">{{ ingredient.name }}</strong>
-          <span class="resource-page__badges">
-            <span>{{ scoreLabel(ingredient) }}</span>
-            <span>{{ seasonLabel(ingredient) }}</span>
-            <span>{{ aiLabel(ingredient) }}</span>
-          </span>
         </div>
-        <span class="resource-page__quality">
-          <span>{{ nutritionLabel(ingredient) }}</span>
-          <span>{{ carbonLabel(ingredient) }}</span>
-          <span>{{ allergenLabel(ingredient) }}</span>
+        <span class="resource-page__indicators">
+          <span
+            class="resource-page__indicator"
+            :class="{ 'resource-page__indicator--warning': hasMissingFields(ingredient) }"
+            :title="missingStatusLabel(ingredient)"
+            :aria-label="missingStatusLabel(ingredient)"
+          >
+            {{ hasMissingFields(ingredient) ? '!' : '✓' }}
+          </span>
+          <span
+            class="resource-page__indicator"
+            :class="{ 'resource-page__indicator--success': hasSupplier(ingredient) }"
+            :title="supplierStatusLabel(ingredient)"
+            :aria-label="supplierStatusLabel(ingredient)"
+          >
+            {{ hasSupplier(ingredient) ? '✓' : '—' }}
+          </span>
+          <span
+            class="resource-page__indicator"
+            :class="{ 'resource-page__indicator--active': hasPendingAiSuggestion(ingredient) }"
+            :title="aiStatusLabel(ingredient)"
+            :aria-label="aiStatusLabel(ingredient)"
+          >
+            {{ hasPendingAiSuggestion(ingredient) ? 'IA' : '—' }}
+          </span>
         </span>
-        <span>{{ ingredient.group?.name || '—' }}</span>
-        <span>{{ ingredient.rayon?.name || '—' }}</span>
-        <span
-          class="resource-page__supplier-indicator"
-          :class="{ 'resource-page__supplier-indicator--active': hasSupplier(ingredient) }"
-          :title="supplierStatusLabel(ingredient)"
-          :aria-label="supplierStatusLabel(ingredient)"
-        >
-          {{ hasSupplier(ingredient) ? '✓' : '—' }}
-        </span>
-        <span>{{ ingredient.unit || '—' }}</span>
+        <span class="resource-page__unit">{{ ingredient.unit || '—' }}</span>
         <span class="resource-page__row-actions">
           <IconActionButton
             label="Enrichir avec IA"
@@ -600,9 +610,13 @@ onMounted(async () => {
   text-decoration: none;
 }
 
+.resource-page__row--compact {
+  min-height: 38px;
+  padding-block: 4px;
+}
+
 .resource-page__identity {
   display: grid;
-  gap: 5px;
   min-width: 0;
 }
 
@@ -614,47 +628,52 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-.resource-page__badges,
-.resource-page__quality {
+.resource-page__indicators {
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.resource-page__badges span,
-.resource-page__quality span {
-  display: inline-flex;
-  min-height: 24px;
+  gap: 6px;
   align-items: center;
-  padding: 2px 7px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-muted);
-  color: var(--color-text-secondary);
-  font-size: 0.78rem;
-  font-weight: 650;
-  white-space: nowrap;
+  justify-content: center;
 }
 
-.resource-page__supplier-indicator {
+.resource-page__indicator {
   display: inline-flex;
   width: 28px;
   height: 28px;
   align-items: center;
   justify-content: center;
-  justify-self: center;
   border: 1px solid var(--color-border);
   border-radius: 999px;
   background: var(--color-surface-muted);
   color: var(--color-text-tertiary);
+  font-size: 0.75rem;
   font-weight: 750;
   line-height: 1;
 }
 
-.resource-page__supplier-indicator--active {
+.resource-page__indicator--warning {
+  border-color: color-mix(in srgb, var(--color-danger) 34%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+  color: var(--color-danger);
+}
+
+.resource-page__indicator--success {
   border-color: color-mix(in srgb, var(--color-success) 36%, transparent);
   background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface));
   color: var(--color-success);
+}
+
+.resource-page__indicator--active {
+  border-color: color-mix(in srgb, var(--color-primary) 36%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+  color: var(--color-primary);
+}
+
+.resource-page__unit {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .resource-page__error {

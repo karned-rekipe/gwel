@@ -81,14 +81,8 @@ const filteredIngredients = computed(() => ingredients.value.filter(matchesQuali
 const visibleIncompleteIngredients = computed(() => filteredIngredients.value.filter(isIngredientIncomplete))
 const isEmpty = computed(() => !isLoading.value && filteredIngredients.value.length === 0)
 const formModalTitle = computed(() => editingUuid.value ? 'Modifier un ingrédient' : 'Créer un ingrédient')
-const supplierByUuid = computed(() => new Map(suppliers.value.map((supplier) => [supplier.uuid, supplier.name] as const)))
 const secondarySuppliers = computed(() => suppliers.value.filter((supplier) => supplier.uuid !== form.mainSupplierUuid))
 const currentMonth = new Date().getMonth() + 1
-
-const supplierName = (uuid: string | null | undefined): string => {
-  if (!uuid) return '—'
-  return supplierByUuid.value.get(uuid) ?? 'Fournisseur inconnu'
-}
 
 function matchesQualityFilter(ingredient: Ingredient): boolean {
   switch (qualityFilter.value) {
@@ -153,6 +147,12 @@ const allergenLabel = (ingredient: Ingredient): string => {
 
 const aiLabel = (ingredient: Ingredient): string =>
   ingredient.enrichment_profile.status === 'suggested' ? 'IA à valider' : ingredient.enrichment_profile.status
+
+const hasSupplier = (ingredient: Ingredient): boolean =>
+  Boolean(ingredient.main_supplier_uuid || ingredient.secondary_supplier_uuids.length)
+
+const supplierStatusLabel = (ingredient: Ingredient): string =>
+  hasSupplier(ingredient) ? 'Fournisseur déterminé' : 'Aucun fournisseur'
 
 const enrichVisibleMissingIngredients = (): void => {
   enrichmentMessage.value = ''
@@ -420,7 +420,7 @@ onMounted(async () => {
       <ResourceRow
         v-for="ingredient in filteredIngredients"
         :key="ingredient.uuid"
-        columns="minmax(0, 1.3fr) minmax(150px, 1fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) minmax(130px, 0.8fr) 70px minmax(116px, auto)"
+        columns="minmax(0, 1.3fr) minmax(150px, 1fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) 42px 70px minmax(116px, auto)"
         @click="openIngredient(ingredient)"
       >
         <div class="resource-page__identity">
@@ -438,7 +438,14 @@ onMounted(async () => {
         </span>
         <span>{{ ingredient.group?.name || '—' }}</span>
         <span>{{ ingredient.rayon?.name || '—' }}</span>
-        <span>{{ supplierName(ingredient.main_supplier_uuid) }}</span>
+        <span
+          class="resource-page__supplier-indicator"
+          :class="{ 'resource-page__supplier-indicator--active': hasSupplier(ingredient) }"
+          :title="supplierStatusLabel(ingredient)"
+          :aria-label="supplierStatusLabel(ingredient)"
+        >
+          {{ hasSupplier(ingredient) ? '✓' : '—' }}
+        </span>
         <span>{{ ingredient.unit || '—' }}</span>
         <span class="resource-page__row-actions">
           <IconActionButton
@@ -627,6 +634,27 @@ onMounted(async () => {
   font-size: 0.78rem;
   font-weight: 650;
   white-space: nowrap;
+}
+
+.resource-page__supplier-indicator {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-muted);
+  color: var(--color-text-tertiary);
+  font-weight: 750;
+  line-height: 1;
+}
+
+.resource-page__supplier-indicator--active {
+  border-color: color-mix(in srgb, var(--color-success) 36%, transparent);
+  background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface));
+  color: var(--color-success);
 }
 
 .resource-page__error {

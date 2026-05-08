@@ -29,7 +29,6 @@ const totalTimeLabel = computed(() => {
 })
 
 const originFlag = computed(() => countryFlagFrom(props.recipe.origin_country))
-const hasImageBadges = computed(() => props.recipe.favorite || Boolean(originFlag.value))
 </script>
 
 <template>
@@ -57,14 +56,16 @@ const hasImageBadges = computed(() => props.recipe.favorite || Boolean(originFla
         </svg>
       </div>
 
-      <div v-if="hasImageBadges" class="recipe-card__badges">
-        <span v-if="recipe.favorite" class="recipe-card__badge recipe-card__badge--favorite" title="Recette favorite">
-          ★
-        </span>
-        <span v-if="originFlag" class="recipe-card__badge" :title="recipe.origin_country ?? 'Origine renseignée'">
-          {{ originFlag }}
-        </span>
-      </div>
+      <span
+        v-if="originFlag"
+        class="recipe-card__badge recipe-card__badge--origin"
+        :title="recipe.origin_country ?? 'Origine renseignée'"
+      >
+        {{ originFlag }}
+      </span>
+      <span v-if="recipe.favorite" class="recipe-card__badge recipe-card__badge--favorite" title="Recette favorite">
+        ★
+      </span>
     </div>
 
     <div class="recipe-card__body">
@@ -155,17 +156,9 @@ const hasImageBadges = computed(() => props.recipe.favorite || Boolean(originFla
   opacity: 0.5;
 }
 
-.recipe-card__badges {
+.recipe-card__badge {
   position: absolute;
   top: 8px;
-  left: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  pointer-events: none;
-}
-
-.recipe-card__badge {
   min-width: 28px;
   width: 28px;
   height: 28px;
@@ -181,9 +174,15 @@ const hasImageBadges = computed(() => props.recipe.favorite || Boolean(originFla
   font-weight: 800;
   line-height: 1;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+
+.recipe-card__badge--origin {
+  left: 8px;
 }
 
 .recipe-card__badge--favorite {
+  right: 8px;
   color: #f5a623;
 }
 

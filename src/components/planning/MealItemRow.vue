@@ -48,7 +48,6 @@ const avatarDots = computed(() => Array.from({ length: Math.min(effectiveHeadcou
 const remainingAvatars = computed(() => Math.max((effectiveHeadcount.value ?? 0) - avatarDots.value.length, 0))
 const recipeOriginLabel = computed(() => recipeDetails.value?.origin_country?.trim() || '')
 const recipeOriginFlag = computed(() => countryFlagFrom(recipeOriginLabel.value))
-const showRecipeBadges = computed(() => isRecipeItem.value && (recipeDetails.value?.favorite || recipeOriginFlag.value))
 const participantsLabel = computed(() => {
   const headcount = effectiveHeadcount.value
   if (!headcount) return '? personnes'
@@ -90,11 +89,19 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
     <div class="meal-item__thumbnail" aria-hidden="true">
       <img v-if="thumbnailUri" :src="thumbnailUri" :alt="title" />
       <span v-else>{{ thumbnailInitial }}</span>
-      <span v-if="showRecipeBadges" class="meal-item__badges">
-        <span v-if="recipeDetails?.favorite" class="meal-item__badge" title="Favori">★</span>
-        <span v-if="recipeOriginFlag" class="meal-item__badge" :title="recipeOriginLabel">
-          {{ recipeOriginFlag }}
-        </span>
+      <span
+        v-if="isRecipeItem && recipeOriginFlag"
+        class="meal-item__badge meal-item__badge--origin"
+        :title="recipeOriginLabel"
+      >
+        {{ recipeOriginFlag }}
+      </span>
+      <span
+        v-if="isRecipeItem && recipeDetails?.favorite"
+        class="meal-item__badge meal-item__badge--favorite"
+        title="Favori"
+      >
+        ★
       </span>
     </div>
 
@@ -150,17 +157,9 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
   object-fit: cover;
 }
 
-.meal-item__badges {
+.meal-item__badge {
   position: absolute;
   top: 5px;
-  left: 5px;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  pointer-events: none;
-}
-
-.meal-item__badge {
   min-width: 20px;
   height: 20px;
   display: inline-flex;
@@ -174,6 +173,16 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
   font-weight: 800;
   line-height: 1;
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+  pointer-events: none;
+}
+
+.meal-item__badge--origin {
+  left: 5px;
+}
+
+.meal-item__badge--favorite {
+  right: 5px;
+  color: #f5a623;
 }
 
 .meal-item__body {

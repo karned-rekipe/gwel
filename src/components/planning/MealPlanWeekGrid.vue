@@ -8,11 +8,13 @@ const props = defineProps<{
   plan: MealPlanRead
   mealLabels?: Record<string, string>
   visibleSlotCodes?: string[]
+  loading?: boolean
   readonly?: boolean
 }>()
 
 const emit = defineEmits<{
   (event: 'patch', operations: SlotPatchOperation[]): void
+  (event: 'extend-period', side: 'before' | 'after'): void
 }>()
 
 const scroller = ref<HTMLElement | null>(null)
@@ -186,6 +188,17 @@ onMounted(() => {
 
 <template>
   <section class="week-grid">
+    <button
+      type="button"
+      class="week-grid__load week-grid__load--before"
+      :disabled="loading"
+      aria-label="Charger les jours précédents"
+      title="Charger les jours précédents"
+      @click="emit('extend-period', 'before')"
+    >
+      <span aria-hidden="true">←</span>
+    </button>
+
     <div ref="scroller" class="week-grid__scroller">
       <div
         class="week-grid__matrix"
@@ -254,6 +267,17 @@ onMounted(() => {
       </div>
       <p v-if="!slotCodes.length" class="week-grid__empty">Aucun type de repas à afficher.</p>
     </div>
+
+    <button
+      type="button"
+      class="week-grid__load week-grid__load--after"
+      :disabled="loading"
+      aria-label="Charger les jours suivants"
+      title="Charger les jours suivants"
+      @click="emit('extend-period', 'after')"
+    >
+      <span aria-hidden="true">→</span>
+    </button>
   </section>
 </template>
 
@@ -262,6 +286,41 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   min-height: 0;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  gap: 6px;
+}
+
+.week-grid__load {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.week-grid__load:hover,
+.week-grid__load:focus-visible {
+  border-color: var(--color-border-hover);
+  color: var(--color-primary);
+  background: var(--color-surface-muted);
+}
+
+.week-grid__load:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.week-grid__load:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .week-grid__scroller {
@@ -434,6 +493,11 @@ onMounted(() => {
 }
 
 @media (max-width: 760px) {
+  .week-grid {
+    grid-template-columns: 24px minmax(0, 1fr) 24px;
+    gap: 4px;
+  }
+
   .week-grid__matrix {
     min-width: 820px;
   }

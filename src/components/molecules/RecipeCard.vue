@@ -29,6 +29,8 @@ const totalTimeLabel = computed(() => {
 })
 
 const originFlag = computed(() => countryFlagFrom(props.recipe.origin_country))
+const visibleTags = computed(() => props.recipe.tags.slice(0, 2))
+const hiddenTagCount = computed(() => Math.max(props.recipe.tags.length - visibleTags.value.length, 0))
 </script>
 
 <template>
@@ -72,10 +74,12 @@ const originFlag = computed(() => countryFlagFrom(props.recipe.origin_country))
       <h3 class="recipe-card__title" :title="recipe.name">{{ recipe.name }}</h3>
 
       <div class="recipe-card__meta">
-        <span v-for="tag in recipe.tags.slice(0, 2)" :key="tag.uuid" class="recipe-card__tag">
+        <span v-for="tag in visibleTags" :key="tag.uuid" class="recipe-card__tag" :title="tag.name">
           {{ tag.name }}
         </span>
-        <span v-if="recipe.origin_country" class="recipe-card__tag">{{ recipe.origin_country }}</span>
+        <span v-if="hiddenTagCount" class="recipe-card__tag recipe-card__tag--more">
+          +{{ hiddenTagCount }}
+        </span>
       </div>
 
       <div class="recipe-card__footer">
@@ -210,12 +214,17 @@ const originFlag = computed(() => countryFlagFrom(props.recipe.origin_country))
 
 .recipe-card__meta {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 4px;
   min-height: 18px;
+  overflow: hidden;
 }
 
 .recipe-card__tag {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-full);
   color: var(--color-text-secondary);
@@ -223,6 +232,14 @@ const originFlag = computed(() => countryFlagFrom(props.recipe.origin_country))
   font-weight: 600;
   line-height: 1;
   padding: 3px 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recipe-card__tag--more {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
 }
 
 .recipe-card__footer {

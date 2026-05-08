@@ -253,16 +253,13 @@ onMounted(() => {
             }"
           >
             <MealSlotCell
-              v-if="!isSlotCollapsed(slotCode)"
               :slot="mealSlotFor(day.date, slotCode)"
               :meal-label="mealSlotLabel(slotCode)"
               :show-meal-label="false"
+              :collapsed="isSlotCollapsed(slotCode)"
               :readonly="readonly"
               @patch="emit('patch', $event)"
             />
-            <span v-else-if="mealSlotFor(day.date, slotCode).items.length" class="week-grid__collapsed-count">
-              {{ mealSlotFor(day.date, slotCode).items.length }}
-            </span>
           </div>
         </template>
       </div>
@@ -467,23 +464,8 @@ onMounted(() => {
 }
 
 .week-grid__cell--collapsed {
-  display: grid;
-  place-items: center;
   padding: 0;
   background: var(--color-surface-muted);
-}
-
-.week-grid__collapsed-count {
-  min-width: 20px;
-  min-height: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
-  color: var(--color-primary);
-  font-size: 0.72rem;
-  font-weight: 700;
 }
 
 .week-grid__empty {

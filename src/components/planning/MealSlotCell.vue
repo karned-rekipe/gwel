@@ -13,6 +13,7 @@ const props = defineProps<{
   slot: MealSlot
   mealLabel?: string
   showMealLabel?: boolean
+  collapsed?: boolean
   readonly?: boolean
 }>()
 
@@ -234,7 +235,8 @@ const addNote = (): void => {
   <section
     class="meal-slot"
     :class="{
-      'meal-slot--empty': !slot.items.length,
+      'meal-slot--empty': !slot.items.length && !collapsed,
+      'meal-slot--collapsed': collapsed,
       'meal-slot--editable': !readonly,
       'meal-slot--without-label': showMealLabel === false,
     }"
@@ -249,7 +251,11 @@ const addNote = (): void => {
       <strong>{{ mealLabel }}</strong>
     </header>
 
-    <div v-if="slot.items.length" class="meal-slot__items">
+    <span v-if="collapsed && slot.items.length" class="meal-slot__collapsed-count">
+      {{ slot.items.length }}
+    </span>
+
+    <div v-else-if="slot.items.length" class="meal-slot__items">
       <MealItemRow
         v-for="item in slot.items"
         :key="item.uuid"
@@ -362,6 +368,12 @@ const addNote = (): void => {
   grid-template-rows: minmax(0, 1fr);
 }
 
+.meal-slot--collapsed {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
 .meal-slot--editable {
   cursor: pointer;
 }
@@ -403,6 +415,19 @@ const addNote = (): void => {
   align-content: start;
   gap: 6px;
   overflow: auto;
+}
+
+.meal-slot__collapsed-count {
+  min-width: 20px;
+  min-height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .meal-slot-modal {

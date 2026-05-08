@@ -32,6 +32,7 @@ const ingredientUnit = ref('')
 const addError = ref<string | null>(null)
 
 const mealLabel = computed(() => props.mealLabel ?? formatMealLabel(props.slot.slot_code))
+const plannedItemCount = computed(() => props.slot.items.length)
 const slotHeadcount = computed(() => props.slot.headcount ?? null)
 const slotAvatarDots = computed(() => Array.from({ length: Math.min(slotHeadcount.value ?? 0, 4) }, (_, index) => index))
 const slotRemainingAvatars = computed(() => Math.max((slotHeadcount.value ?? 0) - slotAvatarDots.value.length, 0))
@@ -40,6 +41,11 @@ const slotHeadcountLabel = computed(() => {
   if (!headcount) return ''
   return `${headcount} personne${headcount > 1 ? 's' : ''}`
 })
+const plannedItemLabel = computed(() => {
+  const count = plannedItemCount.value
+  return `${count} élément${count > 1 ? 's' : ''} prévu${count > 1 ? 's' : ''}`
+})
+const hasSlotIndicators = computed(() => plannedItemCount.value > 0 || Boolean(slotHeadcount.value))
 
 const defaultHeadcount = (): string => {
   if (props.slot.headcount !== null && props.slot.headcount !== undefined && props.slot.headcount > 0) {
@@ -223,6 +229,7 @@ const addNote = (): void => {
       'meal-slot--empty': !slot.items.length && !collapsed,
       'meal-slot--collapsed': collapsed,
       'meal-slot--editable': !readonly,
+      'meal-slot--with-indicators': hasSlotIndicators,
       'meal-slot--without-label': showMealLabel === false,
     }"
     :role="readonly ? undefined : 'button'"
@@ -236,27 +243,32 @@ const addNote = (): void => {
       <strong>{{ mealLabel }}</strong>
     </header>
 
-    <template v-if="collapsed">
-      <span v-if="slot.items.length" class="meal-slot__collapsed-count">
-        {{ slot.items.length }}
+    <div v-if="hasSlotIndicators" class="meal-slot__indicators">
+      <span
+        v-if="plannedItemCount"
+        class="meal-slot__planned-count"
+        :aria-label="plannedItemLabel"
+      >
+        <span aria-hidden="true">🍽</span>
+        {{ plannedItemCount }}
       </span>
       <div
-        v-else-if="slotHeadcount"
-        class="meal-slot__empty-participants meal-slot__empty-participants--collapsed"
+        v-if="slotHeadcount"
+        class="meal-slot__headcount-indicator"
         :aria-label="slotHeadcountLabel"
       >
-        <span class="meal-slot__empty-pax">
+        <span class="meal-slot__headcount-pax">
           <span aria-hidden="true">👤</span>
           {{ slotHeadcount }}
         </span>
-        <span v-if="slotAvatarDots.length" class="meal-slot__empty-avatars" aria-hidden="true">
+        <span v-if="slotAvatarDots.length" class="meal-slot__headcount-avatars" aria-hidden="true">
           <span v-for="dot in slotAvatarDots" :key="dot"></span>
           <strong v-if="slotRemainingAvatars">+{{ slotRemainingAvatars }}</strong>
         </span>
       </div>
-    </template>
+    </div>
 
-    <div v-else-if="slot.items.length" class="meal-slot__items">
+    <div v-if="!collapsed && slot.items.length" class="meal-slot__items">
       <MealItemRow
         v-for="item in slot.items"
         :key="item.uuid"
@@ -268,18 +280,7 @@ const addNote = (): void => {
       />
     </div>
 
-    <div v-else-if="slotHeadcount" class="meal-slot__empty-state">
-      <div class="meal-slot__empty-participants" :aria-label="slotHeadcountLabel">
-        <span class="meal-slot__empty-pax">
-          <span aria-hidden="true">👤</span>
-          {{ slotHeadcount }}
-        </span>
-        <span v-if="slotAvatarDots.length" class="meal-slot__empty-avatars" aria-hidden="true">
-          <span v-for="dot in slotAvatarDots" :key="dot"></span>
-          <strong v-if="slotRemainingAvatars">+{{ slotRemainingAvatars }}</strong>
-        </span>
-      </div>
-    </div>
+    <div v-else-if="!collapsed && slotHeadcount" class="meal-slot__empty-state"></div>
 
     <Teleport to="body">
       <div v-if="isModalOpen" class="meal-slot-modal" @click.self="closeModal" @keydown.esc="closeModal">
@@ -380,6 +381,7 @@ const addNote = (): void => {
 
 <style scoped>
 .meal-slot {
+  position: relative;
   min-width: 0;
   height: 100%;
   min-height: 0;
@@ -444,46 +446,62 @@ const addNote = (): void => {
   overflow: auto;
 }
 
-.meal-slot__empty-state {
-  min-height: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
+.meal-slot--with-indicators:not(.meal-slot--collapsed) .meal-slot__items,
+.meal-slot--with-indicators:not(.meal-slot--collapsed) .meal-slot__empty-state {
+  padding-top: 28px;
 }
 
-.meal-slot__empty-participants {
-  display: inline-flex;
-  max-width: 100%;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  border: 1px solid color-mix(in srgb, var(--color-primary) 16%, var(--color-border));
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+.meal-slot__indicators {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  left: 6px;
+  z-index: 1;
+  min-height: 22px;
+  pointer-events: none;
 }
 
-.meal-slot__empty-participants--collapsed {
-  padding: 3px 7px;
-}
-
-.meal-slot__empty-pax {
+.meal-slot__planned-count,
+.meal-slot__headcount-indicator {
+  position: absolute;
+  top: 0;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  min-height: 22px;
   color: var(--color-primary);
   font-size: 0.72rem;
   font-weight: 750;
+  line-height: 1;
 }
 
-.meal-slot__empty-avatars {
+.meal-slot__planned-count {
+  left: 0;
+  gap: 4px;
+}
+
+.meal-slot__headcount-indicator {
+  left: 50%;
+  max-width: min(72%, 150px);
+  gap: 8px;
+  transform: translateX(-50%);
+}
+
+.meal-slot__headcount-pax {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+.meal-slot__headcount-avatars {
   display: inline-flex;
   align-items: center;
   min-width: 0;
   padding-left: 5px;
 }
 
-.meal-slot__empty-avatars span,
-.meal-slot__empty-avatars strong {
+.meal-slot__headcount-avatars span,
+.meal-slot__headcount-avatars strong {
   width: 16px;
   height: 16px;
   display: inline-flex;
@@ -495,7 +513,7 @@ const addNote = (): void => {
   background: color-mix(in srgb, var(--color-primary) 16%, var(--color-surface));
 }
 
-.meal-slot__empty-avatars strong {
+.meal-slot__headcount-avatars strong {
   width: auto;
   min-width: 18px;
   padding: 0 4px;
@@ -504,17 +522,8 @@ const addNote = (): void => {
   line-height: 1;
 }
 
-.meal-slot__collapsed-count {
-  min-width: 20px;
-  min-height: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
-  color: var(--color-primary);
-  font-size: 0.72rem;
-  font-weight: 700;
+.meal-slot__empty-state {
+  min-height: 0;
 }
 
 .meal-slot-modal {

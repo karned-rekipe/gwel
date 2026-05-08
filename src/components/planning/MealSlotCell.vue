@@ -472,12 +472,24 @@ const addNote = (): void => {
 }
 
 .meal-slot__items {
+  --meal-card-min-width: 128px;
+  --meal-card-min-height: 152px;
+
   min-height: 0;
+  max-height: 100%;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(var(--meal-card-min-width), 1fr));
+  grid-auto-rows: minmax(var(--meal-card-min-height), auto);
   align-content: start;
   gap: 6px;
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.meal-slot__items :deep(.meal-item) {
+  min-width: var(--meal-card-min-width);
+  min-height: var(--meal-card-min-height);
 }
 
 .meal-slot__indicators {

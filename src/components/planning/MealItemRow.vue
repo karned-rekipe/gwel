@@ -126,10 +126,11 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
 
 <style scoped>
 .meal-item {
-  min-height: 0;
+  min-width: var(--meal-card-min-width, 128px);
+  min-height: var(--meal-card-min-height, 152px);
   overflow: hidden;
   display: grid;
-  grid-template-rows: minmax(44px, 1fr) auto auto;
+  grid-template-rows: minmax(64px, 1fr) auto auto;
   gap: 5px;
   padding: 5px;
   border: 1px solid var(--color-border);
@@ -139,7 +140,7 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
 
 .meal-item__thumbnail {
   position: relative;
-  min-height: 44px;
+  min-height: 64px;
   overflow: hidden;
   display: grid;
   place-items: center;

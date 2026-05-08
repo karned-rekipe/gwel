@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import MealSlotCell from '@/components/planning/MealSlotCell.vue'
 import { formatMealLabel } from '@/components/planning/mealSlotLabels'
 import type { MealPlanRead, MealSlot, SlotPatchOperation } from '@/types/mealPlan'
@@ -15,18 +15,27 @@ const emit = defineEmits<{
   (event: 'patch', operations: SlotPatchOperation[]): void
 }>()
 
+const scroller = ref<HTMLElement | null>(null)
+const collapsedSlotCodes = ref<string[]>([])
+
 const dayFormatter = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
 const shortDayFormatter = new Intl.DateTimeFormat('fr-FR', { weekday: 'short' })
 const dayNumberFormatter = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit' })
-const todayIso = new Date().toISOString().slice(0, 10)
+
+const isoFromDate = (value: Date): string => {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const todayIso = isoFromDate(new Date())
 
 const addDays = (value: string, daysToAdd: number): string => {
   const date = new Date(`${value}T12:00:00`)
   date.setDate(date.getDate() + daysToAdd)
   return date.toISOString().slice(0, 10)
 }
-
-const isoFromDate = (value: Date): string => value.toISOString().slice(0, 10)
 
 const easterSunday = (year: number): Date => {
   const a = year % 19
@@ -136,16 +145,53 @@ const mealSlotLabel = (slotCode: string): string => props.mealLabels?.[slotCode]
 
 const mealSlotFor = (date: string, slotCode: string): MealSlot =>
   slotByKey.value.get(`${date}:${slotCode}`) ?? emptySlot(date, slotCode)
+
+const isSlotCollapsed = (slotCode: string): boolean => collapsedSlotCodes.value.includes(slotCode)
+
+const toggleSlotCollapse = (slotCode: string): void => {
+  if (isSlotCollapsed(slotCode)) {
+    collapsedSlotCodes.value = collapsedSlotCodes.value.filter((code) => code !== slotCode)
+  } else {
+    collapsedSlotCodes.value = [...collapsedSlotCodes.value, slotCode]
+  }
+}
+
+const gridTemplateRows = computed(() => {
+  const rows = slotCodes.value.map((slotCode) => (isSlotCollapsed(slotCode) ? '38px' : 'minmax(0, 1fr)'))
+  return `50px ${rows.join(' ')}`
+})
+
+const scrollTodayIntoView = async (): Promise<void> => {
+  await nextTick()
+  const scrollerElement = scroller.value
+  const todayHead = scrollerElement?.querySelector<HTMLElement>('.week-grid__day-head--today')
+  if (!scrollerElement || !todayHead) return
+
+  const stickyMealColumnWidth = 118
+  scrollerElement.scrollLeft = Math.max(todayHead.offsetLeft - stickyMealColumnWidth, 0)
+}
+
+watch(
+  () => [props.plan.date_start, props.plan.date_end, days.value.length],
+  () => {
+    void scrollTodayIntoView()
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  void scrollTodayIntoView()
+})
 </script>
 
 <template>
   <section class="week-grid">
-    <div class="week-grid__scroller">
+    <div ref="scroller" class="week-grid__scroller">
       <div
         class="week-grid__matrix"
         :style="{
           gridTemplateColumns: `118px repeat(${days.length}, minmax(148px, 1fr))`,
-          gridTemplateRows: `50px repeat(${slotCodes.length}, minmax(0, 1fr))`,
+          gridTemplateRows,
         }"
       >
         <div class="week-grid__corner" aria-hidden="true"></div>
@@ -158,6 +204,7 @@ const mealSlotFor = (date: string, slotCode: string): MealSlot =>
             'week-grid__day-head--weekend': day.isWeekend,
             'week-grid__day-head--holiday': day.holidayLabel,
           }"
+          :data-date="day.date"
           :title="day.holidayLabel ? `${day.label} · ${day.holidayLabel}` : day.label"
         >
           <span>{{ day.shortLabel }}</span>
@@ -166,26 +213,42 @@ const mealSlotFor = (date: string, slotCode: string): MealSlot =>
         </header>
 
         <template v-for="slotCode in slotCodes" :key="slotCode">
-          <aside class="week-grid__meal-head">
-            {{ mealSlotLabel(slotCode) }}
+          <aside
+            class="week-grid__meal-head"
+            :class="{ 'week-grid__meal-head--collapsed': isSlotCollapsed(slotCode) }"
+          >
+            <button
+              type="button"
+              :aria-expanded="!isSlotCollapsed(slotCode)"
+              :aria-label="isSlotCollapsed(slotCode) ? `Afficher ${mealSlotLabel(slotCode)}` : `Masquer ${mealSlotLabel(slotCode)}`"
+              @click="toggleSlotCollapse(slotCode)"
+            >
+              <span aria-hidden="true">{{ isSlotCollapsed(slotCode) ? '›' : '⌄' }}</span>
+              <strong>{{ mealSlotLabel(slotCode) }}</strong>
+            </button>
           </aside>
           <div
             v-for="day in days"
             :key="`${day.date}:${slotCode}`"
             class="week-grid__cell"
             :class="{
+              'week-grid__cell--collapsed': isSlotCollapsed(slotCode),
               'week-grid__cell--today': day.isToday,
               'week-grid__cell--weekend': day.isWeekend,
               'week-grid__cell--holiday': day.holidayLabel,
             }"
           >
             <MealSlotCell
+              v-if="!isSlotCollapsed(slotCode)"
               :slot="mealSlotFor(day.date, slotCode)"
               :meal-label="mealSlotLabel(slotCode)"
               :show-meal-label="false"
               :readonly="readonly"
               @patch="emit('patch', $event)"
             />
+            <span v-else-if="mealSlotFor(day.date, slotCode).items.length" class="week-grid__collapsed-count">
+              {{ mealSlotFor(day.date, slotCode).items.length }}
+            </span>
           </div>
         </template>
       </div>
@@ -291,8 +354,6 @@ const mealSlotFor = (date: string, slotCode: string): MealSlot =>
 .week-grid__meal-head {
   left: 0;
   z-index: 3;
-  display: flex;
-  align-items: center;
   padding: 10px 12px;
   color: var(--color-text-secondary);
   font-size: 0.88rem;
@@ -300,10 +361,69 @@ const mealSlotFor = (date: string, slotCode: string): MealSlot =>
   text-transform: capitalize;
 }
 
+.week-grid__meal-head button {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.week-grid__meal-head button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.week-grid__meal-head span {
+  width: 14px;
+  color: var(--color-text-tertiary);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.week-grid__meal-head strong {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.week-grid__meal-head--collapsed {
+  background: var(--color-surface-muted);
+}
+
 .week-grid__cell {
   min-height: 0;
   padding: 6px;
   overflow: hidden;
+}
+
+.week-grid__cell--collapsed {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: var(--color-surface-muted);
+}
+
+.week-grid__collapsed-count {
+  min-width: 20px;
+  min-height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .week-grid__empty {

@@ -4,7 +4,7 @@ import IngredientPicker from '@/components/planning/IngredientPicker.vue'
 import MealItemRow from '@/components/planning/MealItemRow.vue'
 import RecipePicker from '@/components/planning/RecipePicker.vue'
 import { formatMealLabel } from '@/components/planning/mealSlotLabels'
-import type { MealItemPayload, MealSlot, SlotPatchOperation } from '@/types/mealPlan'
+import type { MealItem, MealItemPayload, MealSlot, SlotPatchOperation } from '@/types/mealPlan'
 import type { Ingredient, Recipe } from '@/types/recipe'
 
 type AddMode = 'recipe' | 'ingredient' | 'note'
@@ -39,16 +39,26 @@ const defaultHeadcount = (): string => {
   return ''
 }
 
-const openAddModal = (mode: AddMode = 'recipe'): void => {
-  modalMode.value = mode
-  headcountInput.value = defaultHeadcount()
+const resetItemForm = (): void => {
   noteInput.value = ''
   selectedIngredient.value = null
   selectedIngredientUuid.value = ''
   ingredientQuantity.value = '1'
   ingredientUnit.value = ''
   addError.value = null
+}
+
+const openEditorModal = (mode: AddMode = 'recipe'): void => {
+  if (props.readonly) return
+  modalMode.value = mode
+  headcountInput.value = defaultHeadcount()
+  resetItemForm()
   isModalOpen.value = true
+}
+
+const switchMode = (mode: AddMode): void => {
+  modalMode.value = mode
+  resetItemForm()
 }
 
 const closeModal = (): void => {
@@ -72,6 +82,21 @@ const setHeadcount = (value: number | null): void => {
     slot_code: props.slot.slot_code,
     headcount: value,
   }])
+}
+
+const saveDefaultHeadcount = (): void => {
+  const rawValue = headcountInput.value.trim()
+  if (!rawValue) {
+    setHeadcount(null)
+    return
+  }
+  const headcount = positiveIntegerFrom(rawValue)
+  if (headcount === null) {
+    addError.value = 'Le nombre de pax doit être un entier positif.'
+    return
+  }
+  addError.value = null
+  setHeadcount(headcount)
 }
 
 const positiveIntegerFrom = (value: string): number | null => {
@@ -102,6 +127,38 @@ const addItem = (item: MealItemPayload): void => {
     item,
   }])
   closeModal()
+}
+
+const removeItem = (item: MealItem): void => {
+  emit('patch', [{
+    op: 'remove_item',
+    slot_date: props.slot.date,
+    slot_code: props.slot.slot_code,
+    item_uuid: item.uuid,
+  }])
+}
+
+const itemTitle = (item: MealItem): string => {
+  if (item.item_type === 'recipe') return item.recipe_snapshot?.title || 'Recette'
+  if (item.item_type === 'ingredient') return item.ingredient_name || 'Ingrédient'
+  if (item.item_type === 'prep_task') return 'Préparation'
+  if (item.item_type === 'mixed') return 'Ancien système'
+  return item.note || 'Note'
+}
+
+const itemMeta = (item: MealItem): string => {
+  const parts: string[] = []
+  const headcount = item.headcount ?? props.slot.headcount ?? null
+  if ((item.item_type === 'recipe' || item.item_type === 'ingredient') && headcount) {
+    parts.push(`${headcount} pax`)
+  }
+  if (item.item_type === 'ingredient' && item.ingredient_quantity && item.ingredient_unit) {
+    parts.push(`${item.ingredient_quantity} ${item.ingredient_unit} / pax`)
+  }
+  if (item.recipe_snapshot?.total_duration_min) {
+    parts.push(`${item.recipe_snapshot.total_duration_min} min`)
+  }
+  return parts.join(' · ')
 }
 
 const addRecipe = (recipe: Recipe): void => {
@@ -178,43 +235,18 @@ const addNote = (): void => {
     class="meal-slot"
     :class="{
       'meal-slot--empty': !slot.items.length,
+      'meal-slot--editable': !readonly,
       'meal-slot--without-label': showMealLabel === false,
     }"
+    :role="readonly ? undefined : 'button'"
+    :tabindex="readonly ? undefined : 0"
+    :aria-label="readonly ? undefined : `Modifier ${mealLabel} du ${slot.date}`"
+    @click="openEditorModal()"
+    @keydown.enter="openEditorModal()"
+    @keydown.space.prevent="openEditorModal()"
   >
-    <header class="meal-slot__header">
-      <strong v-if="showMealLabel !== false">{{ mealLabel }}</strong>
-      <div class="meal-slot__toolbar">
-        <div class="meal-slot__headcount" aria-label="Nombre de personnes du repas">
-          <span class="meal-slot__headcount-label">Pax</span>
-          <button
-            type="button"
-            :disabled="readonly || !slot.headcount"
-            title="Moins"
-            @click="setHeadcount(Math.max((slot.headcount ?? 1) - 1, 0))"
-          >
-            −
-          </button>
-          <span class="meal-slot__headcount-value">{{ slot.headcount ?? '—' }}</span>
-          <button
-            type="button"
-            :disabled="readonly"
-            title="Plus"
-            @click="setHeadcount((slot.headcount ?? 0) + 1)"
-          >
-            +
-          </button>
-        </div>
-        <button
-          v-if="!readonly"
-          type="button"
-          class="meal-slot__add"
-          title="Ajouter"
-          aria-label="Ajouter au repas"
-          @click="openAddModal()"
-        >
-          +
-        </button>
-      </div>
+    <header v-if="showMealLabel !== false" class="meal-slot__header">
+      <strong>{{ mealLabel }}</strong>
     </header>
 
     <div v-if="slot.items.length" class="meal-slot__items">
@@ -226,7 +258,6 @@ const addNote = (): void => {
         :slot-date="slot.date"
         :slot-code="slot.slot_code"
         :readonly="readonly"
-        @patch="emit('patch', $event)"
       />
     </div>
 
@@ -234,26 +265,46 @@ const addNote = (): void => {
       <div v-if="isModalOpen" class="meal-slot-modal" @click.self="closeModal" @keydown.esc="closeModal">
         <section class="meal-slot-modal__panel" role="dialog" aria-modal="true" aria-labelledby="meal-slot-modal-title">
           <header class="meal-slot-modal__header">
-            <h3 id="meal-slot-modal-title">Ajouter au repas</h3>
+            <div>
+              <h3 id="meal-slot-modal-title">Modifier le repas</h3>
+              <span>{{ mealLabel }} · {{ slot.date }}</span>
+            </div>
             <button type="button" title="Fermer" @click="closeModal">×</button>
           </header>
 
+          <section class="meal-slot-modal__existing" aria-label="Repas prévus">
+            <h4>Repas prévus</h4>
+            <div v-if="slot.items.length" class="meal-slot-modal__planned-list">
+              <article v-for="item in slot.items" :key="item.uuid" class="meal-slot-modal__planned-item">
+                <div>
+                  <strong>{{ itemTitle(item) }}</strong>
+                  <span v-if="itemMeta(item)">{{ itemMeta(item) }}</span>
+                </div>
+                <button v-if="!readonly" type="button" @click="removeItem(item)">Retirer</button>
+              </article>
+            </div>
+            <p v-else>Aucun contenu prévu.</p>
+          </section>
+
+          <div class="meal-slot-modal__headcount-row">
+            <label class="meal-slot-modal__field">
+              <span>Pax par défaut</span>
+              <input v-model="headcountInput" type="number" min="1" max="99" inputmode="numeric" />
+            </label>
+            <button type="button" @click="saveDefaultHeadcount">Appliquer</button>
+          </div>
+
           <div class="meal-slot-modal__tabs" role="tablist" aria-label="Type d'élément">
-            <button type="button" :class="{ 'is-active': modalMode === 'recipe' }" @click="openAddModal('recipe')">
+            <button type="button" :class="{ 'is-active': modalMode === 'recipe' }" @click="switchMode('recipe')">
               Recette
             </button>
-            <button type="button" :class="{ 'is-active': modalMode === 'ingredient' }" @click="openAddModal('ingredient')">
+            <button type="button" :class="{ 'is-active': modalMode === 'ingredient' }" @click="switchMode('ingredient')">
               Ingrédient
             </button>
-            <button type="button" :class="{ 'is-active': modalMode === 'note' }" @click="openAddModal('note')">
+            <button type="button" :class="{ 'is-active': modalMode === 'note' }" @click="switchMode('note')">
               Note
             </button>
           </div>
-
-          <label v-if="modalMode !== 'note'" class="meal-slot-modal__field">
-            <span>Pax</span>
-            <input v-model="headcountInput" type="number" min="1" max="99" inputmode="numeric" required />
-          </label>
 
           <div v-if="modalMode === 'recipe'" class="meal-slot-modal__content">
             <RecipePicker button-label="Ajouter" @select="addRecipe" />
@@ -307,6 +358,20 @@ const addNote = (): void => {
   background: transparent;
 }
 
+.meal-slot--without-label {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.meal-slot--editable {
+  cursor: pointer;
+}
+
+.meal-slot--editable:hover,
+.meal-slot--editable:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 52%, transparent);
+  outline-offset: -2px;
+}
+
 .meal-slot--empty {
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-sm);
@@ -314,19 +379,9 @@ const addNote = (): void => {
   background: color-mix(in srgb, var(--color-surface-muted) 80%, transparent);
 }
 
-.meal-slot--without-label .meal-slot__header {
-  justify-content: flex-end;
-}
-
-.meal-slot__header,
-.meal-slot__toolbar,
-.meal-slot__headcount {
+.meal-slot__header {
   display: flex;
   align-items: center;
-  gap: 4px;
-}
-
-.meal-slot__header {
   justify-content: space-between;
 }
 
@@ -334,19 +389,6 @@ const addNote = (): void => {
   font-size: 0.96rem;
 }
 
-.meal-slot__headcount-label,
-.meal-slot__headcount-value {
-  color: var(--color-text-secondary);
-  font-size: 0.72rem;
-}
-
-.meal-slot__headcount-value {
-  min-width: 14px;
-  text-align: center;
-}
-
-.meal-slot__headcount button,
-.meal-slot__add,
 .meal-slot-modal button {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -356,24 +398,11 @@ const addNote = (): void => {
   cursor: pointer;
 }
 
-.meal-slot__headcount button {
-  width: 22px;
-  height: 22px;
-}
-
 .meal-slot__items {
   display: grid;
   align-content: start;
   gap: 6px;
   overflow: auto;
-}
-
-.meal-slot__add {
-  width: 24px;
-  height: 24px;
-  flex: 0 0 auto;
-  padding: 0;
-  font-weight: 800;
 }
 
 .meal-slot-modal {
@@ -409,9 +438,89 @@ const addNote = (): void => {
   font-size: 1rem;
 }
 
+.meal-slot-modal__header span {
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+}
+
 .meal-slot-modal__header button {
   width: 30px;
   height: 30px;
+}
+
+.meal-slot-modal__existing {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+}
+
+.meal-slot-modal__existing h4,
+.meal-slot-modal__existing p {
+  margin: 0;
+}
+
+.meal-slot-modal__existing h4 {
+  color: var(--color-text-primary);
+  font-size: 0.9rem;
+}
+
+.meal-slot-modal__existing p {
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+}
+
+.meal-slot-modal__planned-list {
+  display: grid;
+  gap: 6px;
+}
+
+.meal-slot-modal__planned-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.meal-slot-modal__planned-item div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.meal-slot-modal__planned-item strong,
+.meal-slot-modal__planned-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meal-slot-modal__planned-item span {
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+}
+
+.meal-slot-modal__planned-item button {
+  min-height: 30px;
+  padding: 5px 8px;
+}
+
+.meal-slot-modal__headcount-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.meal-slot-modal__headcount-row button {
+  min-height: 34px;
+  padding: 6px 10px;
 }
 
 .meal-slot-modal__tabs {
@@ -493,7 +602,9 @@ const addNote = (): void => {
 
 @media (max-width: 520px) {
   .meal-slot-modal__tabs,
-  .meal-slot-modal__inline-fields {
+  .meal-slot-modal__inline-fields,
+  .meal-slot-modal__headcount-row,
+  .meal-slot-modal__planned-item {
     grid-template-columns: 1fr;
   }
 }

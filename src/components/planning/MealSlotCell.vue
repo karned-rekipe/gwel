@@ -648,6 +648,7 @@ const addNote = (): void => {
 .meal-slot-modal__planned-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, 170px);
+  grid-auto-rows: 238px;
   gap: 8px;
   justify-content: start;
 }
@@ -655,6 +656,11 @@ const addNote = (): void => {
 .meal-slot-modal__planned-item {
   position: relative;
   min-width: 0;
+  min-height: 0;
+}
+
+.meal-slot-modal__planned-item :deep(.meal-item) {
+  height: 100%;
 }
 
 .meal-slot-modal__remove {

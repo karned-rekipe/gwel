@@ -7,10 +7,18 @@ const isMenuOpen = ref(false)
 
 const isSettingsRoute = computed(() => ['ingredient-settings', 'tags-home', 'tags-detail'].includes(String(route.name)))
 
+const closeMenu = (): void => {
+  isMenuOpen.value = false
+}
+
+const toggleMenu = (): void => {
+  isMenuOpen.value = !isMenuOpen.value
+}
+
 watch(
   () => route.fullPath,
   () => {
-    isMenuOpen.value = false
+    closeMenu()
   },
 )
 </script>
@@ -25,7 +33,8 @@ watch(
           :aria-expanded="isMenuOpen"
           :aria-label="isMenuOpen ? 'Fermer la navigation' : 'Ouvrir la navigation'"
           aria-controls="app-navigation"
-          @click="isMenuOpen = !isMenuOpen"
+          :class="{ 'app-shell__menu-button--active': isMenuOpen }"
+          @click="toggleMenu"
         >
           <span aria-hidden="true"></span>
           <span aria-hidden="true"></span>
@@ -49,6 +58,7 @@ watch(
             to="/recipes"
             class="app-shell__link"
             active-class="app-shell__link--active"
+            @click="closeMenu"
           >
             Recettes
           </RouterLink>
@@ -56,6 +66,7 @@ watch(
             to="/planning"
             class="app-shell__link"
             active-class="app-shell__link--active"
+            @click="closeMenu"
           >
             Planning
           </RouterLink>
@@ -63,6 +74,7 @@ watch(
             to="/ingredients"
             class="app-shell__link"
             active-class="app-shell__link--active"
+            @click="closeMenu"
           >
             Ingrédients
           </RouterLink>
@@ -70,6 +82,7 @@ watch(
             to="/equipment"
             class="app-shell__link"
             active-class="app-shell__link--active"
+            @click="closeMenu"
           >
             Équipements
           </RouterLink>
@@ -77,6 +90,7 @@ watch(
             to="/shopping"
             class="app-shell__link"
             active-class="app-shell__link--active"
+            @click="closeMenu"
           >
             Courses
           </RouterLink>
@@ -93,6 +107,13 @@ watch(
           </RouterLink>
         </div>
       </nav>
+      <button
+        v-if="isMenuOpen"
+        type="button"
+        class="app-shell__menu-backdrop"
+        aria-label="Fermer la navigation"
+        @click="closeMenu"
+      ></button>
     </header>
 
     <RouterView />
@@ -115,6 +136,8 @@ watch(
 }
 
 .app-shell__nav {
+  position: relative;
+  z-index: 130;
   max-width: 1240px;
   margin: 0 auto;
   padding: 10px clamp(16px, 4vw, 24px);
@@ -224,7 +247,8 @@ watch(
 
 .app-shell__icon-link:hover,
 .app-shell__icon-link--active,
-.app-shell__menu-button:hover {
+.app-shell__menu-button:hover,
+.app-shell__menu-button--active {
   color: var(--color-text-primary);
   background: var(--color-secondary-dark);
   text-decoration: none;
@@ -256,6 +280,10 @@ watch(
   gap: 4px;
 }
 
+.app-shell__menu-backdrop {
+  display: none;
+}
+
 @media (max-width: 820px) {
   .app-shell__nav {
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -273,14 +301,20 @@ watch(
   }
 
   .app-shell__links {
-    grid-column: 1 / -1;
-    grid-row: 2;
+    position: absolute;
+    z-index: 120;
+    top: calc(100% + 8px);
+    left: clamp(16px, 4vw, 24px);
+    right: clamp(16px, 4vw, 24px);
     display: none;
     flex-direction: column;
     align-items: stretch;
     gap: 4px;
-    padding-top: 8px;
-    border-top: 1px solid var(--color-border);
+    padding: 8px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
   }
 
   .app-shell__links--open {
@@ -295,6 +329,16 @@ watch(
   .app-shell__menu-button {
     grid-row: 1;
     display: inline-flex;
+  }
+
+  .app-shell__menu-backdrop {
+    position: fixed;
+    z-index: 90;
+    inset: 0;
+    display: block;
+    border: 0;
+    background: transparent;
+    cursor: default;
   }
 }
 

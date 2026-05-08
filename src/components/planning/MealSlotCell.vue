@@ -139,29 +139,6 @@ const removeItem = (item: MealItem): void => {
   }])
 }
 
-const itemTitle = (item: MealItem): string => {
-  if (item.item_type === 'recipe') return item.recipe_snapshot?.title || 'Recette'
-  if (item.item_type === 'ingredient') return item.ingredient_name || 'Ingrédient'
-  if (item.item_type === 'prep_task') return 'Préparation'
-  if (item.item_type === 'mixed') return 'Ancien système'
-  return item.note || 'Note'
-}
-
-const itemMeta = (item: MealItem): string => {
-  const parts: string[] = []
-  const headcount = item.headcount ?? props.slot.headcount ?? null
-  if ((item.item_type === 'recipe' || item.item_type === 'ingredient') && headcount) {
-    parts.push(`${headcount} pax`)
-  }
-  if (item.item_type === 'ingredient' && item.ingredient_quantity && item.ingredient_unit) {
-    parts.push(`${item.ingredient_quantity} ${item.ingredient_unit} / pax`)
-  }
-  if (item.recipe_snapshot?.total_duration_min) {
-    parts.push(`${item.recipe_snapshot.total_duration_min} min`)
-  }
-  return parts.join(' · ')
-}
-
 const addRecipe = (recipe: Recipe): void => {
   const headcount = requiredHeadcount()
   if (headcount === null) return
@@ -282,11 +259,23 @@ const addNote = (): void => {
             <h4>Repas prévus</h4>
             <div v-if="slot.items.length" class="meal-slot-modal__planned-list">
               <article v-for="item in slot.items" :key="item.uuid" class="meal-slot-modal__planned-item">
-                <div>
-                  <strong>{{ itemTitle(item) }}</strong>
-                  <span v-if="itemMeta(item)">{{ itemMeta(item) }}</span>
-                </div>
-                <button v-if="!readonly" type="button" @click="removeItem(item)">Retirer</button>
+                <MealItemRow
+                  :item="item"
+                  :fallback-headcount="slot.headcount"
+                  :slot-date="slot.date"
+                  :slot-code="slot.slot_code"
+                  :readonly="readonly"
+                />
+                <button
+                  v-if="!readonly"
+                  type="button"
+                  class="meal-slot-modal__remove"
+                  title="Retirer"
+                  aria-label="Retirer ce repas"
+                  @click="removeItem(item)"
+                >
+                  ×
+                </button>
               </article>
             </div>
             <p v-else>Aucun contenu prévu.</p>
@@ -441,7 +430,9 @@ const addNote = (): void => {
 }
 
 .meal-slot-modal__panel {
-  width: min(520px, 100%);
+  width: min(680px, 100%);
+  max-height: min(760px, calc(100vh - 36px));
+  overflow: auto;
   display: grid;
   gap: 12px;
   padding: 16px;
@@ -499,41 +490,32 @@ const addNote = (): void => {
 
 .meal-slot-modal__planned-list {
   display: grid;
-  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
 }
 
 .meal-slot-modal__planned-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  padding: 8px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-}
-
-.meal-slot-modal__planned-item div {
+  position: relative;
   min-width: 0;
-  display: grid;
-  gap: 2px;
 }
 
-.meal-slot-modal__planned-item strong,
-.meal-slot-modal__planned-item span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.meal-slot-modal__planned-item span {
-  color: var(--color-text-secondary);
-  font-size: 0.78rem;
-}
-
-.meal-slot-modal__planned-item button {
-  min-height: 30px;
-  padding: 5px 8px;
+.meal-slot-modal__remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: color-mix(in srgb, var(--color-border) 70%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  color: var(--color-text-primary);
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
 }
 
 .meal-slot-modal__headcount-row {
@@ -628,8 +610,7 @@ const addNote = (): void => {
 @media (max-width: 520px) {
   .meal-slot-modal__tabs,
   .meal-slot-modal__inline-fields,
-  .meal-slot-modal__headcount-row,
-  .meal-slot-modal__planned-item {
+  .meal-slot-modal__headcount-row {
     grid-template-columns: 1fr;
   }
 }

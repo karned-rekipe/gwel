@@ -12,6 +12,7 @@ type AddMode = 'recipe' | 'ingredient' | 'note'
 const props = defineProps<{
   slot: MealSlot
   mealLabel?: string
+  showMealLabel?: boolean
   readonly?: boolean
 }>()
 
@@ -173,9 +174,15 @@ const addNote = (): void => {
 </script>
 
 <template>
-  <section class="meal-slot">
+  <section
+    class="meal-slot"
+    :class="{
+      'meal-slot--empty': !slot.items.length,
+      'meal-slot--without-label': showMealLabel === false,
+    }"
+  >
     <header class="meal-slot__header">
-      <strong>{{ mealLabel }}</strong>
+      <strong v-if="showMealLabel !== false">{{ mealLabel }}</strong>
       <div class="meal-slot__headcount" aria-label="Nombre de personnes du repas">
         <span class="meal-slot__headcount-label">Pax</span>
         <button
@@ -283,12 +290,23 @@ const addNote = (): void => {
 <style scoped>
 .meal-slot {
   min-width: 0;
+  min-height: 116px;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 8px;
   padding: 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.meal-slot--empty {
+  border-style: dashed;
   background: var(--color-surface-muted);
+}
+
+.meal-slot--without-label .meal-slot__header {
+  justify-content: flex-end;
 }
 
 .meal-slot__header,
@@ -336,6 +354,7 @@ const addNote = (): void => {
 
 .meal-slot__items {
   display: grid;
+  align-content: start;
   gap: 6px;
 }
 

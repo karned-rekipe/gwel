@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import AppButton from '@/components/atoms/AppButton.vue'
+import HouseholdMemberCard from '@/components/planning/HouseholdMemberCard.vue'
+import HouseholdMemberFormModal from '@/components/planning/HouseholdMemberFormModal.vue'
+import MemberSelector from '@/components/planning/MemberSelector.vue'
 import { householdScheduleService } from '@/services/householdScheduleService'
+import { useHouseholdMembersStore } from '@/stores/householdMembersStore'
 import { useTenantPreferencesStore } from '@/stores/tenantPreferencesStore'
 import type {
   DayOfWeek,
   HouseholdSchedule,
   HouseholdScheduleRulePayload,
+  ScheduleMode,
   SchoolPeriodType,
   SchoolVacationPeriod,
   SchoolVacationPeriodPayload,
@@ -14,6 +19,7 @@ import type {
   VacationPeriodSource,
   WeekParity,
 } from '@/types/householdSchedule'
+import type { HouseholdMember } from '@/types/householdMember'
 import type { MealSlotDefinition } from '@/types/tenantPreferences'
 
 interface ScheduleTemplate {
@@ -24,6 +30,7 @@ interface ScheduleTemplate {
 }
 
 const store = useTenantPreferencesStore()
+const membersStore = useHouseholdMembersStore()
 const defaultMealSlots: MealSlotDefinition[] = [
   { code: 'lunch', label: 'Déjeuner', position: 0 },
   { code: 'dinner', label: 'Dîner', position: 1 },
@@ -56,9 +63,13 @@ const form = reactive({
 const schedule = ref<HouseholdSchedule | null>(null)
 const scheduleEtag = ref<string | null>(null)
 const schoolZone = ref<SchoolZone | ''>('')
+const scheduleMode = ref<ScheduleMode>('headcount')
 const ruleHeadcounts = reactive<Record<string, string>>({})
+const ruleMemberIds = reactive<Record<string, string[]>>({})
 const vacationPeriods = ref<SchoolVacationPeriod[]>([])
 const vacationEtags = reactive<Record<string, string>>({})
+const showMemberModal = ref(false)
+const editingMember = ref<HouseholdMember | null>(null)
 const scheduleLoading = ref(false)
 const scheduleSaving = ref(false)
 const vacationSaving = ref(false)
@@ -115,6 +126,7 @@ const splitMealSlots = (value: string): MealSlotDefinition[] => {
 }
 
 const activeMealSlots = computed(() => splitMealSlots(form.mealSlots))
+const knownMemberIds = computed(() => new Set(membersStore.members.map((member) => member.uuid)))
 
 const ruleKey = (
   template: Pick<ScheduleTemplate, 'weekParity' | 'schoolPeriodType'>,
@@ -126,17 +138,37 @@ const setRuleValue = (key: string, event: Event): void => {
   ruleHeadcounts[key] = (event.target as HTMLInputElement).value
 }
 
+const setRuleMemberIds = (key: string, value: string[]): void => {
+  ruleMemberIds[key] = value
+}
+
+const clearRecord = <T,>(record: Record<string, T>): void => {
+  for (const key of Object.keys(record)) {
+    delete record[key]
+  }
+}
+
+const sanitizeRuleMemberIds = (): void => {
+  if (!knownMemberIds.value.size) return
+  for (const key of Object.keys(ruleMemberIds)) {
+    ruleMemberIds[key] = (ruleMemberIds[key] ?? []).filter((uuid) => knownMemberIds.value.has(uuid))
+  }
+}
+
 const applyScheduleToForm = (payload: HouseholdSchedule): void => {
   schoolZone.value = payload.school_zone ?? ''
-  for (const key of Object.keys(ruleHeadcounts)) {
-    delete ruleHeadcounts[key]
-  }
+  scheduleMode.value = payload.schedule_mode ?? 'headcount'
+  clearRecord(ruleHeadcounts)
+  clearRecord(ruleMemberIds)
   for (const rule of payload.rules) {
-    ruleHeadcounts[ruleKey({
+    const key = ruleKey({
       weekParity: rule.week_parity,
       schoolPeriodType: rule.school_period_type,
-    }, rule.day_of_week, rule.meal_slot_code)] = String(rule.headcount)
+    }, rule.day_of_week, rule.meal_slot_code)
+    ruleHeadcounts[key] = String(rule.headcount)
+    ruleMemberIds[key] = [...(rule.member_ids ?? [])]
   }
+  sanitizeRuleMemberIds()
 }
 
 const parseRuleHeadcount = (rawValue: string, label: string): number | null => {
@@ -155,14 +187,26 @@ const buildScheduleRules = (): HouseholdScheduleRulePayload[] => {
     for (const day of days) {
       for (const mealSlot of activeMealSlots.value) {
         const key = ruleKey(template, day.code, mealSlot.code)
-        const headcount = parseRuleHeadcount(ruleHeadcounts[key] ?? '', `${template.label} / ${day.label} / ${mealSlot.label}`)
-        if (headcount === null) continue
+        const rawMemberIds = ruleMemberIds[key] ?? []
+        const memberIds = knownMemberIds.value.size
+          ? rawMemberIds.filter((uuid) => knownMemberIds.value.has(uuid))
+          : rawMemberIds
+        let headcount = 0
+        if (scheduleMode.value === 'headcount') {
+          const parsed = parseRuleHeadcount(ruleHeadcounts[key] ?? '', `${template.label} / ${day.label} / ${mealSlot.label}`)
+          if (parsed === null) continue
+          headcount = parsed
+        } else {
+          if (!memberIds.length) continue
+          headcount = memberIds.length
+        }
         rules.push({
           week_parity: template.weekParity,
           school_period_type: template.schoolPeriodType,
           day_of_week: day.code,
           meal_slot_code: mealSlot.code,
           headcount,
+          member_ids: scheduleMode.value === 'members' ? memberIds : [],
         })
       }
     }
@@ -222,6 +266,7 @@ const save = async (): Promise<void> => {
 
     const response = await householdScheduleService.update(scheduleEtag.value, {
       school_zone: schoolZone.value || null,
+      schedule_mode: scheduleMode.value,
       rules: buildScheduleRules(),
     })
     schedule.value = response.payload
@@ -277,8 +322,32 @@ const formatVacationSource = (period: SchoolVacationPeriod): string => {
   return period.school_zone ? `Officielle zone ${period.school_zone}` : 'Officielle'
 }
 
+const openCreateMemberModal = (): void => {
+  editingMember.value = null
+  showMemberModal.value = true
+}
+
+const openEditMemberModal = (member: HouseholdMember): void => {
+  editingMember.value = member
+  showMemberModal.value = true
+}
+
+const closeMemberModal = (): void => {
+  showMemberModal.value = false
+  editingMember.value = null
+}
+
+const removeMember = async (member: HouseholdMember): Promise<void> => {
+  if (!window.confirm(`Supprimer ${member.name} ?`)) return
+  await membersStore.removeMember(member.uuid)
+  sanitizeRuleMemberIds()
+}
+
+watch(() => membersStore.members, sanitizeRuleMemberIds, { deep: true })
+
 onMounted(() => {
   void store.fetchPreferences()
+  void membersStore.fetchMembers()
   void fetchHouseholdSchedule()
   void fetchVacationPeriods()
 })
@@ -293,10 +362,10 @@ onMounted(() => {
       <h1>Contraintes de planification</h1>
     </header>
 
-    <p v-if="store.error || scheduleError" class="planning-preferences__error">
-      {{ store.error || scheduleError }}
+    <p v-if="store.error || scheduleError || membersStore.error" class="planning-preferences__error">
+      {{ store.error || scheduleError || membersStore.error }}
     </p>
-    <p v-else-if="store.loading || scheduleLoading" class="planning-preferences__muted">Chargement…</p>
+    <p v-else-if="store.loading || scheduleLoading || membersStore.loading" class="planning-preferences__muted">Chargement…</p>
     <p v-if="successMessage" class="planning-preferences__success">{{ successMessage }}</p>
 
     <form class="planning-preferences__form" @submit.prevent="save">
@@ -339,7 +408,42 @@ onMounted(() => {
 
       <section class="planning-preferences__section">
         <div class="planning-preferences__section-header">
+          <h2>Personnes du foyer</h2>
+          <AppButton type="button" variant="secondary" @click="openCreateMemberModal">Ajouter une personne</AppButton>
+        </div>
+
+        <div v-if="membersStore.members.length" class="household-members-grid">
+          <HouseholdMemberCard
+            v-for="member in membersStore.members"
+            :key="member.uuid"
+            :member="member"
+            @edit="openEditMemberModal"
+            @delete="removeMember"
+          />
+        </div>
+        <p v-else class="planning-preferences__muted">Aucune personne renseignée.</p>
+      </section>
+
+      <section class="planning-preferences__section">
+        <div class="planning-preferences__section-header">
           <h2>Planning foyer</h2>
+        </div>
+
+        <div class="schedule-mode-toggle" role="group" aria-label="Mode du planning foyer">
+          <button
+            type="button"
+            :class="['schedule-mode-toggle__button', scheduleMode === 'headcount' && 'schedule-mode-toggle__button--active']"
+            @click="scheduleMode = 'headcount'"
+          >
+            Nombre de personnes
+          </button>
+          <button
+            type="button"
+            :class="['schedule-mode-toggle__button', scheduleMode === 'members' && 'schedule-mode-toggle__button--active']"
+            @click="scheduleMode = 'members'"
+          >
+            Personnes nommées
+          </button>
         </div>
 
         <div class="schedule-templates">
@@ -360,6 +464,7 @@ onMounted(() => {
                     <th scope="row">{{ mealSlot.label }}</th>
                     <td v-for="day in days" :key="`${template.id}-${mealSlot.code}-${day.code}`">
                       <input
+                        v-if="scheduleMode === 'headcount'"
                         type="number"
                         min="0"
                         max="20"
@@ -368,6 +473,12 @@ onMounted(() => {
                         :aria-label="`${template.label} ${day.label} ${mealSlot.label}`"
                         :value="ruleHeadcounts[ruleKey(template, day.code, mealSlot.code)] ?? ''"
                         @input="setRuleValue(ruleKey(template, day.code, mealSlot.code), $event)"
+                      />
+                      <MemberSelector
+                        v-else
+                        :model-value="ruleMemberIds[ruleKey(template, day.code, mealSlot.code)] ?? []"
+                        :members="membersStore.members"
+                        @update:model-value="setRuleMemberIds(ruleKey(template, day.code, mealSlot.code), $event)"
                       />
                     </td>
                   </tr>
@@ -440,6 +551,13 @@ onMounted(() => {
         </div>
       </div>
     </section>
+
+    <HouseholdMemberFormModal
+      v-if="showMemberModal"
+      :member="editingMember"
+      @close="closeMemberModal"
+      @saved="membersStore.fetchMembers"
+    />
   </main>
 </template>
 
@@ -550,6 +668,40 @@ onMounted(() => {
   color: var(--color-text-tertiary);
 }
 
+.household-members-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.schedule-mode-toggle {
+  width: fit-content;
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.schedule-mode-toggle__button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.schedule-mode-toggle__button--active {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+}
+
 .schedule-templates {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
@@ -604,7 +756,8 @@ onMounted(() => {
 }
 
 .schedule-table td {
-  height: 34px;
+  min-height: 34px;
+  vertical-align: top;
 }
 
 .schedule-table input {

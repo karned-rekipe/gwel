@@ -327,11 +327,11 @@ const addNote = (): void => {
                   v-if="!readonly"
                   type="button"
                   class="meal-slot-modal__remove"
-                  title="Retirer"
-                  aria-label="Retirer ce repas"
+                  title="Retirer du repas"
+                  aria-label="Retirer ce contenu du repas"
                   @click="removeItem(item)"
                 >
-                  ×
+                  <span aria-hidden="true">🗑</span>
                 </button>
               </article>
             </div>
@@ -669,11 +669,17 @@ const addNote = (): void => {
   border-color: color-mix(in srgb, var(--color-border) 70%, transparent);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--color-surface) 88%, transparent);
-  color: var(--color-text-primary);
-  font-size: 1rem;
+  color: var(--color-danger);
+  font-size: 0.92rem;
   font-weight: 800;
   line-height: 1;
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+}
+
+.meal-slot-modal__remove:hover,
+.meal-slot-modal__remove:focus-visible {
+  border-color: color-mix(in srgb, var(--color-danger) 34%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 9%, var(--color-surface));
 }
 
 .meal-slot-modal__headcount-row {

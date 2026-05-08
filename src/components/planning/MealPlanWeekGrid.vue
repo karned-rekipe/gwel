@@ -19,8 +19,10 @@ const emit = defineEmits<{
 
 const scroller = ref<HTMLElement | null>(null)
 const collapsedSlotCodes = ref<string[]>([])
+const hasAppliedInitialScroll = ref(false)
 const mealHeadWidth = 104
 const dayColumnWidth = 184
+const dayDurationMs = 24 * 60 * 60 * 1000
 
 const dayFormatter = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
 const shortDayFormatter = new Intl.DateTimeFormat('fr-FR', { weekday: 'short' })
@@ -39,6 +41,12 @@ const addDays = (value: string, daysToAdd: number): string => {
   const date = new Date(`${value}T12:00:00`)
   date.setDate(date.getDate() + daysToAdd)
   return date.toISOString().slice(0, 10)
+}
+
+const daysBetween = (from: string, to: string): number => {
+  const start = new Date(`${from}T12:00:00`).getTime()
+  const end = new Date(`${to}T12:00:00`).getTime()
+  return Math.round((end - start) / dayDurationMs)
 }
 
 const easterSunday = (year: number): Date => {
@@ -165,25 +173,47 @@ const gridTemplateRows = computed(() => {
   return `50px ${rows.join(' ')}`
 })
 
-const scrollTodayIntoView = async (): Promise<void> => {
+const scrollTodayIntoView = async (): Promise<boolean> => {
   await nextTick()
   const scrollerElement = scroller.value
   const todayHead = scrollerElement?.querySelector<HTMLElement>('.week-grid__day-head--today')
-  if (!scrollerElement || !todayHead) return
+  if (!scrollerElement || !todayHead) return false
 
   scrollerElement.scrollLeft = Math.max(todayHead.offsetLeft - mealHeadWidth, 0)
+  return true
+}
+
+const keepScrollAnchorAfterRangeChange = async (previousStart: string, nextStart: string): Promise<void> => {
+  await nextTick()
+  const scrollerElement = scroller.value
+  if (!scrollerElement || previousStart === nextStart) return
+
+  const prependedDays = daysBetween(nextStart, previousStart)
+  scrollerElement.scrollLeft = Math.max(scrollerElement.scrollLeft + prependedDays * dayColumnWidth, 0)
 }
 
 watch(
-  () => [props.plan.date_start, props.plan.date_end, days.value.length],
-  () => {
-    void scrollTodayIntoView()
+  () => props.plan.date_start,
+  (nextStart, previousStart) => {
+    if (!hasAppliedInitialScroll.value) {
+      void scrollTodayIntoView().then((scrolled) => {
+        hasAppliedInitialScroll.value = scrolled
+      })
+      return
+    }
+
+    if (previousStart) {
+      void keepScrollAnchorAfterRangeChange(previousStart, nextStart)
+    }
   },
   { immediate: true },
 )
 
 onMounted(() => {
-  void scrollTodayIntoView()
+  if (hasAppliedInitialScroll.value) return
+  void scrollTodayIntoView().then((scrolled) => {
+    hasAppliedInitialScroll.value = scrolled
+  })
 })
 </script>
 

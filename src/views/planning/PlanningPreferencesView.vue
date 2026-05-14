@@ -29,6 +29,14 @@ interface ScheduleTemplate {
   schoolPeriodType: SchoolPeriodType
 }
 
+interface MemberSelectionModalState {
+  templateId: string
+  dayCode: DayOfWeek
+  mealSlotCode: string
+}
+
+const maxVisibleMembersInCell = 2
+
 const store = useTenantPreferencesStore()
 const membersStore = useHouseholdMembersStore()
 const defaultMealSlots: MealSlotDefinition[] = [
@@ -76,6 +84,10 @@ const vacationSaving = ref(false)
 const scheduleError = ref<string | null>(null)
 const vacationError = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
+const memberSelectionModal = ref<MemberSelectionModalState | null>(null)
+const memberSelectionIds = ref<string[]>([])
+const memberCopyTargetKeys = ref<string[]>([])
+const memberCopyTargetsExpanded = ref(false)
 
 const vacationForm = reactive<{
   source: VacationPeriodSource
@@ -127,6 +139,7 @@ const splitMealSlots = (value: string): MealSlotDefinition[] => {
 
 const activeMealSlots = computed(() => splitMealSlots(form.mealSlots))
 const knownMemberIds = computed(() => new Set(membersStore.members.map((member) => member.uuid)))
+const membersById = computed(() => new Map(membersStore.members.map((member) => [member.uuid, member])))
 
 const ruleKey = (
   template: Pick<ScheduleTemplate, 'weekParity' | 'schoolPeriodType'>,
@@ -141,6 +154,35 @@ const setRuleValue = (key: string, event: Event): void => {
 const setRuleMemberIds = (key: string, value: string[]): void => {
   ruleMemberIds[key] = value
 }
+
+const initialsFor = (name: string): string =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toLocaleUpperCase('fr-FR'))
+    .join('') || '?'
+
+const textColorFor = (hex: string): string => {
+  const value = hex.replace('#', '')
+  const red = Number.parseInt(value.slice(0, 2), 16)
+  const green = Number.parseInt(value.slice(2, 4), 16)
+  const blue = Number.parseInt(value.slice(4, 6), 16)
+  const luminance = (red * 299 + green * 587 + blue * 114) / 1000
+  return luminance > 145 ? '#111827' : '#ffffff'
+}
+
+const selectedMembersFor = (key: string): HouseholdMember[] =>
+  (ruleMemberIds[key] ?? []).flatMap((uuid) => {
+    const member = membersById.value.get(uuid)
+    return member ? [member] : []
+  })
+
+const visibleMembersFor = (key: string): HouseholdMember[] =>
+  selectedMembersFor(key).slice(0, maxVisibleMembersInCell)
+
+const hiddenMemberCountFor = (key: string): number =>
+  Math.max(selectedMembersFor(key).length - maxVisibleMembersInCell, 0)
 
 const clearRecord = <T,>(record: Record<string, T>): void => {
   for (const key of Object.keys(record)) {
@@ -169,6 +211,102 @@ const applyScheduleToForm = (payload: HouseholdSchedule): void => {
     ruleMemberIds[key] = [...(rule.member_ids ?? [])]
   }
   sanitizeRuleMemberIds()
+}
+
+const activeMemberSelection = computed(() => {
+  const modal = memberSelectionModal.value
+  if (!modal) return null
+  const template = scheduleTemplates.find((item) => item.id === modal.templateId)
+  const day = days.find((item) => item.code === modal.dayCode)
+  const mealSlot = activeMealSlots.value.find((item) => item.code === modal.mealSlotCode)
+  if (!template || !day || !mealSlot) return null
+  const key = ruleKey(template, day.code, mealSlot.code)
+  return {
+    template,
+    day,
+    mealSlot,
+    key,
+  }
+})
+
+const memberCopyTargetOptions = computed<string[]>(() => {
+  const active = activeMemberSelection.value
+  if (!active) return []
+
+  return activeMealSlots.value
+    .flatMap((mealSlot) => days.map((day) => {
+      return ruleKey(active.template, day.code, mealSlot.code)
+    }))
+    .filter((key) => key !== active.key)
+})
+
+const setNamedScheduleMode = (enabled: boolean): void => {
+  if (!enabled) {
+    for (const key of Object.keys(ruleMemberIds)) {
+      const memberCount = ruleMemberIds[key]?.filter((uuid) => knownMemberIds.value.has(uuid)).length ?? 0
+      if (memberCount > 0) {
+        ruleHeadcounts[key] = String(memberCount)
+      }
+    }
+    closeMemberSelectionModal()
+  }
+  scheduleMode.value = enabled ? 'members' : 'headcount'
+}
+
+const memberCopyTargetKey = (dayCode: DayOfWeek, mealSlotCode: string): string => {
+  const active = activeMemberSelection.value
+  if (!active) return ''
+  return ruleKey(active.template, dayCode, mealSlotCode)
+}
+
+const isCurrentMemberSelectionTarget = (dayCode: DayOfWeek, mealSlotCode: string): boolean =>
+  memberCopyTargetKey(dayCode, mealSlotCode) === activeMemberSelection.value?.key
+
+const openMemberSelectionModal = (
+  template: ScheduleTemplate,
+  day: { code: DayOfWeek; label: string },
+  mealSlot: MealSlotDefinition,
+): void => {
+  const key = ruleKey(template, day.code, mealSlot.code)
+  memberSelectionModal.value = {
+    templateId: template.id,
+    dayCode: day.code,
+    mealSlotCode: mealSlot.code,
+  }
+  memberSelectionIds.value = [...(ruleMemberIds[key] ?? [])]
+  memberCopyTargetKeys.value = []
+  memberCopyTargetsExpanded.value = false
+}
+
+const closeMemberSelectionModal = (): void => {
+  memberSelectionModal.value = null
+  memberSelectionIds.value = []
+  memberCopyTargetKeys.value = []
+  memberCopyTargetsExpanded.value = false
+}
+
+const setMemberSelectionIds = (value: string[]): void => {
+  memberSelectionIds.value = value
+}
+
+const toggleAllMemberCopyTargets = (): void => {
+  memberCopyTargetKeys.value = memberCopyTargetKeys.value.length === memberCopyTargetOptions.value.length
+    ? []
+    : [...memberCopyTargetOptions.value]
+}
+
+const applyMemberSelection = (): void => {
+  const active = activeMemberSelection.value
+  if (!active) return
+  const selectedIds = knownMemberIds.value.size
+    ? memberSelectionIds.value.filter((uuid) => knownMemberIds.value.has(uuid))
+    : [...memberSelectionIds.value]
+
+  setRuleMemberIds(active.key, selectedIds)
+  for (const targetKey of memberCopyTargetKeys.value) {
+    setRuleMemberIds(targetKey, selectedIds)
+  }
+  closeMemberSelectionModal()
 }
 
 const parseRuleHeadcount = (rawValue: string, label: string): number | null => {
@@ -429,20 +567,17 @@ onMounted(() => {
           <h2>Planning foyer</h2>
         </div>
 
-        <div class="schedule-mode-toggle" role="group" aria-label="Mode du planning foyer">
+        <div class="schedule-mode-control">
+          <div class="schedule-mode-control__state">
+            <span>Mode actif</span>
+            <strong>{{ scheduleMode === 'members' ? 'Personnes nommées' : 'Nombre de personnes' }}</strong>
+          </div>
           <button
             type="button"
-            :class="['schedule-mode-toggle__button', scheduleMode === 'headcount' && 'schedule-mode-toggle__button--active']"
-            @click="scheduleMode = 'headcount'"
+            :class="['schedule-mode-control__toggle', scheduleMode === 'members' && 'schedule-mode-control__toggle--active']"
+            @click="setNamedScheduleMode(scheduleMode !== 'members')"
           >
-            Nombre de personnes
-          </button>
-          <button
-            type="button"
-            :class="['schedule-mode-toggle__button', scheduleMode === 'members' && 'schedule-mode-toggle__button--active']"
-            @click="scheduleMode = 'members'"
-          >
-            Personnes nommées
+            {{ scheduleMode === 'members' ? 'Désactiver le mode nommé' : 'Activer le mode nommé' }}
           </button>
         </div>
 
@@ -474,12 +609,30 @@ onMounted(() => {
                         :value="ruleHeadcounts[ruleKey(template, day.code, mealSlot.code)] ?? ''"
                         @input="setRuleValue(ruleKey(template, day.code, mealSlot.code), $event)"
                       />
-                      <MemberSelector
+                      <button
                         v-else
-                        :model-value="ruleMemberIds[ruleKey(template, day.code, mealSlot.code)] ?? []"
-                        :members="membersStore.members"
-                        @update:model-value="setRuleMemberIds(ruleKey(template, day.code, mealSlot.code), $event)"
-                      />
+                        type="button"
+                        class="member-cell"
+                        :aria-label="`Configurer ${template.label} / ${day.label} / ${mealSlot.label}`"
+                        @click="openMemberSelectionModal(template, day, mealSlot)"
+                      >
+                        <span
+                          v-for="member in visibleMembersFor(ruleKey(template, day.code, mealSlot.code))"
+                          :key="member.uuid"
+                          class="member-cell__avatar"
+                          :style="{ backgroundColor: member.color, color: textColorFor(member.color) }"
+                          :title="member.name"
+                        >
+                          <img v-if="member.avatar_data" :src="member.avatar_data" :alt="member.name" />
+                          <span v-else>{{ initialsFor(member.name) }}</span>
+                        </span>
+                        <strong
+                          v-if="hiddenMemberCountFor(ruleKey(template, day.code, mealSlot.code))"
+                          class="member-cell__more"
+                        >
+                          +{{ hiddenMemberCountFor(ruleKey(template, day.code, mealSlot.code)) }}
+                        </strong>
+                      </button>
                     </td>
                   </tr>
                 </tbody>
@@ -558,6 +711,109 @@ onMounted(() => {
       @close="closeMemberModal"
       @saved="membersStore.fetchMembers"
     />
+
+    <Teleport to="body">
+      <div
+        v-if="activeMemberSelection"
+        class="member-selection-modal"
+        @click.self="closeMemberSelectionModal"
+        @keydown.esc="closeMemberSelectionModal"
+      >
+        <section
+          class="member-selection-modal__panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="member-selection-modal-title"
+        >
+          <header class="member-selection-modal__header">
+            <div>
+              <p>{{ activeMemberSelection.template.label }}</p>
+              <h2 id="member-selection-modal-title">{{ activeMemberSelection.day.label }} · {{ activeMemberSelection.mealSlot.label }}</h2>
+            </div>
+            <button
+              type="button"
+              class="member-selection-modal__close"
+              aria-label="Fermer"
+              @click="closeMemberSelectionModal"
+            >
+              ×
+            </button>
+          </header>
+
+          <section class="member-selection-modal__section">
+            <h3>Personnes</h3>
+            <MemberSelector
+              :model-value="memberSelectionIds"
+              :members="membersStore.members"
+              @update:model-value="setMemberSelectionIds"
+            />
+            <p v-if="!membersStore.members.length" class="member-selection-modal__muted">
+              Ajoutez d'abord les personnes du foyer.
+            </p>
+          </section>
+
+          <section class="member-selection-modal__section">
+            <button
+              type="button"
+              class="member-selection-modal__disclosure"
+              :aria-expanded="memberCopyTargetsExpanded"
+              @click="memberCopyTargetsExpanded = !memberCopyTargetsExpanded"
+            >
+              <span>Appliquer aussi à</span>
+              <strong v-if="memberCopyTargetKeys.length">{{ memberCopyTargetKeys.length }}</strong>
+            </button>
+
+            <div v-if="memberCopyTargetsExpanded" class="member-selection-modal__copy-panel">
+              <div class="member-selection-modal__section-header">
+                <h3>Autres repas</h3>
+                <button type="button" @click="toggleAllMemberCopyTargets">
+                  {{ memberCopyTargetKeys.length === memberCopyTargetOptions.length ? 'Tout retirer' : 'Tout sélectionner' }}
+                </button>
+              </div>
+
+              <div class="member-selection-modal__copy-table-wrapper">
+                <table class="member-selection-modal__copy-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Repas</th>
+                      <th v-for="day in days" :key="`copy-day-${day.code}`" scope="col">
+                        {{ day.label }}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="mealSlot in activeMealSlots" :key="`copy-meal-${mealSlot.code}`">
+                      <th scope="row">{{ mealSlot.label }}</th>
+                      <td v-for="day in days" :key="`copy-${day.code}-${mealSlot.code}`">
+                        <input
+                          v-if="isCurrentMemberSelectionTarget(day.code, mealSlot.code)"
+                          type="checkbox"
+                          checked
+                          disabled
+                          :aria-label="`${day.label} ${mealSlot.label} déjà sélectionné`"
+                        />
+                        <input
+                          v-else
+                          v-model="memberCopyTargetKeys"
+                          type="checkbox"
+                          :value="memberCopyTargetKey(day.code, mealSlot.code)"
+                          :aria-label="`Appliquer à ${day.label} ${mealSlot.label}`"
+                        />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <footer class="member-selection-modal__actions">
+            <AppButton type="button" variant="secondary" @click="closeMemberSelectionModal">Annuler</AppButton>
+            <AppButton type="button" @click="applyMemberSelection">Appliquer à ces repas</AppButton>
+          </footer>
+        </section>
+      </div>
+    </Teleport>
   </main>
 </template>
 
@@ -674,32 +930,52 @@ onMounted(() => {
   gap: 12px;
 }
 
-.schedule-mode-toggle {
-  width: fit-content;
-  display: inline-flex;
-  padding: 3px;
+.schedule-mode-control {
+  width: min(100%, 520px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-muted);
+  background: var(--color-surface);
 }
 
-.schedule-mode-toggle__button {
-  min-height: 34px;
-  padding: 6px 12px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
+.schedule-mode-control__state {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.schedule-mode-control__state span {
   color: var(--color-text-secondary);
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
+.schedule-mode-control__state strong {
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+}
+
+.schedule-mode-control__toggle {
+  min-height: 38px;
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  color: var(--color-primary);
   font: inherit;
   font-size: 0.86rem;
   font-weight: 700;
   cursor: pointer;
 }
 
-.schedule-mode-toggle__button--active {
-  background: var(--color-surface);
-  color: var(--color-primary);
-  box-shadow: var(--shadow-sm);
+.schedule-mode-control__toggle--active {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
 }
 
 .schedule-templates {
@@ -756,8 +1032,8 @@ onMounted(() => {
 }
 
 .schedule-table td {
-  min-height: 34px;
-  vertical-align: top;
+  height: 34px;
+  vertical-align: middle;
 }
 
 .schedule-table input {
@@ -768,6 +1044,63 @@ onMounted(() => {
   text-align: center;
   font-size: 0.88rem;
   font-weight: 700;
+}
+
+.member-cell {
+  width: 100%;
+  min-height: 30px;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.member-cell:hover,
+.member-cell:focus-visible {
+  background: var(--color-surface-muted);
+}
+
+.member-cell:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.member-cell__avatar,
+.member-cell__more {
+  width: 22px;
+  height: 22px;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -6px;
+  border: 2px solid var(--color-surface);
+  border-radius: var(--radius-full);
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.member-cell__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.member-cell__more {
+  width: auto;
+  min-width: 26px;
+  padding: 0 5px;
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
+  color: var(--color-primary);
+  font-size: 0.58rem;
 }
 
 .planning-preferences__actions {
@@ -826,12 +1159,192 @@ onMounted(() => {
   margin-bottom: 14px;
 }
 
+.member-selection-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.member-selection-modal__panel {
+  width: min(760px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.member-selection-modal__header,
+.member-selection-modal__section-header,
+.member-selection-modal__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.member-selection-modal__header p {
+  margin: 0 0 2px;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.member-selection-modal__header h2,
+.member-selection-modal__section h3 {
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.member-selection-modal__header h2 {
+  font-size: 1.15rem;
+}
+
+.member-selection-modal__section h3 {
+  font-size: 0.95rem;
+}
+
+.member-selection-modal__close,
+.member-selection-modal__section-header button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.member-selection-modal__close {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+}
+
+.member-selection-modal__section-header button {
+  min-height: 32px;
+  padding: 5px 10px;
+  font-size: 0.8rem;
+}
+
+.member-selection-modal__section {
+  display: grid;
+  gap: 10px;
+}
+
+.member-selection-modal__disclosure {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.member-selection-modal__disclosure strong {
+  min-width: 24px;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: #ffffff;
+  font-size: 0.72rem;
+}
+
+.member-selection-modal__copy-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.member-selection-modal__copy-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.member-selection-modal__copy-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.member-selection-modal__copy-table th,
+.member-selection-modal__copy-table td {
+  border: 1px solid var(--color-border);
+  padding: 6px;
+  text-align: center;
+}
+
+.member-selection-modal__copy-table th {
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  font-size: 0.74rem;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.member-selection-modal__copy-table thead th:first-child,
+.member-selection-modal__copy-table tbody th {
+  width: 110px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.member-selection-modal__copy-table input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-primary);
+}
+
+.member-selection-modal__muted {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.88rem;
+}
+
 @media (max-width: 860px) {
   .planning-preferences__split,
   .planning-preferences__split--three,
   .vacation-form,
   .vacation-row {
     grid-template-columns: 1fr;
+  }
+
+  .schedule-mode-control,
+  .member-selection-modal__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .schedule-mode-control__toggle {
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .member-selection-modal__header,
+  .member-selection-modal__section-header {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 </style>

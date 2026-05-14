@@ -8,10 +8,12 @@ import { useTags } from '@/composables/useCatalogQueries'
 import { useListNavigation } from '@/composables/useListNavigation'
 import { useInfiniteRecipes } from '@/composables/useRecipeQueries'
 import type { Recipe } from '@/types/recipe'
+import { countryFlagFrom, countryOptions } from '@/utils/countryFlags'
 
 const PER_PAGE = 50
 const router = useRouter()
 const navigation = useListNavigation('recipes')
+const currentMonth = new Date().getMonth() + 1
 const searchTerm = ref(navigation.state.search)
 const filters = reactive({
   tag_uuid: navigation.state.filters.tag_uuid ?? '',
@@ -19,7 +21,7 @@ const filters = reactive({
   origin_country: navigation.state.filters.origin_country ?? '',
   price: navigation.state.filters.price ?? '',
   favorite: navigation.state.filters.favorite ?? '',
-  season_month: navigation.state.filters.season_month ?? '',
+  season_mode: navigation.state.filters.season_mode ?? navigation.state.filters.season_month ?? '',
 })
 
 const queryFilters = computed(() => ({
@@ -29,7 +31,7 @@ const queryFilters = computed(() => ({
   origin_country: filters.origin_country.trim().toUpperCase() || undefined,
   price: filters.price || undefined,
   favorite: filters.favorite === '' ? null : filters.favorite === 'true',
-  season_month: filters.season_month || undefined,
+  season_month: filters.season_mode === 'current' ? String(currentMonth) : undefined,
   per_page: PER_PAGE,
 }))
 
@@ -41,16 +43,33 @@ const {
   error,
   fetchNextPage,
   hasNextPage,
+  isFetchNextPageError,
   isFetchingNextPage,
 } = useInfiniteRecipes(queryFilters)
 
-const displayedRecipes = computed(() => data.value?.pages.flatMap((page) => page.data) ?? [])
+const loadedRecipes = computed(() => data.value?.pages.flatMap((page) => page.data) ?? [])
+const displayedRecipes = computed(() => {
+  if (filters.season_mode !== 'year_round') return loadedRecipes.value
+  return loadedRecipes.value.filter((recipe) => Object.keys(recipe.season_months ?? {}).length === 0)
+})
 const lastPagination = computed(() => {
   const pages = data.value?.pages ?? []
   return pages[pages.length - 1]?.pagination ?? null
 })
-const total = computed(() => lastPagination.value?.total ?? displayedRecipes.value.length)
+const total = computed(() => (
+  filters.season_mode === 'year_round'
+    ? displayedRecipes.value.length
+    : lastPagination.value?.total ?? displayedRecipes.value.length
+))
 const isEmpty = computed(() => !isLoading.value && displayedRecipes.value.length === 0)
+const hasDisplayedRecipes = computed(() => displayedRecipes.value.length > 0)
+const isBlockingError = computed(() => isError.value && !hasDisplayedRecipes.value)
+const recoverableErrorMessage = computed(() => {
+  if (!isFetchNextPageError.value || !hasDisplayedRecipes.value) return ''
+  return error.value?.message.includes('timeout')
+    ? 'Le chargement de la suite a pris trop de temps. Les recettes déjà chargées restent disponibles.'
+    : error.value?.message || 'Chargement de la suite impossible.'
+})
 
 
 const filterState = computed(() => ({
@@ -59,7 +78,7 @@ const filterState = computed(() => ({
   origin_country: filters.origin_country,
   price: filters.price,
   favorite: filters.favorite,
-  season_month: filters.season_month,
+  season_mode: filters.season_mode,
 }))
 
 const loadRemaining = async (): Promise<void> => {
@@ -97,14 +116,9 @@ onMounted(() => {
 
 <template>
   <section class="recipe-list">
-    <header class="recipe-list__header">
-      <h1 class="recipe-list__title">Recettes</h1>
-      <RouterLink to="/recipes/new" class="recipe-list__create">Nouvelle recette</RouterLink>
-    </header>
-
     <ResourceList
       :is-loading="isLoading"
-      :is-error="isError"
+      :is-error="isBlockingError"
       :error-message="error?.message"
       :is-empty="isEmpty"
       :loaded-count="displayedRecipes.length"
@@ -122,28 +136,41 @@ onMounted(() => {
             <option value="">Tags</option>
             <option v-for="tag in tags ?? []" :key="tag.uuid" :value="tag.uuid">{{ tag.name }}</option>
           </select>
-          <select v-model="filters.difficulty" class="recipe-list__control" aria-label="Filtrer par difficulté">
-            <option value="">Difficulté</option>
-            <option v-for="level in 5" :key="level" :value="String(level)">{{ level }}/5</option>
+          <select v-model="filters.difficulty" class="recipe-list__control recipe-list__control--compact" aria-label="Filtrer par difficulté">
+            <option value="">👨‍🍳</option>
+            <option v-for="level in 5" :key="level" :value="String(level)">👨‍🍳 {{ level }}</option>
           </select>
-          <input v-model="filters.origin_country" class="recipe-list__control" aria-label="Filtrer par origine" placeholder="Origine" />
-          <select v-model="filters.price" class="recipe-list__control" aria-label="Filtrer par prix">
-            <option value="">Prix</option>
-            <option v-for="level in 5" :key="level" :value="String(level)">{{ level }}/5</option>
+          <select v-model="filters.origin_country" class="recipe-list__control" aria-label="Filtrer par origine">
+            <option value="">⚑ Origine</option>
+            <option v-for="country in countryOptions" :key="country.code" :value="country.code">
+              {{ countryFlagFrom(country.code) }} {{ country.name }}
+            </option>
           </select>
-          <select v-model="filters.favorite" class="recipe-list__control" aria-label="Filtrer par favori">
-            <option value="">Favoris</option>
-            <option value="true">Favoris</option>
-            <option value="false">Non favoris</option>
+          <select v-model="filters.price" class="recipe-list__control recipe-list__control--compact" aria-label="Filtrer par prix">
+            <option value="">€</option>
+            <option v-for="level in 5" :key="level" :value="String(level)">{{ '€'.repeat(level) }}</option>
           </select>
-          <select v-model="filters.season_month" class="recipe-list__control" aria-label="Filtrer par saison">
-            <option value="">Saison</option>
-            <option v-for="month in 12" :key="month" :value="String(month)">Mois {{ month }}</option>
+          <select v-model="filters.favorite" class="recipe-list__control recipe-list__control--compact" aria-label="Filtrer par favori">
+            <option value="">★</option>
+            <option value="true">★ Oui</option>
+            <option value="false">☆ Non</option>
           </select>
+          <select v-model="filters.season_mode" class="recipe-list__control" aria-label="Filtrer par saison">
+            <option value="">Non sélectionné</option>
+            <option value="current">De saison</option>
+            <option value="year_round">Toute saison</option>
+          </select>
+          <RouterLink to="/recipes/new" class="recipe-list__create" aria-label="Créer une recette">
+            <span aria-hidden="true">＋</span>
+            Créer
+          </RouterLink>
         </div>
       </template>
 
       <div class="recipe-list__grid">
+        <p v-if="recoverableErrorMessage" class="recipe-list__inline-error">
+          {{ recoverableErrorMessage }}
+        </p>
         <RecipeCard
           v-for="recipe in displayedRecipes"
           :key="recipe.uuid"
@@ -160,34 +187,21 @@ onMounted(() => {
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 22px 24px 48px;
-}
-
-.recipe-list__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.recipe-list__title {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-size: clamp(1.45rem, 2.4vw, 2rem);
-  font-weight: 700;
+  padding: 18px 24px 48px;
 }
 
 .recipe-list__create {
-  min-height: 42px;
+  min-height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 9px 14px;
-  border-radius: var(--radius-md);
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
   background: var(--color-primary);
   color: #ffffff;
-  font-weight: 650;
+  font-size: 0.9rem;
+  font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -200,7 +214,7 @@ onMounted(() => {
 
 .recipe-list__toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 1.8fr) repeat(6, minmax(112px, 1fr));
+  grid-template-columns: minmax(220px, 1.8fr) minmax(106px, 0.8fr) 86px minmax(140px, 1fr) 78px 96px minmax(128px, 0.9fr) auto;
   gap: 8px;
   align-items: center;
 }
@@ -214,6 +228,10 @@ onMounted(() => {
   color: var(--color-text-primary);
   font: inherit;
   padding: 8px 10px;
+}
+
+.recipe-list__control--compact {
+  padding-inline: 8px;
 }
 
 .recipe-list :deep(.resource-list__body) {
@@ -230,6 +248,18 @@ onMounted(() => {
   gap: 14px;
 }
 
+.recipe-list__inline-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 28%, var(--color-border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+  color: var(--color-danger);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
 @media (max-width: 980px) {
   .recipe-list__toolbar {
     grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
@@ -237,11 +267,6 @@ onMounted(() => {
 }
 
 @media (max-width: 560px) {
-  .recipe-list__header {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
   .recipe-list__grid {
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 12px;

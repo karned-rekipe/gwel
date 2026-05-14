@@ -2,12 +2,15 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import MealSlotCell from '@/components/planning/MealSlotCell.vue'
 import { formatMealLabel } from '@/components/planning/mealSlotLabels'
+import type { HouseholdMember } from '@/types/householdMember'
 import type { MealPlanRead, MealSlot, SlotPatchOperation } from '@/types/mealPlan'
 
 const props = defineProps<{
   plan: MealPlanRead
   mealLabels?: Record<string, string>
   visibleSlotCodes?: string[]
+  householdMembers?: HouseholdMember[]
+  usesNamedMembers?: boolean
   loading?: boolean
   readonly?: boolean
 }>()
@@ -150,6 +153,7 @@ const emptySlot = (date: string, slotCode: string): MealSlot => ({
   slot_code: slotCode,
   headcount: null,
   headcount_source: null,
+  member_ids: [],
   items: [],
 })
 
@@ -157,6 +161,13 @@ const mealSlotLabel = (slotCode: string): string => props.mealLabels?.[slotCode]
 
 const mealSlotFor = (date: string, slotCode: string): MealSlot =>
   slotByKey.value.get(`${date}:${slotCode}`) ?? emptySlot(date, slotCode)
+
+const availableSlotRows = computed(() =>
+  slotCodes.value.map((slotCode) => ({
+    slot_code: slotCode,
+    label: mealSlotLabel(slotCode),
+  })),
+)
 
 const isSlotCollapsed = (slotCode: string): boolean => collapsedSlotCodes.value.includes(slotCode)
 
@@ -293,6 +304,9 @@ onMounted(() => {
               :show-meal-label="false"
               :collapsed="isSlotCollapsed(slotCode)"
               :readonly="readonly"
+              :household-members="householdMembers"
+              :uses-named-members="usesNamedMembers"
+              :available-slot-rows="availableSlotRows"
               @patch="emit('patch', $event)"
             />
           </div>

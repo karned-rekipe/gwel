@@ -17,15 +17,16 @@ export interface RecipeListFilters {
   per_page?: number
 }
 
-const recipeApi = createHttpClient(`${appConfig.services.recipeApiBaseUrl}/v1`)
+const recipeApi = createHttpClient(`${appConfig.services.recipeApiBaseUrl}/v1`, 30000)
 
 export const recipeService = {
-  async getPage(filters: RecipeListFilters = {}): Promise<PaginatedResponse<Recipe>> {
+  async getPage(filters: RecipeListFilters = {}, signal?: AbortSignal): Promise<PaginatedResponse<Recipe>> {
     const params = Object.fromEntries(
       Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && value !== ''),
     )
     const response = await recipeApi.get<PaginatedResponse<Recipe>>('/recipes/', {
       params,
+      signal,
     })
 
     return response.data

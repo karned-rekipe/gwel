@@ -62,7 +62,10 @@ export function useRecipeValidation(formData: Reactive<RecipeFormData>) {
       result.name = 'Le nom de la recette est obligatoire.'
     }
     if (!hasNumber(formData.servings)) {
-      result.servings = 'Le nombre de portions est obligatoire.'
+      result.servings = 'Le nombre de personnes est obligatoire.'
+    }
+    if (formData.unitCount.trim() && !hasNumber(formData.unitCount)) {
+      result.unitCount = 'Le nombre de parts doit être positif.'
     }
 
     formData.ingredients.forEach((ingredient, index) => {
@@ -118,16 +121,22 @@ export function useRecipeValidation(formData: Reactive<RecipeFormData>) {
   const firstInvalidFieldId = computed(() => {
     if (errors.value.name) return 'recipe-name'
     if (errors.value.servings) return 'recipe-servings'
+    if (errors.value.unitCount) return 'recipe-unit-count'
 
     for (const index of formData.ingredients.keys()) {
-      if (errors.value[`ingredients.${index}.ingredientUuid`]) return `ingredient-select-${index}`
-      if (errors.value[`ingredients.${index}.quantity`]) return `ingredient-quantity-${index}`
-      if (errors.value[`ingredients.${index}.unit`]) return `ingredient-unit-${index}`
+      if (
+        errors.value[`ingredients.${index}.ingredientUuid`]
+        || errors.value[`ingredients.${index}.quantity`]
+        || errors.value[`ingredients.${index}.unit`]
+      ) {
+        return `ingredient-row-${index}`
+      }
     }
 
     for (const index of formData.equipment.keys()) {
-      if (errors.value[`equipment.${index}.equipmentUuid`]) return `equipment-select-${index}`
-      if (errors.value[`equipment.${index}.quantity`]) return `equipment-quantity-${index}`
+      if (errors.value[`equipment.${index}.equipmentUuid`] || errors.value[`equipment.${index}.quantity`]) {
+        return `equipment-row-${index}`
+      }
     }
 
     for (const index of formData.components.keys()) {
@@ -192,6 +201,7 @@ export function useRecipeFormatter() {
     description: compact(formData.description) || null,
     origin_country: compact(formData.originCountry) || null,
     servings: Number(parseNumber(formData.servings)),
+    unit_count: parseNumber(formData.unitCount),
     difficulty: parseNumber(formData.difficulty),
     price: parseNumber(formData.price),
     main_image: compact(formData.mainImage) || null,

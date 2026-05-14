@@ -32,6 +32,7 @@ export interface MealItem {
   position: number
   item_type: MealItemType
   headcount?: number | null
+  member_ids: string[]
   recipe_uuid?: string | null
   recipe_snapshot?: RecipeSnapshot | null
   recipe_status?: string | null
@@ -49,6 +50,7 @@ export interface MealSlot {
   slot_code: SlotCode
   headcount?: number | null
   headcount_source?: HeadcountSource | null
+  member_ids: string[]
   items: MealItem[]
 }
 
@@ -97,6 +99,7 @@ export interface MealSlotPayload {
   slot_code: SlotCode
   headcount?: number | null
   headcount_source?: HeadcountSource | null
+  member_ids?: string[]
   items: MealItemPayload[]
 }
 
@@ -105,6 +108,7 @@ export interface MealItemPayload {
   position?: number | null
   item_type: MealItemType
   headcount?: number | null
+  member_ids?: string[]
   recipe_uuid?: string | null
   recipe_snapshot?: RecipeSnapshot | null
   ingredient_uuid?: string | null
@@ -116,10 +120,11 @@ export interface MealItemPayload {
 }
 
 export interface SlotPatchOperation {
-  op: 'set_headcount' | 'add_item' | 'update_item' | 'remove_item' | 'reorder_items'
+  op: 'set_headcount' | 'set_members' | 'add_item' | 'update_item' | 'remove_item' | 'reorder_items'
   slot_date: string
   slot_code: SlotCode
   headcount?: number | null
+  member_ids?: string[]
   item_uuid?: string | null
   item?: MealItemPayload | null
   new_positions?: Record<string, number> | null

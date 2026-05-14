@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 
 const route = useRoute()
+const recipeCatalog = useRecipeCatalogStore()
 const isMenuOpen = ref(false)
 
 const isPlanningRoute = computed(() => String(route.name).startsWith('planning-'))
@@ -28,6 +30,10 @@ watch(
     closeMenu()
   },
 )
+
+onMounted(() => {
+  recipeCatalog.warmup()
+})
 </script>
 
 <template>

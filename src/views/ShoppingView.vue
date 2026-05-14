@@ -1040,7 +1040,7 @@ onBeforeUnmount(() => {
           <div class="shopping-source-table__row shopping-source-table__row--header" role="row">
             <span role="columnheader">Jour</span>
             <span role="columnheader">Repas</span>
-            <span role="columnheader">Pax</span>
+            <span role="columnheader">Personnes</span>
             <span role="columnheader">Recette</span>
             <span role="columnheader">Base</span>
             <span role="columnheader">Facteur</span>

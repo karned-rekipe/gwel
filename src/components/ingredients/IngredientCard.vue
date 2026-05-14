@@ -4,7 +4,6 @@ const props = defineProps<{
   imageUrl?: string | null
   hasAlert?: boolean
   alertLabel?: string
-  statusLabel?: string
 }>()
 
 defineEmits<{
@@ -39,7 +38,6 @@ const initial = props.name.trim().charAt(0).toLocaleUpperCase('fr-FR') || 'I'
 
     <div class="ingredient-card__body">
       <h2>{{ name }}</h2>
-      <p v-if="statusLabel">{{ statusLabel }}</p>
     </div>
   </article>
 </template>
@@ -123,17 +121,6 @@ const initial = props.name.trim().charAt(0).toLocaleUpperCase('fr-FR') || 'I'
   font-size: 0.98rem;
   font-weight: 750;
   letter-spacing: 0;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ingredient-card__body p {
-  overflow: hidden;
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: 0.78rem;
-  font-weight: 650;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;

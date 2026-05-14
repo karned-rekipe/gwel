@@ -172,12 +172,6 @@ const ingredientAlertLabel = (ingredient: Ingredient): string => {
   return missingStatusLabel(ingredient)
 }
 
-const cardStatusLabel = (ingredient: Ingredient): string => {
-  if (hasPendingAiSuggestion(ingredient)) return 'Suggestion IA'
-  if (hasMissingFields(ingredient)) return 'À compléter'
-  return ''
-}
-
 const ingredientImageUrl = (ingredient: Ingredient): string | null =>
   ingredient.media_profile.main_image_uri?.trim() || null
 
@@ -491,25 +485,14 @@ onMounted(async () => {
 
 <template>
   <main class="ingredient-page">
-    <header class="ingredient-page__header">
-      <div>
-        <p>Catalogue</p>
-        <h1>Mes ingrédients</h1>
-        <span>{{ resultSummary }}</span>
-      </div>
-      <AppButton @click="openCreateModal">Nouvel ingrédient</AppButton>
-    </header>
-
     <p v-if="deleteError" class="ingredient-page__error">{{ deleteError }}</p>
     <p v-if="enrichmentMessage" class="ingredient-page__notice">{{ enrichmentMessage }}</p>
 
     <section class="ingredient-page__toolbar" aria-label="Filtres ingrédients">
       <ResourceSearchBar v-model="searchTerm" placeholder="Rechercher un ingrédient">
         <div class="ingredient-page__toolbar-actions">
-          <label class="ingredient-page__filter">
-            <span>Qualité</span>
-            <select v-model="qualityFilter">
-              <option value="all">Tous</option>
+          <select v-model="qualityFilter" class="ingredient-page__quality-select" aria-label="Filtrer par qualité">
+              <option value="all">Qualité · Tous</option>
               <option value="missing">Informations manquantes</option>
               <option value="without_image">Sans image</option>
               <option value="season_now">De saison</option>
@@ -519,24 +502,10 @@ onMounted(async () => {
               <option value="conversion_missing">Conversion manquante</option>
               <option value="ai_suggestion">Suggestion IA</option>
             </select>
-          </label>
-          <AppButton
-            variant="secondary"
-            :disabled="isRunningEnrichmentBatch || !visibleIncompleteIngredients.length"
-            @click="enrichVisibleMissingIngredients"
-          >
-            {{ isRunningEnrichmentBatch ? 'Enrichissement…' : 'Enrichir les manquants' }}
+          <AppButton @click="openCreateModal">
+            <span aria-hidden="true">＋</span>
+            Nouvel ingrédient
           </AppButton>
-          <AppButton
-            variant="secondary"
-            :disabled="!duplicateGroups?.length"
-            @click="isDedupeModalOpen = true"
-          >
-            Fusion
-          </AppButton>
-          <router-link :to="{ name: 'ingredient-settings' }" class="ingredient-page__settings" title="Réglages ingrédients">
-            ⚙
-          </router-link>
         </div>
       </ResourceSearchBar>
     </section>
@@ -553,7 +522,6 @@ onMounted(async () => {
           :image-url="ingredientImageUrl(ingredient)"
           :has-alert="hasIngredientAlert(ingredient)"
           :alert-label="ingredientAlertLabel(ingredient)"
-          :status-label="cardStatusLabel(ingredient)"
           @click="openIngredient(ingredient)"
         />
       </div>
@@ -740,38 +708,7 @@ onMounted(async () => {
 .ingredient-page {
   width: min(1440px, calc(100vw - 32px));
   margin: 0 auto;
-  padding: 18px 0 48px;
-}
-
-.ingredient-page__header {
-  display: flex;
-  gap: 16px;
-  align-items: end;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.ingredient-page__header div {
-  min-width: 0;
-}
-
-.ingredient-page__header p,
-.ingredient-page__header span {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-weight: 650;
-}
-
-.ingredient-page__header p {
-  font-size: 0.86rem;
-}
-
-.ingredient-page__header h1 {
-  margin: 3px 0 3px;
-  color: var(--color-text-primary);
-  font-size: clamp(1.8rem, 4vw, 2.6rem);
-  letter-spacing: 0;
-  line-height: 1.05;
+  padding: 14px 0 48px;
 }
 
 .ingredient-page__toolbar {
@@ -786,15 +723,6 @@ onMounted(async () => {
   justify-content: flex-end;
 }
 
-.ingredient-page__filter {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  color: var(--color-text-secondary);
-  font-size: 0.86rem;
-  font-weight: 650;
-}
-
 .ingredient-page__field {
   display: grid;
   gap: 8px;
@@ -804,7 +732,7 @@ onMounted(async () => {
 }
 
 .ingredient-page__field select,
-.ingredient-page__filter select,
+.ingredient-page__quality-select,
 .ingredient-page__dedupe select {
   min-height: 38px;
   border: 1px solid var(--color-border);
@@ -1121,17 +1049,11 @@ onMounted(async () => {
     padding-top: 14px;
   }
 
-  .ingredient-page__header {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
   :deep(.resource-search) {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .ingredient-page__toolbar-actions,
-  .ingredient-page__filter {
+  .ingredient-page__toolbar-actions {
     width: 100%;
     display: grid;
     grid-template-columns: minmax(0, 1fr);

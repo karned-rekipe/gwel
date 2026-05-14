@@ -3,6 +3,7 @@ import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { aiRecipeService } from '@/services/aiRecipeService'
 import { mediaService } from '@/services/mediaService'
 import { recipeService, type RecipeListFilters } from '@/services/recipeService'
+import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 import type { Recipe, RecipeCreatePayload } from '@/types/recipe'
 
 export const recipeKeys = {
@@ -16,6 +17,12 @@ export const recipeKeys = {
 
 const serializeFilters = (filters: RecipeListFilters): string => JSON.stringify(filters)
 
+const refreshRecipeCatalog = (): void => {
+  const recipeCatalog = useRecipeCatalogStore()
+  recipeCatalog.markStale()
+  void recipeCatalog.refresh({ force: true, foreground: false })
+}
+
 export function useRecipes() {
   return useQuery({
     queryKey: recipeKeys.lists(),
@@ -27,15 +34,16 @@ export function useRecipes() {
 export function useInfiniteRecipes(filters: MaybeRefOrGetter<RecipeListFilters>) {
   return useInfiniteQuery({
     queryKey: computed(() => recipeKeys.list(serializeFilters(toValue(filters)))),
-    queryFn: ({ pageParam }) =>
+    queryFn: ({ pageParam, signal }) =>
       recipeService.getPage({
         ...toValue(filters),
         page: pageParam,
         per_page: toValue(filters).per_page ?? 24,
-      }),
+      }, signal),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => lastPage.pagination.next_page ?? undefined,
     staleTime: 2 * 60 * 1000,
+    retry: 1,
   })
 }
 
@@ -65,6 +73,7 @@ export function useCreateRecipe() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
       queryClient.invalidateQueries({ queryKey: recipeKeys.all })
+      refreshRecipeCatalog()
     },
   })
 }
@@ -78,6 +87,7 @@ export function useUpdateRecipe() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: recipeKeys.detail(variables.uuid) })
       queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
+      refreshRecipeCatalog()
     },
   })
 }
@@ -90,6 +100,7 @@ export function useDeleteRecipe() {
     onSuccess: (_, uuid) => {
       queryClient.removeQueries({ queryKey: recipeKeys.detail(uuid) })
       queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
+      refreshRecipeCatalog()
     },
   })
 }
@@ -101,6 +112,7 @@ export function useDuplicateRecipe() {
     mutationFn: (uuid: string) => recipeService.duplicate(uuid),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
+      refreshRecipeCatalog()
     },
   })
 }
@@ -120,6 +132,7 @@ export function useCreateRecipeWithAI() {
       if (result.created) {
         queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
         queryClient.invalidateQueries({ queryKey: recipeKeys.all })
+        refreshRecipeCatalog()
       }
     },
   })
@@ -140,6 +153,7 @@ export function useGenerateRecipeImage() {
     onSuccess: (_, recipe) => {
       queryClient.invalidateQueries({ queryKey: recipeKeys.detail(recipe.uuid) })
       queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
+      refreshRecipeCatalog()
     },
   })
 }

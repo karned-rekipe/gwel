@@ -8,17 +8,21 @@ import {
   useCreateIngredientRayon,
   useDeleteIngredientGroup,
   useDeleteIngredientRayon,
+  useIngredientDuplicates,
   useIngredientGroups,
   useIngredientRayons,
+  useMergeIngredientDuplicates,
+  useRunIngredientEnrichmentBatch,
   useUpdateIngredientGroup,
   useUpdateIngredientRayon,
 } from '@/composables/useCatalogQueries'
+import { ingredientService } from '@/services/ingredientService'
 import { shoppingService } from '@/services/shoppingService'
 import type { PaginationInfo } from '@/types/api'
-import type { IngredientGroup, IngredientRayon } from '@/types/recipe'
+import type { DuplicateGroup, Ingredient, IngredientGroup, IngredientRayon } from '@/types/recipe'
 import type { Supplier, SupplierType } from '@/types/shopping'
 
-type Tab = 'groups' | 'rayons' | 'suppliers'
+type Tab = 'groups' | 'rayons' | 'suppliers' | 'maintenance'
 
 const activeTab = ref<Tab>('groups')
 const editingUuid = ref<string | null>(null)
@@ -33,6 +37,10 @@ const isLoadingSuppliers = ref(false)
 const isFetchingMoreSuppliers = ref(false)
 const isCreatingSupplier = ref(false)
 const isUpdatingSupplier = ref(false)
+const maintenanceMessage = ref('')
+const incompleteIngredients = ref<Ingredient[]>([])
+const isLoadingIncompleteIngredients = ref(false)
+const duplicateTargets = reactive<Record<string, string>>({})
 
 const { data: groups } = useIngredientGroups()
 const { data: rayons } = useIngredientRayons()
@@ -42,12 +50,16 @@ const { mutate: deleteGroup, isPending: isDeletingGroup } = useDeleteIngredientG
 const { mutate: createRayon, isPending: isCreatingRayon } = useCreateIngredientRayon()
 const { mutate: updateRayon, isPending: isUpdatingRayon } = useUpdateIngredientRayon()
 const { mutate: deleteRayon, isPending: isDeletingRayon } = useDeleteIngredientRayon()
+const { data: duplicateGroups, refetch: refetchDuplicates } = useIngredientDuplicates()
+const { mutate: runEnrichmentBatch, isPending: isRunningEnrichmentBatch } = useRunIngredientEnrichmentBatch()
+const { mutate: mergeDuplicates, isPending: isMerging } = useMergeIngredientDuplicates()
 
 const rows = computed(() => (activeTab.value === 'groups' ? groups.value ?? [] : rayons.value ?? []))
 const isBusy = computed(() => isCreatingGroup.value || isUpdatingGroup.value || isCreatingRayon.value || isUpdatingRayon.value)
 const isDeleting = computed(() => isDeletingGroup.value || isDeletingRayon.value)
 const hasMoreSuppliers = computed(() => supplierPagination.value?.has_next ?? false)
 const isSavingSupplier = computed(() => isCreatingSupplier.value || isUpdatingSupplier.value)
+const hasIncompleteIngredients = computed(() => incompleteIngredients.value.length > 0)
 let supplierObserver: IntersectionObserver | null = null
 
 const supplierTypeLabels: Record<SupplierType, string> = {
@@ -74,8 +86,79 @@ const selectTab = async (tab: Tab): Promise<void> => {
   if (tab === 'suppliers' && suppliers.value.length === 0) {
     await loadSuppliers(true)
   }
+  if (tab === 'maintenance') {
+    await Promise.all([loadIncompleteIngredients(), refetchDuplicates()])
+  }
   await nextTick()
   observeSupplierSentinel()
+}
+
+const isIngredientIncomplete = (ingredient: Ingredient): boolean =>
+  ingredient.enrichment_profile.missing_fields.length > 0
+  || ingredient.enrichment_profile.status === 'missing'
+  || ingredient.enrichment_profile.status === 'partial'
+
+const loadIncompleteIngredients = async (): Promise<void> => {
+  isLoadingIncompleteIngredients.value = true
+  maintenanceMessage.value = ''
+  try {
+    const result: Ingredient[] = []
+    let page = 1
+    const visitedPages = new Set<number>()
+    while (!visitedPages.has(page)) {
+      visitedPages.add(page)
+      const response = await ingredientService.getPage({ page, per_page: 100 })
+      result.push(...response.data.filter(isIngredientIncomplete))
+      const nextPage = response.pagination.next_page
+      if (!nextPage) break
+      page = nextPage
+    }
+    incompleteIngredients.value = result
+  } catch (err) {
+    maintenanceMessage.value = err instanceof Error ? err.message : 'Chargement des ingrédients incomplets impossible.'
+  } finally {
+    isLoadingIncompleteIngredients.value = false
+  }
+}
+
+const enrichIncompleteIngredients = (): void => {
+  const ingredientUuids = incompleteIngredients.value.map((ingredient) => ingredient.uuid)
+  if (!ingredientUuids.length) {
+    maintenanceMessage.value = 'Aucun ingrédient incomplet à enrichir.'
+    return
+  }
+  runEnrichmentBatch(
+    { ingredientUuids, continueOnError: true },
+    {
+      onSuccess: (results) => {
+        const failedCount = results.filter((result) => result.status === 'failed').length
+        maintenanceMessage.value = `${results.length - failedCount} enrichissement(s) lancé(s), ${failedCount} échec(s).`
+      },
+      onError: (err) => {
+        maintenanceMessage.value = err.message
+      },
+    },
+  )
+}
+
+const mergeDuplicateGroup = (group: DuplicateGroup): void => {
+  const targetUuid = duplicateTargets[group.normalized_name] || group.items[0]?.uuid
+  if (!targetUuid) return
+  mergeDuplicates(
+    {
+      target_uuid: targetUuid,
+      duplicate_uuids: group.items.filter((item) => item.uuid !== targetUuid).map((item) => item.uuid),
+    },
+    {
+      onSuccess: async () => {
+        maintenanceMessage.value = `Fusion réalisée pour ${group.normalized_name}.`
+        await refetchDuplicates()
+      },
+      onError: (err) => {
+        maintenanceMessage.value = err.message
+      },
+    },
+  )
 }
 
 const editRow = (row: IngredientGroup | IngredientRayon): void => {
@@ -220,9 +303,10 @@ onBeforeUnmount(() => {
       <button :class="{ 'settings-view__tab--active': activeTab === 'groups' }" @click="selectTab('groups')">Groupes</button>
       <button :class="{ 'settings-view__tab--active': activeTab === 'rayons' }" @click="selectTab('rayons')">Rayons</button>
       <button :class="{ 'settings-view__tab--active': activeTab === 'suppliers' }" @click="selectTab('suppliers')">Fournisseurs</button>
+      <button :class="{ 'settings-view__tab--active': activeTab === 'maintenance' }" @click="selectTab('maintenance')">Maintenance</button>
     </header>
 
-    <section v-if="activeTab !== 'suppliers'" class="settings-view__editor">
+    <section v-if="activeTab === 'groups' || activeTab === 'rayons'" class="settings-view__editor">
       <AppInput id="setting-name" v-model="form.name" label="Nom" placeholder="Légumes" />
       <AppInput id="setting-description" v-model="form.description" label="Description" placeholder="Optionnel" />
       <AppInput id="setting-order" v-model="form.sortOrder" type="number" label="Ordre" placeholder="0" />
@@ -232,7 +316,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section v-else class="settings-view__editor">
+    <section v-else-if="activeTab === 'suppliers'" class="settings-view__editor">
       <AppInput id="supplier-name" v-model="supplierForm.name" label="Nom" placeholder="Biocoop" />
       <label class="settings-view__field">
         <span>Type</span>
@@ -253,8 +337,9 @@ onBeforeUnmount(() => {
     </section>
 
     <p v-if="deleteError" class="settings-view__error">{{ deleteError }}</p>
+    <p v-if="maintenanceMessage" class="settings-view__error settings-view__error--neutral">{{ maintenanceMessage }}</p>
 
-    <section v-if="activeTab !== 'suppliers'" class="settings-view__list">
+    <section v-if="activeTab === 'groups' || activeTab === 'rayons'" class="settings-view__list">
       <article v-for="row in rows" :key="row.uuid" class="settings-view__row">
         <strong>{{ row.name }}</strong>
         <span>{{ row.slug }}</span>
@@ -267,7 +352,7 @@ onBeforeUnmount(() => {
       </article>
     </section>
 
-    <section v-else class="settings-view__list">
+    <section v-else-if="activeTab === 'suppliers'" class="settings-view__list">
       <p v-if="isLoadingSuppliers" class="settings-view__state">Chargement…</p>
       <p v-else-if="!suppliers.length" class="settings-view__state">Aucun fournisseur.</p>
       <template v-else>
@@ -285,6 +370,44 @@ onBeforeUnmount(() => {
           {{ isFetchingMoreSuppliers ? 'Chargement…' : 'Charger plus' }}
         </AppButton>
       </div>
+    </section>
+
+    <section v-else class="settings-view__maintenance">
+      <article class="settings-view__maintenance-card">
+        <div>
+          <h2>Enrichissement ingrédients</h2>
+          <p>
+            {{ isLoadingIncompleteIngredients ? 'Analyse du catalogue...' : `${incompleteIngredients.length} fiche(s) incomplète(s)` }}
+          </p>
+        </div>
+        <div class="settings-view__actions">
+          <AppButton variant="secondary" :disabled="isLoadingIncompleteIngredients" @click="loadIncompleteIngredients">
+            Actualiser
+          </AppButton>
+          <AppButton
+            :disabled="isLoadingIncompleteIngredients || isRunningEnrichmentBatch || !hasIncompleteIngredients"
+            @click="enrichIncompleteIngredients"
+          >
+            {{ isRunningEnrichmentBatch ? 'Enrichissement…' : 'Enrichir les manquants' }}
+          </AppButton>
+        </div>
+      </article>
+
+      <article class="settings-view__maintenance-card">
+        <div>
+          <h2>Fusion des doublons</h2>
+          <p>{{ duplicateGroups?.length ?? 0 }} groupe(s) détecté(s)</p>
+        </div>
+        <div v-if="duplicateGroups?.length" class="settings-view__dedupe">
+          <div v-for="group in duplicateGroups" :key="group.normalized_name" class="settings-view__dedupe-row">
+            <strong>{{ group.normalized_name }}</strong>
+            <select v-model="duplicateTargets[group.normalized_name]">
+              <option v-for="item in group.items" :key="item.uuid" :value="item.uuid">{{ item.name }}</option>
+            </select>
+            <AppButton variant="secondary" :disabled="isMerging" @click="mergeDuplicateGroup(group)">Fusionner</AppButton>
+          </div>
+        </div>
+      </article>
     </section>
   </main>
 </template>
@@ -380,6 +503,7 @@ onBeforeUnmount(() => {
 
 .settings-view__actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
 }
@@ -399,6 +523,10 @@ onBeforeUnmount(() => {
   font-weight: 650;
 }
 
+.settings-view__error--neutral {
+  color: var(--color-text-secondary);
+}
+
 .settings-view__state {
   color: var(--color-text-secondary);
 }
@@ -408,9 +536,69 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 
+.settings-view__maintenance {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-view__maintenance-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.settings-view__maintenance-card h2,
+.settings-view__maintenance-card p {
+  margin: 0;
+}
+
+.settings-view__maintenance-card h2 {
+  color: var(--color-text-primary);
+  font-size: 1rem;
+}
+
+.settings-view__maintenance-card p {
+  margin-top: 4px;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.settings-view__dedupe {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-border);
+}
+
+.settings-view__dedupe-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--color-surface);
+}
+
+.settings-view__dedupe-row select {
+  min-height: 38px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: 8px 10px;
+}
+
 @media (max-width: 900px) {
   .settings-view__row,
-  .settings-view__row--supplier {
+  .settings-view__row--supplier,
+  .settings-view__dedupe-row {
     grid-template-columns: minmax(0, 1fr);
   }
 }

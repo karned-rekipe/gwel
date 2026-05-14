@@ -43,7 +43,27 @@ const countryCodeAliases: Record<string, string> = {
   TH: 'TH',
 }
 
+const countryNamesByCode: Record<string, string> = {
+  CN: 'Chine',
+  ES: 'Espagne',
+  FR: 'France',
+  GR: 'Grèce',
+  IN: 'Inde',
+  IT: 'Italie',
+  JP: 'Japon',
+  MA: 'Maroc',
+  MX: 'Mexique',
+  PT: 'Portugal',
+  TH: 'Thaïlande',
+  US: 'États-Unis',
+  VN: 'Vietnam',
+}
+
 const regionalIndicatorOffset = 127397
+
+export const countryOptions = Object.entries(countryNamesByCode)
+  .map(([code, name]) => ({ code, name }))
+  .sort((left, right) => left.name.localeCompare(right.name, 'fr-FR'))
 
 export const countryCodeFrom = (value?: string | null): string | null => {
   const normalized = value?.trim()
@@ -67,4 +87,17 @@ export const countryFlagFrom = (value?: string | null): string | null => {
   return Array.from(code)
     .map((letter) => String.fromCodePoint(letter.charCodeAt(0) + regionalIndicatorOffset))
     .join('')
+}
+
+export const countryNameFrom = (value?: string | null): string | null => {
+  const code = countryCodeFrom(value)
+  if (!code) return value?.trim() || null
+  return countryNamesByCode[code] ?? code
+}
+
+export const countryDisplayFrom = (value?: string | null): { flag: string; name: string } | null => {
+  const flag = countryFlagFrom(value)
+  const name = countryNameFrom(value)
+  if (!flag || !name) return null
+  return { flag, name }
 }

@@ -437,6 +437,7 @@ export interface RecipeFormData {
   name: string
   description: string
   servings: string
+  unitCount: string
   originCountry: string
   difficulty: string
   price: string
@@ -456,6 +457,7 @@ export interface RecipeCreatePayload {
   description?: string | null
   origin_country?: string | null
   servings: number
+  unit_count?: number | null
   difficulty?: number | null
   price?: number | null
   main_image?: string | null

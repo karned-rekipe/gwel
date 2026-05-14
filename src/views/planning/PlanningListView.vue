@@ -1,15 +1,23 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import MealPlanWeekGrid from '@/components/planning/MealPlanWeekGrid.vue'
+import { householdScheduleService } from '@/services/householdScheduleService'
 import type { MealCalendarParams } from '@/services/mealPlannerService'
+import { useHouseholdMembersStore } from '@/stores/householdMembersStore'
+import { useIngredientCatalogStore } from '@/stores/ingredientCatalogStore'
 import { useMealPlanStore } from '@/stores/mealPlanStore'
 import { useTenantPreferencesStore } from '@/stores/tenantPreferencesStore'
+import type { HouseholdSchedule } from '@/types/householdSchedule'
 import type { SlotPatchOperation } from '@/types/mealPlan'
 import type { MealSlotDefinition } from '@/types/tenantPreferences'
 
 const store = useMealPlanStore()
+const membersStore = useHouseholdMembersStore()
+const ingredientCatalog = useIngredientCatalogStore()
 const preferencesStore = useTenantPreferencesStore()
 const actionError = ref<string | null>(null)
+const scheduleError = ref<string | null>(null)
+const householdSchedule = ref<HouseholdSchedule | null>(null)
 
 const addDays = (value: Date, daysToAdd: number): Date => {
   const result = new Date(value)
@@ -66,9 +74,21 @@ const activeMealSlotCodes = computed(() =>
     .map((slot) => slot.code),
 )
 
+const usesNamedMembers = computed(() => householdSchedule.value?.schedule_mode === 'members')
+
 const loadCalendar = async (): Promise<void> => {
   actionError.value = null
   await store.fetchCalendar(calendarParams.value)
+}
+
+const loadHouseholdSchedule = async (): Promise<void> => {
+  scheduleError.value = null
+  try {
+    const response = await householdScheduleService.get()
+    householdSchedule.value = response.payload
+  } catch (err) {
+    scheduleError.value = err instanceof Error ? err.message : 'Chargement du mode de répartition impossible.'
+  }
 }
 
 const applyPatch = async (operations: SlotPatchOperation[]): Promise<void> => {
@@ -92,6 +112,9 @@ const extendPeriod = async (side: 'before' | 'after'): Promise<void> => {
 onMounted(() => {
   void loadCalendar()
   void preferencesStore.fetchPreferences()
+  void membersStore.fetchMembers()
+  ingredientCatalog.warmup()
+  void loadHouseholdSchedule()
 })
 </script>
 
@@ -99,6 +122,7 @@ onMounted(() => {
   <main class="planning-page">
     <p v-if="store.error" class="planning-page__error">{{ store.error }}</p>
     <p v-if="actionError" class="planning-page__error">{{ actionError }}</p>
+    <p v-if="scheduleError || membersStore.error" class="planning-page__error">{{ scheduleError || membersStore.error }}</p>
     <p v-if="store.loading" class="planning-page__muted">Chargement…</p>
 
     <section v-if="store.current" class="planning-page__layout">
@@ -106,6 +130,8 @@ onMounted(() => {
         :plan="store.current"
         :meal-labels="mealLabels"
         :visible-slot-codes="activeMealSlotCodes"
+        :household-members="membersStore.members"
+        :uses-named-members="usesNamedMembers"
         :loading="store.loading"
         @patch="applyPatch"
         @extend-period="extendPeriod"

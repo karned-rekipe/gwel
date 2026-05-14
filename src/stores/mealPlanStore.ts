@@ -84,6 +84,7 @@ export const useMealPlanStore = defineStore('mealPlan', () => {
         slot_code: operation.slot_code,
         headcount: null,
         headcount_source: null,
+        member_ids: [],
         items: [],
       }
       plan.slots.push(slot)
@@ -97,6 +98,7 @@ export const useMealPlanStore = defineStore('mealPlan', () => {
       position: payload.position ?? position,
       item_type: payload.item_type,
       headcount: payload.headcount ?? null,
+      member_ids: payload.member_ids ?? [],
       recipe_uuid: payload.recipe_uuid ?? null,
       recipe_snapshot: payload.recipe_snapshot ?? null,
       recipe_status: null,
@@ -121,6 +123,11 @@ export const useMealPlanStore = defineStore('mealPlan', () => {
       const slot = findOrCreateSlot(optimistic, operation)
       if (operation.op === 'set_headcount') {
         slot.headcount = operation.headcount ?? null
+        slot.headcount_source = 'manual'
+      } else if (operation.op === 'set_members') {
+        const memberIds = operation.member_ids ?? []
+        slot.member_ids = memberIds
+        slot.headcount = memberIds.length
         slot.headcount_source = 'manual'
       } else if (operation.op === 'add_item' && operation.item) {
         slot.items = renumber([...slot.items, itemFromPayload(operation.item, slot.items.length)])

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import HouseholdMemberAvatarStack from '@/components/planning/HouseholdMemberAvatarStack.vue'
+import { membersForIds } from '@/components/planning/memberDisplay'
 import { recipeService } from '@/services/recipeService'
+import type { HouseholdMember } from '@/types/householdMember'
 import type { MealItem, SlotCode } from '@/types/mealPlan'
 import type { Recipe } from '@/types/recipe'
 import { countryFlagFrom } from '@/utils/countryFlags'
@@ -33,6 +36,9 @@ const loadRecipe = async (uuid: string): Promise<Recipe | null> => {
 const props = defineProps<{
   item: MealItem
   fallbackHeadcount?: number | null
+  fallbackMemberIds?: string[]
+  householdMembers?: HouseholdMember[]
+  usesNamedMembers?: boolean
   slotDate: string
   slotCode: SlotCode
   readonly?: boolean
@@ -41,14 +47,27 @@ const props = defineProps<{
 const thumbnailUri = ref<string | null>(null)
 const recipeDetails = ref<Recipe | null>(null)
 
-const effectiveHeadcount = computed(() => props.item.headcount ?? props.fallbackHeadcount ?? null)
+const namedMemberIds = computed(() => {
+  if (!props.usesNamedMembers) return []
+  const itemMemberIds = props.item.member_ids ?? []
+  return itemMemberIds.length ? itemMemberIds : (props.fallbackMemberIds ?? [])
+})
+const namedMembers = computed(() => membersForIds(namedMemberIds.value, props.householdMembers ?? []))
+const effectiveHeadcount = computed(() => (
+  props.usesNamedMembers
+    ? namedMembers.value.length || null
+    : props.item.headcount ?? props.fallbackHeadcount ?? null
+))
 const isRecipeItem = computed(() => props.item.item_type === 'recipe')
-const itemUsesPax = computed(() => props.item.item_type === 'recipe' || props.item.item_type === 'ingredient')
+const itemUsesParticipants = computed(() => props.item.item_type === 'recipe' || props.item.item_type === 'ingredient')
 const avatarDots = computed(() => Array.from({ length: Math.min(effectiveHeadcount.value ?? 0, 4) }, (_, index) => index))
 const remainingAvatars = computed(() => Math.max((effectiveHeadcount.value ?? 0) - avatarDots.value.length, 0))
 const recipeOriginLabel = computed(() => recipeDetails.value?.origin_country?.trim() || '')
 const recipeOriginFlag = computed(() => countryFlagFrom(recipeOriginLabel.value))
 const participantsLabel = computed(() => {
+  if (props.usesNamedMembers && namedMembers.value.length) {
+    return namedMembers.value.map((member) => member.name).join(', ')
+  }
   const headcount = effectiveHeadcount.value
   if (!headcount) return '? personnes'
   return `${headcount} personne${headcount > 1 ? 's' : ''}`
@@ -110,13 +129,17 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
       <span v-if="detail">{{ detail }}</span>
     </div>
 
-    <div v-if="itemUsesPax" class="meal-item__participants" :aria-label="participantsLabel">
-      <span class="meal-item__pax">
+    <div v-if="itemUsesParticipants" class="meal-item__participants" :aria-label="participantsLabel">
+      <span class="meal-item__people">
         <span aria-hidden="true">👤</span>
         {{ effectiveHeadcount ?? '?' }}
       </span>
       <span v-if="durationLabel" class="meal-item__duration">{{ durationLabel }}</span>
-      <span v-if="avatarDots.length" class="meal-item__avatars" aria-hidden="true">
+      <HouseholdMemberAvatarStack
+        v-if="usesNamedMembers"
+        :members="namedMembers"
+      />
+      <span v-else-if="avatarDots.length" class="meal-item__avatars" aria-hidden="true">
         <span v-for="dot in avatarDots" :key="dot"></span>
         <strong v-if="remainingAvatars">+{{ remainingAvatars }}</strong>
       </span>
@@ -229,7 +252,7 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
   min-width: 0;
 }
 
-.meal-item__pax {
+.meal-item__people {
   display: inline-flex;
   align-items: center;
   gap: 3px;

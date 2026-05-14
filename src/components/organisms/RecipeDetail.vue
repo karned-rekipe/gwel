@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import IconActionButton from '@/components/resources/IconActionButton.vue'
 import { useDeleteRecipe, useGenerateRecipeImage } from '@/composables/useRecipeQueries'
-import type { Recipe } from '@/types/recipe'
+import { useRecipeWishlistStore } from '@/stores/recipeWishlistStore'
+import type { Recipe, RecipeStep } from '@/types/recipe'
+import { countryDisplayFrom } from '@/utils/countryFlags'
 
 const props = defineProps<{
   recipe: Recipe
@@ -12,6 +14,8 @@ const props = defineProps<{
 const router = useRouter()
 const { mutate: deleteRecipe, isPending: isDeleting } = useDeleteRecipe()
 const { mutate: generateRecipeImage, isPending: isGeneratingImage } = useGenerateRecipeImage()
+const wishlist = useRecipeWishlistStore()
+const deleteError = ref<string | null>(null)
 const monthNames = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc']
 
 const recipeTags = computed(() => props.recipe.tags ?? [])
@@ -20,6 +24,21 @@ const recipeEquipment = computed(() => props.recipe.equipment ?? [])
 const recipeSteps = computed(() => props.recipe.steps ?? [])
 const recipeSources = computed(() => props.recipe.sources ?? [])
 const recipeComponents = computed(() => props.recipe.components ?? [])
+const scoreSlots = [1, 2, 3, 4, 5]
+
+const scoreFrom = (value?: number | null): number => {
+  if (!value || !Number.isFinite(value)) return 0
+  return Math.min(5, Math.max(1, Math.trunc(value)))
+}
+
+const formatDuration = (minutes?: number | null): string => {
+  const value = Math.trunc(Number(minutes ?? 0))
+  if (!Number.isFinite(value) || value <= 0) return '—'
+  const hours = Math.floor(value / 60)
+  const remainingMinutes = value % 60
+  if (!hours) return `${remainingMinutes} min`
+  return remainingMinutes ? `${hours} h ${remainingMinutes}` : `${hours} h`
+}
 
 const totalTime = computed(() =>
   recipeSteps.value.reduce(
@@ -29,12 +48,12 @@ const totalTime = computed(() =>
   ),
 )
 
-const totalTimeLabel = computed(() => {
-  if (totalTime.value <= 0) return '—'
-  const hours = Math.floor(totalTime.value / 60)
-  const minutes = totalTime.value % 60
-  return hours ? `${hours} h${minutes ? ` ${minutes}` : ''}` : `${minutes} min`
-})
+const totalTimeLabel = computed(() => formatDuration(totalTime.value))
+const originDisplay = computed(() => countryDisplayFrom(props.recipe.origin_country))
+const difficultyScore = computed(() => scoreFrom(props.recipe.difficulty))
+const priceScore = computed(() => scoreFrom(props.recipe.price))
+const servingsLabel = computed(() => (props.recipe.servings ? String(props.recipe.servings) : '—'))
+const isInWishlist = computed(() => wishlist.has(props.recipe.uuid))
 
 const seasonLabel = computed(() => {
   const bestMonths = Object.entries(props.recipe.season_months ?? {})
@@ -44,14 +63,11 @@ const seasonLabel = computed(() => {
   return bestMonths.length ? bestMonths.join(', ') : 'Toute saison'
 })
 
-const metaItems = computed(() => [
-  { label: 'Origine', value: props.recipe.origin_country || '—' },
-  { label: 'Pax', value: props.recipe.servings ? `${props.recipe.servings} pax` : '—' },
-  { label: 'Difficulté', value: props.recipe.difficulty ? `${props.recipe.difficulty}/5` : '—' },
-  { label: 'Prix', value: props.recipe.price ? `${props.recipe.price}/5` : '—' },
-  { label: 'Temps', value: totalTimeLabel.value },
-  { label: 'Saison', value: seasonLabel.value },
-])
+const stepTimeItems = (step: RecipeStep) => [
+  { key: 'preparation', label: 'Préparation', value: formatDuration(step.preparation_time) },
+  { key: 'cooking', label: 'Cuisson', value: formatDuration(step.cooking_time) },
+  { key: 'rest', label: 'Repos', value: formatDuration(step.rest_time) },
+]
 
 const handleBack = (): void => {
   router.push({ name: 'recipes-home' })
@@ -65,11 +81,19 @@ const handleGenerateImage = (): void => {
   generateRecipeImage(props.recipe)
 }
 
+const handleWishlistToggle = (): void => {
+  wishlist.toggle(props.recipe.uuid)
+}
+
 const handleDelete = (): void => {
   if (!window.confirm('Supprimer cette recette ?')) return
+  deleteError.value = null
   deleteRecipe(props.recipe.uuid, {
     onSuccess: () => {
       router.push({ name: 'recipes-home' })
+    },
+    onError: (err) => {
+      deleteError.value = err.message || 'Suppression impossible.'
     },
   })
 }
@@ -80,6 +104,15 @@ const handleDelete = (): void => {
     <header class="recipe-detail__header">
       <IconActionButton label="Retour" icon="←" @click="handleBack" />
       <div class="recipe-detail__header-actions">
+        <button
+          type="button"
+          class="recipe-detail__wishlist-action"
+          :class="{ 'recipe-detail__wishlist-action--active': isInWishlist }"
+          @click="handleWishlistToggle"
+        >
+          <span aria-hidden="true">{{ isInWishlist ? '★' : '☆' }}</span>
+          {{ isInWishlist ? 'Dans la liste d’envies' : 'Ajouter à la liste d’envies' }}
+        </button>
         <IconActionButton
           label="Image IA"
           icon="▣"
@@ -92,10 +125,12 @@ const handleDelete = (): void => {
     </header>
 
     <section class="recipe-detail__hero">
-      <div>
+      <div class="recipe-detail__intro">
         <div class="recipe-detail__title-row">
           <h1 class="recipe-detail__title">{{ recipe.name }}</h1>
-          <span v-if="recipe.favorite" class="recipe-detail__favorite">Favori</span>
+          <span v-if="recipe.favorite" class="recipe-detail__favorite" aria-label="Recette favorite" title="Recette favorite">
+            ★
+          </span>
         </div>
         <p v-if="recipe.description" class="recipe-detail__description">{{ recipe.description }}</p>
         <div class="recipe-detail__tags">
@@ -105,14 +140,77 @@ const handleDelete = (): void => {
         </div>
       </div>
       <img v-if="recipe.main_image" :src="recipe.main_image" :alt="recipe.name" class="recipe-detail__image" />
+
+      <section class="recipe-detail__meta" aria-label="Métadonnées recette">
+        <div class="recipe-detail__meta-item">
+          <span>Origine</span>
+          <strong class="recipe-detail__origin">
+            <span v-if="originDisplay" aria-hidden="true" class="recipe-detail__origin-flag">{{ originDisplay.flag }}</span>
+            {{ originDisplay?.name ?? '—' }}
+          </strong>
+        </div>
+        <div class="recipe-detail__meta-item">
+          <span>Personnes</span>
+          <strong class="recipe-detail__people">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" class="recipe-detail__metric-icon">
+              <circle cx="8" cy="5.25" r="2.5" stroke="currentColor" stroke-width="1.5" />
+              <path d="M3.5 14c.65-2.65 2.15-4 4.5-4s3.85 1.35 4.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+            {{ servingsLabel }}
+          </strong>
+        </div>
+        <div class="recipe-detail__meta-item">
+          <span>Difficulté</span>
+          <strong
+            class="recipe-detail__score recipe-detail__score--difficulty"
+            :aria-label="difficultyScore ? `Difficulté ${difficultyScore} sur 5` : 'Difficulté non renseignée'"
+          >
+            <span
+              v-for="index in scoreSlots"
+              :key="`difficulty-${index}`"
+              class="recipe-detail__score-symbol"
+              :class="{ 'is-muted': index > difficultyScore }"
+              aria-hidden="true"
+            >
+              👨‍🍳
+            </span>
+          </strong>
+        </div>
+        <div class="recipe-detail__meta-item">
+          <span>Prix</span>
+          <strong
+            class="recipe-detail__score recipe-detail__score--price"
+            :aria-label="priceScore ? `Prix ${priceScore} sur 5` : 'Prix non renseigné'"
+          >
+            <span
+              v-for="index in scoreSlots"
+              :key="`price-${index}`"
+              class="recipe-detail__score-symbol"
+              :class="{ 'is-muted': index > priceScore }"
+              aria-hidden="true"
+            >
+              €
+            </span>
+          </strong>
+        </div>
+        <div class="recipe-detail__meta-item">
+          <span>Temps total</span>
+          <strong class="recipe-detail__time-total">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" class="recipe-detail__metric-icon">
+              <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5" />
+              <path d="M8 5v3.5l2 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            {{ totalTimeLabel }}
+          </strong>
+        </div>
+        <div class="recipe-detail__meta-item">
+          <span>Saison</span>
+          <strong>{{ seasonLabel }}</strong>
+        </div>
+      </section>
     </section>
 
-    <section class="recipe-detail__meta" aria-label="Métadonnées recette">
-      <div v-for="item in metaItems" :key="item.label" class="recipe-detail__meta-item">
-        <span>{{ item.label }}</span>
-        <strong>{{ item.value }}</strong>
-      </div>
-    </section>
+    <p v-if="deleteError" class="recipe-detail__error">{{ deleteError }}</p>
 
     <div class="recipe-detail__grid">
       <section class="recipe-detail__section">
@@ -146,11 +244,35 @@ const handleDelete = (): void => {
         <ol class="recipe-detail__steps">
           <li v-for="(step, index) in recipeSteps" :key="step.uuid ?? `${step.name}-${index}`">
             <span class="recipe-detail__step-index">{{ index + 1 }}</span>
-            <div>
-              <h3>{{ step.name }}</h3>
-              <p class="recipe-detail__step-time">
-                Prépa {{ step.preparation_time ?? 0 }} min · Cuisson {{ step.cooking_time ?? 0 }} min · Repos {{ step.rest_time ?? 0 }} min
-              </p>
+            <div class="recipe-detail__step-body">
+              <header class="recipe-detail__step-head">
+                <h3>{{ step.name }}</h3>
+                <div class="recipe-detail__step-times" aria-label="Temps de l'étape">
+                  <span
+                    v-for="time in stepTimeItems(step)"
+                    :key="`${step.uuid ?? index}-${time.key}`"
+                    class="recipe-detail__step-time"
+                    :aria-label="`${time.label} ${time.value}`"
+                    :title="time.label"
+                  >
+                    <span class="recipe-detail__step-time-icon" :class="`recipe-detail__step-time-icon--${time.key}`" aria-hidden="true">
+                      <svg v-if="time.key === 'preparation'" viewBox="0 0 16 16" fill="none">
+                        <path d="M4 2v6.5a2 2 0 1 0 4 0V2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M6 2v13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M11.5 2v13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                        <path d="M11.5 2c1.35 1.25 1.9 2.75 1.65 4.5-.17 1.2-.72 2.18-1.65 2.95" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                      </svg>
+                      <svg v-else-if="time.key === 'cooking'" viewBox="0 0 16 16" fill="none">
+                        <path d="M8 14c2.4 0 4.25-1.6 4.25-3.95 0-1.72-.88-2.9-2.08-4.08-.58-.58-1-1.3-1.23-2.12C7.2 4.8 5.75 6.43 5.75 8.42c-.55-.38-.95-.88-1.2-1.52-.5.85-.8 1.8-.8 2.92C3.75 12.27 5.6 14 8 14Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                      </svg>
+                      <svg v-else viewBox="0 0 16 16" fill="none">
+                        <path d="M11.8 11.9A5.2 5.2 0 0 1 6.1 4.2 5.25 5.25 0 1 0 11.8 11.9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                      </svg>
+                    </span>
+                    <span>{{ time.value }}</span>
+                  </span>
+                </div>
+              </header>
               <p>{{ step.description }}</p>
             </div>
           </li>
@@ -235,13 +357,48 @@ const handleDelete = (): void => {
 
 .recipe-detail__header-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  justify-content: flex-end;
+}
+
+.recipe-detail__wishlist-action {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.recipe-detail__wishlist-action:hover {
+  border-color: color-mix(in srgb, #f5a623 42%, var(--color-border));
+  background: color-mix(in srgb, #f5a623 8%, var(--color-surface));
+}
+
+.recipe-detail__wishlist-action span,
+.recipe-detail__wishlist-action--active {
+  color: #f5a623;
 }
 
 .recipe-detail__hero {
   display: grid;
   gap: 22px;
   align-items: start;
+}
+
+.recipe-detail__intro {
+  min-width: 0;
 }
 
 .recipe-detail__title-row {
@@ -257,7 +414,6 @@ const handleDelete = (): void => {
   font-weight: 700;
 }
 
-.recipe-detail__favorite,
 .recipe-detail__tag {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-full);
@@ -269,11 +425,34 @@ const handleDelete = (): void => {
   white-space: nowrap;
 }
 
+.recipe-detail__favorite {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.92);
+  color: #f5a623;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
 .recipe-detail__description {
   max-width: 820px;
   margin: 14px 0 0;
   color: var(--color-text-secondary);
   line-height: 1.6;
+}
+
+.recipe-detail__error {
+  margin: 18px 0 0;
+  color: var(--color-danger);
+  font-weight: 650;
 }
 
 .recipe-detail__tags {
@@ -291,9 +470,9 @@ const handleDelete = (): void => {
 
 .recipe-detail__meta {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
-  margin-top: 24px;
+  margin-top: 18px;
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -318,6 +497,53 @@ const handleDelete = (): void => {
   margin-top: 6px;
   color: var(--color-text-primary);
   font-size: 1rem;
+}
+
+.recipe-detail__origin,
+.recipe-detail__people,
+.recipe-detail__time-total,
+.recipe-detail__score {
+  display: flex !important;
+  align-items: center;
+  gap: 7px;
+  min-height: 22px;
+}
+
+.recipe-detail__origin-flag {
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.recipe-detail__metric-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: var(--color-primary);
+}
+
+.recipe-detail__score {
+  gap: 4px;
+  line-height: 1;
+}
+
+.recipe-detail__score--difficulty {
+  color: var(--color-primary);
+  font-size: 0.9rem !important;
+}
+
+.recipe-detail__score--price {
+  color: var(--color-primary);
+  font-weight: 800;
+}
+
+.recipe-detail__score-symbol {
+  opacity: 1;
+}
+
+.recipe-detail__score-symbol.is-muted {
+  color: var(--color-text-tertiary);
+  filter: grayscale(1);
+  opacity: 0.28;
 }
 
 .recipe-detail__grid {
@@ -397,6 +623,17 @@ const handleDelete = (): void => {
   font-weight: 700;
 }
 
+.recipe-detail__step-body {
+  min-width: 0;
+}
+
+.recipe-detail__step-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
 .recipe-detail__steps h3 {
   margin: 0;
   font-size: 1rem;
@@ -408,10 +645,44 @@ const handleDelete = (): void => {
   line-height: 1.55;
 }
 
+.recipe-detail__step-times {
+  display: grid;
+  grid-template-columns: repeat(3, 82px);
+  gap: 6px;
+  justify-content: end;
+}
+
 .recipe-detail__step-time {
-  color: var(--color-text-tertiary) !important;
-  font-size: 0.85rem;
-  font-weight: 600;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: flex-start;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  padding: 4px 6px;
+  white-space: nowrap;
+}
+
+.recipe-detail__step-time-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--color-primary);
+}
+
+.recipe-detail__step-time-icon svg {
+  width: 15px;
+  height: 15px;
 }
 
 .recipe-detail__sources {
@@ -486,6 +757,21 @@ const handleDelete = (): void => {
 @media (min-width: 940px) {
   .recipe-detail__hero {
     grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+    grid-template-areas:
+      "intro image"
+      "meta image";
+  }
+
+  .recipe-detail__intro {
+    grid-area: intro;
+  }
+
+  .recipe-detail__image {
+    grid-area: image;
+  }
+
+  .recipe-detail__meta {
+    grid-area: meta;
   }
 
   .recipe-detail__grid {
@@ -498,6 +784,50 @@ const handleDelete = (): void => {
 
   .recipe-detail__section--wide {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .recipe-detail {
+    padding-inline: 18px;
+  }
+
+  .recipe-detail__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .recipe-detail__header-actions {
+    justify-content: flex-start;
+  }
+
+  .recipe-detail__hero {
+    grid-template-areas:
+      "intro"
+      "image"
+      "meta";
+  }
+
+  .recipe-detail__intro {
+    grid-area: intro;
+  }
+
+  .recipe-detail__image {
+    grid-area: image;
+  }
+
+  .recipe-detail__meta {
+    grid-area: meta;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .recipe-detail__step-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recipe-detail__step-times {
+    grid-template-columns: repeat(3, minmax(74px, 1fr));
+    justify-content: stretch;
   }
 }
 </style>

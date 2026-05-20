@@ -523,6 +523,38 @@ const patchItem = async (item: ShoppingItem, changes: ShoppingItemPatch): Promis
   }
 }
 
+const isInteractiveShoppingLineTarget = (target: EventTarget | null): boolean =>
+  target instanceof HTMLElement && Boolean(target.closest('button, input, select, textarea, a'))
+
+const canToggleShoppingLine = (): boolean => !quantityEditMode.value && !supplierEditMode.value
+
+const toggleShoppingItemChecked = (item: ShoppingItem): void => {
+  if (!canToggleShoppingLine()) return
+  void patchItem(item, { checked: !item.checked })
+}
+
+const toggleShoppingItemCheckedFromLine = (event: MouseEvent, item: ShoppingItem): void => {
+  if (isInteractiveShoppingLineTarget(event.target)) return
+  toggleShoppingItemChecked(item)
+}
+
+const isShoppingLineToggleKey = (key: string): boolean => key === 'Enter' || key === ' '
+
+const handleShoppingLineKeydown = (event: KeyboardEvent, item: ShoppingItem): void => {
+  if (!isShoppingLineToggleKey(event.key)) return
+  if (isInteractiveShoppingLineTarget(event.target) || !canToggleShoppingLine()) return
+  event.preventDefault()
+  if (event.repeat || event.key !== 'Enter') return
+  toggleShoppingItemChecked(item)
+}
+
+const handleShoppingLineKeyup = (event: KeyboardEvent, item: ShoppingItem): void => {
+  if (event.key !== ' ') return
+  if (isInteractiveShoppingLineTarget(event.target) || !canToggleShoppingLine()) return
+  event.preventDefault()
+  toggleShoppingItemChecked(item)
+}
+
 const openSourceDetails = async (item: ShoppingItem): Promise<void> => {
   selectedSourceItem.value = item
   sourceDetailsError.value = null
@@ -990,12 +1022,20 @@ onBeforeUnmount(() => {
                   'shopping-line--source-view': !quantityEditMode && !supplierEditMode,
                   'shopping-line--selected': supplierEditMode && isSupplierItemSelected(item.uuid),
                 }"
+                :role="!quantityEditMode && !supplierEditMode ? 'checkbox' : undefined"
+                :aria-checked="!quantityEditMode && !supplierEditMode ? item.checked : undefined"
+                :aria-label="!quantityEditMode && !supplierEditMode ? `Cocher ${item.name}` : undefined"
+                :tabindex="!quantityEditMode && !supplierEditMode ? 0 : undefined"
+                @click="toggleShoppingItemCheckedFromLine($event, item)"
+                @keydown="handleShoppingLineKeydown($event, item)"
+                @keyup="handleShoppingLineKeyup($event, item)"
               >
                 <input
                   v-if="supplierEditMode"
                   type="checkbox"
                   :checked="isSupplierItemSelected(item.uuid)"
                   :aria-label="`Sélectionner ${item.name}`"
+                  @click.stop
                   @change="toggleSupplierItem(item.uuid, ($event.target as HTMLInputElement).checked)"
                 />
                 <input
@@ -1003,6 +1043,7 @@ onBeforeUnmount(() => {
                   type="checkbox"
                   :checked="item.checked"
                   :aria-label="`Cocher ${item.name}`"
+                  @click.stop
                   @change="patchItem(item, { checked: ($event.target as HTMLInputElement).checked })"
                 />
                 <input
@@ -1020,17 +1061,23 @@ onBeforeUnmount(() => {
                   <strong>{{ itemMainSupplierName(item) }}</strong>
                   <small>{{ itemSecondarySupplierNames(item) }}</small>
                 </span>
-                <button
+                <span
                   v-if="!quantityEditMode && !supplierEditMode"
-                  type="button"
-                  class="shopping-line__details"
-                  :disabled="item.lines.length === 0"
-                  :aria-label="`Origine de ${item.name}`"
-                  title="Origine"
-                  @click="openSourceDetails(item)"
+                  class="shopping-line__details-wrap"
+                  @click.stop
+                  @keydown.stop
                 >
-                  i
-                </button>
+                  <button
+                    type="button"
+                    class="shopping-line__details"
+                    :disabled="item.lines.length === 0"
+                    :aria-label="`Origine de ${item.name}`"
+                    title="Origine"
+                    @click="openSourceDetails(item)"
+                  >
+                    i
+                  </button>
+                </span>
               </div>
             </template>
           </section>
@@ -1433,6 +1480,16 @@ onBeforeUnmount(() => {
 
 .shopping-line--source-view {
   grid-template-columns: 28px minmax(72px, 112px) minmax(0, 1fr) 28px;
+  cursor: pointer;
+}
+
+.shopping-line--source-view:hover {
+  background: rgba(0, 113, 227, 0.04);
+}
+
+.shopping-line--source-view:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .shopping-line__name {
@@ -1485,6 +1542,11 @@ onBeforeUnmount(() => {
 .shopping-line__supplier small {
   color: var(--color-text-tertiary);
   font-size: 0.72rem;
+}
+
+.shopping-line__details-wrap {
+  display: inline-grid;
+  place-items: center;
 }
 
 .shopping-page .shopping-line__details {

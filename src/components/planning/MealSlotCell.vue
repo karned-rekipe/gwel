@@ -54,8 +54,6 @@ const headcountInput = ref('')
 const noteInput = ref('')
 const selectedIngredient = ref<Ingredient | null>(null)
 const selectedIngredientUuid = ref('')
-const ingredientQuantity = ref('1')
-const ingredientUnit = ref('')
 const slotMemberDraftIds = ref<string[]>([])
 const addError = ref<string | null>(null)
 const wishlist = useRecipeWishlistStore()
@@ -135,8 +133,6 @@ const resetItemForm = (): void => {
   noteInput.value = ''
   selectedIngredient.value = null
   selectedIngredientUuid.value = ''
-  ingredientQuantity.value = '1'
-  ingredientUnit.value = ''
   addError.value = null
 }
 
@@ -214,12 +210,6 @@ const saveDefaultHeadcount = (): void => {
 const positiveIntegerFrom = (value: string): number | null => {
   const parsed = Number(value)
   if (!Number.isInteger(parsed) || parsed <= 0) return null
-  return parsed
-}
-
-const positiveNumberFrom = (value: string): number | null => {
-  const parsed = Number(value.replace(',', '.'))
-  if (!Number.isFinite(parsed) || parsed <= 0) return null
   return parsed
 }
 
@@ -453,7 +443,6 @@ const unitFromIngredient = (ingredient: Ingredient): string => {
 const selectIngredient = (ingredient: Ingredient): void => {
   selectedIngredient.value = ingredient
   selectedIngredientUuid.value = ingredient.uuid
-  ingredientUnit.value = unitFromIngredient(ingredient)
   addError.value = null
 }
 
@@ -463,21 +452,12 @@ const addIngredient = (ingredient?: Ingredient): void => {
   }
 
   const headcount = requiredItemHeadcount()
-  const quantity = positiveNumberFrom(ingredientQuantity.value)
-  const unit = ingredientUnit.value.trim()
   const ingredientToAdd = selectedIngredient.value
+  const unit = ingredientToAdd ? unitFromIngredient(ingredientToAdd) || 'unité' : ''
 
   if (headcount === null) return
   if (!ingredientToAdd) {
     addError.value = "L'ingrédient doit être sélectionné dans la collection."
-    return
-  }
-  if (quantity === null) {
-    addError.value = 'La quantité par personne est obligatoire.'
-    return
-  }
-  if (!unit) {
-    addError.value = "L'unité doit être définie sur la fiche ingrédient."
     return
   }
 
@@ -485,7 +465,7 @@ const addIngredient = (ingredient?: Ingredient): void => {
     item_type: 'ingredient',
     ingredient_uuid: ingredientToAdd.uuid,
     ingredient_name: ingredientToAdd.name,
-    ingredient_quantity: quantity,
+    ingredient_quantity: 1,
     ingredient_unit: unit,
     headcount,
     member_ids: memberIdsForNewItem(),
@@ -721,7 +701,7 @@ const addNote = (): void => {
               </div>
             </div>
 
-            <form v-else-if="activeAddMode === 'ingredient'" class="meal-slot-modal__form" @submit.prevent="addIngredient()">
+            <form v-else-if="activeAddMode === 'ingredient'" class="meal-slot-modal__form" @submit.prevent>
               <label class="meal-slot-modal__field">
                 <span>Ingrédient</span>
                 <IngredientPicker
@@ -729,17 +709,6 @@ const addNote = (): void => {
                   @select="addIngredient"
                 />
               </label>
-              <div class="meal-slot-modal__inline-fields">
-                <label class="meal-slot-modal__field">
-                  <span>Qté / personne</span>
-                  <input v-model="ingredientQuantity" type="number" min="0.01" step="0.01" inputmode="decimal" required />
-                </label>
-                <label class="meal-slot-modal__field">
-                  <span>Unité</span>
-                  <input v-model="ingredientUnit" type="text" readonly required />
-                </label>
-              </div>
-              <button type="submit" class="meal-slot-modal__submit">Ajouter</button>
             </form>
 
             <form v-else-if="activeAddMode === 'note'" class="meal-slot-modal__form" @submit.prevent="addNote">

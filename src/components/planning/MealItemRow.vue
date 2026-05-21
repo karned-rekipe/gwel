@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import HouseholdMemberAvatarStack from '@/components/planning/HouseholdMemberAvatarStack.vue'
 import { membersForIds } from '@/components/planning/memberDisplay'
 import { recipeService } from '@/services/recipeService'
+import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 import type { HouseholdMember } from '@/types/householdMember'
 import type { MealItem, SlotCode } from '@/types/mealPlan'
 import type { Recipe } from '@/types/recipe'
@@ -11,8 +12,11 @@ import { countryFlagFrom } from '@/utils/countryFlags'
 const recipeCache = new Map<string, Recipe | null>()
 const recipeRequests = new Map<string, Promise<Recipe | null>>()
 
-const loadRecipe = async (uuid: string): Promise<Recipe | null> => {
-  if (recipeCache.has(uuid)) return recipeCache.get(uuid) ?? null
+const loadRecipe = async (uuid: string, options: { refreshIfMissingImage?: boolean } = {}): Promise<Recipe | null> => {
+  if (recipeCache.has(uuid)) {
+    const cachedRecipe = recipeCache.get(uuid) ?? null
+    if (!options.refreshIfMissingImage || cachedRecipe?.main_image) return cachedRecipe
+  }
   const existingRequest = recipeRequests.get(uuid)
   if (existingRequest) return existingRequest
 
@@ -44,9 +48,15 @@ const props = defineProps<{
   readonly?: boolean
 }>()
 
-const thumbnailUri = ref<string | null>(null)
+const recipeCatalog = useRecipeCatalogStore()
 const recipeDetails = ref<Recipe | null>(null)
 
+const recipeUuid = computed(() => props.item.recipe_uuid ?? props.item.recipe_snapshot?.recipe_uuid ?? null)
+const catalogRecipe = computed(() => (
+  recipeUuid.value ? recipeCatalog.recipesByUuid.get(recipeUuid.value) ?? null : null
+))
+const resolvedRecipe = computed(() => catalogRecipe.value ?? recipeDetails.value)
+const thumbnailUri = computed(() => resolvedRecipe.value?.main_image ?? null)
 const namedMemberIds = computed(() => {
   if (!props.usesNamedMembers) return []
   const itemMemberIds = props.item.member_ids ?? []
@@ -59,10 +69,11 @@ const effectiveHeadcount = computed(() => (
     : props.item.headcount ?? props.fallbackHeadcount ?? null
 ))
 const isRecipeItem = computed(() => props.item.item_type === 'recipe')
+const isNoteItem = computed(() => props.item.item_type === 'note')
 const itemUsesParticipants = computed(() => props.item.item_type === 'recipe' || props.item.item_type === 'ingredient')
 const avatarDots = computed(() => Array.from({ length: Math.min(effectiveHeadcount.value ?? 0, 4) }, (_, index) => index))
 const remainingAvatars = computed(() => Math.max((effectiveHeadcount.value ?? 0) - avatarDots.value.length, 0))
-const recipeOriginLabel = computed(() => recipeDetails.value?.origin_country?.trim() || '')
+const recipeOriginLabel = computed(() => resolvedRecipe.value?.origin_country?.trim() || '')
 const recipeOriginFlag = computed(() => countryFlagFrom(recipeOriginLabel.value))
 const participantsLabel = computed(() => {
   if (props.usesNamedMembers && namedMembers.value.length) {
@@ -91,21 +102,26 @@ const detail = computed(() => {
   return ''
 })
 
-watch(() => props.item.recipe_uuid, async (uuid) => {
-  thumbnailUri.value = null
+watch(recipeUuid, async (uuid) => {
   recipeDetails.value = null
   if (!uuid) return
-  const recipe = await loadRecipe(uuid)
-  if (props.item.recipe_uuid === uuid) {
+  recipeCatalog.hydrateFromStorage()
+  recipeCatalog.warmup()
+  if (catalogRecipe.value?.main_image) return
+
+  const recipe = await loadRecipe(uuid, { refreshIfMissingImage: true })
+  if (recipeUuid.value === uuid) {
     recipeDetails.value = recipe
-    thumbnailUri.value = recipe?.main_image ?? null
   }
 }, { immediate: true })
 </script>
 
 <template>
-  <article class="meal-item">
-    <div class="meal-item__thumbnail" aria-hidden="true">
+  <article
+    class="meal-item"
+    :class="{ 'meal-item--note': isNoteItem }"
+  >
+    <div v-if="!isNoteItem" class="meal-item__thumbnail" aria-hidden="true">
       <img v-if="thumbnailUri" :src="thumbnailUri" :alt="title" />
       <span v-else>{{ thumbnailInitial }}</span>
       <span
@@ -116,7 +132,7 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
         {{ recipeOriginFlag }}
       </span>
       <span
-        v-if="isRecipeItem && recipeDetails?.favorite"
+        v-if="isRecipeItem && resolvedRecipe?.favorite"
         class="meal-item__badge meal-item__badge--favorite"
         title="Favori"
       >
@@ -149,6 +165,7 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
 
 <style scoped>
 .meal-item {
+  position: relative;
   min-width: var(--meal-card-min-width, 128px);
   min-height: var(--meal-card-min-height, 152px);
   overflow: hidden;
@@ -159,6 +176,30 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
+}
+
+.meal-item--note {
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 12px 12px 14px;
+  border-color: #e3c85d;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0) 34%),
+    #fff2a8;
+  box-shadow: 0 8px 18px rgba(117, 87, 12, 0.14);
+}
+
+.meal-item--note::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 24px;
+  height: 24px;
+  border-top: 1px solid rgba(117, 87, 12, 0.2);
+  border-left: 1px solid rgba(117, 87, 12, 0.12);
+  background: linear-gradient(135deg, #f3d96c 0%, #f9e58a 54%, rgba(255, 242, 168, 0) 55%);
+  pointer-events: none;
 }
 
 .meal-item__thumbnail {
@@ -242,6 +283,32 @@ watch(() => props.item.recipe_uuid, async (uuid) => {
   font-size: 0.7rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.meal-item--note .meal-item__body {
+  min-height: 0;
+  max-height: none;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.meal-item--note .meal-item__body strong {
+  color: #4f3e06;
+  font-size: 0.84rem;
+  letter-spacing: 0;
+  -webkit-line-clamp: 1;
+}
+
+.meal-item--note .meal-item__body span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #5e4a09;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
 }
 
 .meal-item__participants {

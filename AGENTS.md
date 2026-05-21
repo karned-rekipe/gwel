@@ -149,6 +149,10 @@ npm run build             # type-check + vite build
 npm run preview           # Servir le build
 ```
 
+### Reviews GitHub Copilot
+
+Les PR `gwel` reçoivent une review automatique GitHub Copilot. Après création ou mise à jour d'une PR, attendre la publication de cette review, traiter les conversations non résolues, répondre avec la décision prise, puis résoudre les conversations concernées.
+
 ## 6. Commandes utiles
 
 ### Lancement local manuel

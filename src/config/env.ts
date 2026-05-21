@@ -23,6 +23,10 @@ export const appConfig = {
       import.meta.env.VITE_RECIPE_AGENT_API_BASE_URL,
       '/api/recipe-agent',
     ),
+    ingredientEnrichmentAgentApiBaseUrl: readString(
+      import.meta.env.VITE_INGREDIENT_ENRICHMENT_AGENT_API_BASE_URL,
+      '/api/ingredient-enrichment-agent',
+    ),
     mealPlannerApiBaseUrl: readString(
       import.meta.env.VITE_MEAL_PLANNER_API_BASE_URL,
       '/api/meal-planner',
@@ -36,6 +40,7 @@ export const appConfig = {
       import.meta.env.VITE_SHOPPING_AGENT_API_BASE_URL,
       '/api/shopping-agent',
     ),
+    mediaApiBaseUrl: readString(import.meta.env.VITE_MEDIA_API_BASE_URL, '/api/media'),
   },
 }
 
@@ -44,6 +49,11 @@ export const serviceCatalog = {
     label: 'Recettes',
     apiBaseUrl: appConfig.services.recipeApiBaseUrl,
     agentBaseUrl: appConfig.services.recipeAgentApiBaseUrl,
+  },
+  ingredients: {
+    label: 'Ingrédients',
+    apiBaseUrl: appConfig.services.recipeApiBaseUrl,
+    agentBaseUrl: appConfig.services.ingredientEnrichmentAgentApiBaseUrl,
   },
   planning: {
     label: 'Planification',

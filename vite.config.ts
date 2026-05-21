@@ -16,35 +16,45 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
-        '/api/recipe': {
-          target: env.VITE_RECIPE_PROXY_TARGET || 'http://127.0.0.1:8301',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/recipe/, ''),
-        },
         '/api/recipe-agent': {
           target: env.VITE_RECIPE_AGENT_PROXY_TARGET || 'http://127.0.0.1:8303',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/recipe-agent/, ''),
         },
-        '/api/meal-planner': {
-          target: env.VITE_MEAL_PLANNER_PROXY_TARGET || 'http://127.0.0.1:8010',
+        '/api/ingredient-enrichment-agent': {
+          target: env.VITE_INGREDIENT_ENRICHMENT_AGENT_PROXY_TARGET || 'http://127.0.0.1:8036',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/meal-planner/, ''),
+          rewrite: (path) => path.replace(/^\/api\/ingredient-enrichment-agent/, ''),
+        },
+        '/api/recipe': {
+          target: env.VITE_RECIPE_PROXY_TARGET || 'http://127.0.0.1:8301',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/recipe/, ''),
         },
         '/api/meal-planner-agent': {
           target: env.VITE_MEAL_PLANNER_AGENT_PROXY_TARGET || 'http://127.0.0.1:8016',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/meal-planner-agent/, ''),
         },
-        '/api/shopping': {
-          target: env.VITE_SHOPPING_PROXY_TARGET || 'http://127.0.0.1:8020',
+        '/api/meal-planner': {
+          target: env.VITE_MEAL_PLANNER_PROXY_TARGET || 'http://127.0.0.1:8010',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/shopping/, ''),
+          rewrite: (path) => path.replace(/^\/api\/meal-planner/, ''),
         },
         '/api/shopping-agent': {
           target: env.VITE_SHOPPING_AGENT_PROXY_TARGET || 'http://127.0.0.1:8026',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/shopping-agent/, ''),
+        },
+        '/api/shopping': {
+          target: env.VITE_SHOPPING_PROXY_TARGET || 'http://127.0.0.1:8020',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/shopping/, ''),
+        },
+        '/api/media': {
+          target: env.VITE_MEDIA_PROXY_TARGET || 'http://127.0.0.1:8030',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/media/, ''),
         },
       },
     },

@@ -15,11 +15,7 @@ const setMode = (mode: CreationMode): void => {
 <template>
   <main class="recipe-add-view">
     <header class="recipe-add-view__hero">
-      <p class="recipe-add-view__eyebrow">Volet 1</p>
-      <h1 class="recipe-add-view__title">Créer une fiche recette complète</h1>
-      <p class="recipe-add-view__subtitle">
-        Le formulaire manuel et le flux IA parlent désormais le même contrat agrégé côté backend.
-      </p>
+      <h1 class="recipe-add-view__title">Nouvelle recette</h1>
     </header>
 
     <div class="recipe-add-view__tabs" role="tablist" aria-label="Mode de création">
@@ -56,62 +52,46 @@ const setMode = (mode: CreationMode): void => {
 .recipe-add-view {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 28px 24px 56px;
+  padding: 40px 24px 56px;
 }
 
 .recipe-add-view__hero {
-  padding: 28px;
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at top left, rgba(255, 214, 10, 0.18), transparent 32%),
-    linear-gradient(135deg, #fff8ec 0%, #fffdf8 100%);
-  border: 1px solid rgba(194, 154, 54, 0.18);
-}
-
-.recipe-add-view__eyebrow {
-  margin: 0 0 8px;
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #8c5e15;
+  margin-bottom: 24px;
 }
 
 .recipe-add-view__title {
-  margin: 0 0 10px;
-  font-size: clamp(2rem, 4vw, 3.2rem);
-  color: #2f2112;
-  font-weight: 800;
-}
-
-.recipe-add-view__subtitle {
   margin: 0;
-  color: #6f5737;
-  line-height: 1.6;
+  font-size: clamp(2.4rem, 5vw, 4.2rem);
+  color: var(--color-text-primary);
+  font-weight: 700;
+  line-height: 1;
 }
 
 .recipe-add-view__tabs {
   display: flex;
-  gap: 12px;
-  margin-top: 22px;
-  padding-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 18px;
 }
 
 .recipe-add-view__tab {
   min-height: 46px;
   padding: 10px 16px;
-  border: 1px solid rgba(111, 87, 55, 0.12);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.76);
-  color: #6f5737;
-  font-weight: 700;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-weight: 600;
   cursor: pointer;
+  transition:
+    background var(--transition-base),
+    color var(--transition-base),
+    border-color var(--transition-base);
 }
 
 .recipe-add-view__tab--active {
-  color: #2f2112;
-  background: #ffeccd;
-  border-color: rgba(194, 120, 36, 0.18);
+  color: var(--color-text-primary);
+  background: var(--color-secondary-dark);
+  border-color: var(--color-border-hover);
 }
 
 .recipe-add-view__content {

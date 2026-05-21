@@ -1,17 +1,55 @@
 import { appConfig } from '@/config/env'
 import { createHttpClient, unwrapApiResponse, unwrapPaginatedResponse } from '@/services/http'
 import type { ApiResponse, PaginatedResponse } from '@/types/api'
-import type { Recipe, RecipeCreatePayload, RecipeCreatedResponse } from '@/types/recipe'
+import type { Recipe, RecipeCreatePayload, RecipeCreatedResponse, RecipeStatus } from '@/types/recipe'
 
-const recipeApi = createHttpClient(`${appConfig.services.recipeApiBaseUrl}/v1`)
+export interface RecipeListFilters {
+  name?: string
+  tag_uuid?: string
+  difficulty?: string
+  origin_country?: string
+  price?: string
+  favorite?: boolean | null
+  season_month?: string
+  status?: RecipeStatus
+  meal_planner_eligible?: boolean | null
+  page?: number
+  per_page?: number
+}
+
+const recipeApi = createHttpClient(`${appConfig.services.recipeApiBaseUrl}/v1`, 30000)
 
 export const recipeService = {
-  async getAll(name?: string): Promise<Recipe[]> {
+  async getPage(filters: RecipeListFilters = {}, signal?: AbortSignal): Promise<PaginatedResponse<Recipe>> {
+    const params = Object.fromEntries(
+      Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && value !== ''),
+    )
     const response = await recipeApi.get<PaginatedResponse<Recipe>>('/recipes/', {
-      params: name ? { name } : undefined,
+      params,
+      signal,
     })
 
-    return unwrapPaginatedResponse(response.data)
+    return response.data
+  },
+
+  async getAll(name?: string): Promise<Recipe[]> {
+    const response = await this.getPage({ name, page: 1, per_page: 100 })
+
+    return unwrapPaginatedResponse(response)
+  },
+
+  async listEligibleRecipes(params: {
+    search?: string
+    page?: number
+    page_size?: number
+  } = {}): Promise<PaginatedResponse<Recipe>> {
+    return this.getPage({
+      name: params.search,
+      page: params.page ?? 1,
+      per_page: params.page_size ?? 20,
+      meal_planner_eligible: true,
+      status: 'active',
+    })
   },
 
   async getByUuid(uuid: string): Promise<Recipe> {

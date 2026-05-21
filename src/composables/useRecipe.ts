@@ -1,6 +1,7 @@
 import { computed, type Reactive } from 'vue'
 import type {
   RecipeCreatePayload,
+  RecipeFormComponent,
   RecipeFormData,
   RecipeFormEquipment,
   RecipeFormIngredient,
@@ -20,56 +21,154 @@ const parseNumber = (value: string): number | null => {
 
 const compact = (value: string): string => value.trim()
 
-const mapSeasonMonths = (months: number[]): Record<number, number> =>
-  months.reduce<Record<number, number>>((acc, month) => {
-    acc[month] = 3
-    return acc
-  }, {})
+const hasNumber = (value: string): boolean => {
+  const parsed = parseNumber(value)
+  return parsed !== null && parsed > 0
+}
+
+const hasAnyIngredientInput = (ingredient: RecipeFormIngredient): boolean =>
+  Boolean(
+    ingredient.ingredientUuid ||
+    ingredient.search.trim() ||
+    ingredient.quantity.trim() ||
+    ingredient.unit.trim(),
+  )
+
+const hasAnyEquipmentInput = (equipment: RecipeFormEquipment): boolean =>
+  Boolean(equipment.equipmentUuid || equipment.search.trim() || equipment.quantity.trim())
+
+const hasAnyComponentInput = (component: RecipeFormComponent): boolean =>
+  Boolean(
+    component.recipeUuid ||
+    component.search.trim() ||
+    component.label.trim() ||
+    component.servingsMultiplier.trim(),
+  )
+
+const hasAnyStepInput = (step: RecipeFormStep): boolean =>
+  Boolean(
+    step.name.trim() ||
+    step.description.trim() ||
+    step.preparationTime.trim() ||
+    step.cookingTime.trim() ||
+    step.restTime.trim(),
+  )
 
 export function useRecipeValidation(formData: Reactive<RecipeFormData>) {
-  const isFormValid = computed(() => {
-    const { name, servings, ingredients, steps } = formData
-    if (!name.trim() || name.trim().length < 3) return false
-    if (!parseNumber(servings) || Number(parseNumber(servings)) < 1) return false
+  const errors = computed<Record<string, string>>(() => {
+    const result: Record<string, string> = {}
 
-    if (ingredients.length === 0) return false
-    const hasInvalidIngredient = ingredients.some(
-      (ingredient) =>
-        !ingredient.name.trim() ||
-        !ingredient.unit.trim() ||
-        !parseNumber(ingredient.quantity) ||
-        ingredient.seasonMonths.length === 0,
-    )
-    if (hasInvalidIngredient) return false
+    if (!formData.name.trim()) {
+      result.name = 'Le nom de la recette est obligatoire.'
+    }
+    if (!hasNumber(formData.servings)) {
+      result.servings = 'Le nombre de personnes est obligatoire.'
+    }
+    if (formData.unitCount.trim() && !hasNumber(formData.unitCount)) {
+      result.unitCount = 'Le nombre de parts doit être positif.'
+    }
 
-    if (steps.length === 0) return false
-    return !steps.some(
-      (step) =>
-        !step.name.trim() ||
-        !step.description.trim() ||
-        step.description.trim().length < 10,
-    )
+    formData.ingredients.forEach((ingredient, index) => {
+      if (!hasAnyIngredientInput(ingredient)) return
+      if (!ingredient.ingredientUuid) {
+        result[`ingredients.${index}.ingredientUuid`] = 'Choisis un ingrédient.'
+      }
+      if (!hasNumber(ingredient.quantity)) {
+        result[`ingredients.${index}.quantity`] = 'La quantité est obligatoire.'
+      }
+      if (!ingredient.unit.trim()) {
+        result[`ingredients.${index}.unit`] = 'L’unité est obligatoire.'
+      }
+    })
+
+    formData.equipment.forEach((equipment, index) => {
+      if (!hasAnyEquipmentInput(equipment)) return
+      if (!equipment.equipmentUuid) {
+        result[`equipment.${index}.equipmentUuid`] = 'Choisis un équipement ou vide la ligne.'
+      }
+      const quantity = parseNumber(equipment.quantity)
+      if (equipment.quantity.trim() && (quantity === null || quantity < 0)) {
+        result[`equipment.${index}.quantity`] = 'La quantité doit être positive.'
+      }
+    })
+
+    formData.components.forEach((component, index) => {
+      if (!hasAnyComponentInput(component)) return
+      if (!component.recipeUuid) {
+        result[`components.${index}.recipeUuid`] = 'Choisis une sous-recette.'
+      }
+      if (!component.label.trim()) {
+        result[`components.${index}.label`] = 'Le libellé est obligatoire.'
+      }
+      const multiplier = parseNumber(component.servingsMultiplier)
+      if (component.servingsMultiplier.trim() && (multiplier === null || multiplier <= 0)) {
+        result[`components.${index}.servingsMultiplier`] = 'Le multiplicateur doit être positif.'
+      }
+    })
+
+    formData.steps.forEach((step, index) => {
+      if (!hasAnyStepInput(step)) return
+      if (!step.name.trim()) {
+        result[`steps.${index}.name`] = 'Le titre est obligatoire pour créer cette étape.'
+      }
+    })
+
+    return result
+  })
+
+  const isFormValid = computed(() => Object.keys(errors.value).length === 0)
+
+  const firstInvalidFieldId = computed(() => {
+    if (errors.value.name) return 'recipe-name'
+    if (errors.value.servings) return 'recipe-servings'
+    if (errors.value.unitCount) return 'recipe-unit-count'
+
+    for (const index of formData.ingredients.keys()) {
+      if (
+        errors.value[`ingredients.${index}.ingredientUuid`]
+        || errors.value[`ingredients.${index}.quantity`]
+        || errors.value[`ingredients.${index}.unit`]
+      ) {
+        return `ingredient-row-${index}`
+      }
+    }
+
+    for (const index of formData.equipment.keys()) {
+      if (errors.value[`equipment.${index}.equipmentUuid`] || errors.value[`equipment.${index}.quantity`]) {
+        return `equipment-row-${index}`
+      }
+    }
+
+    for (const index of formData.components.keys()) {
+      if (errors.value[`components.${index}.recipeUuid`]) return `component-select-${index}`
+      if (errors.value[`components.${index}.label`]) return `component-label-${index}`
+      if (errors.value[`components.${index}.servingsMultiplier`]) return `component-multiplier-${index}`
+    }
+
+    for (const index of formData.steps.keys()) {
+      if (errors.value[`steps.${index}.name`]) return `step-name-${index}`
+    }
+
+    return null
   })
 
   return {
+    errors,
+    firstInvalidFieldId,
     isFormValid,
   }
 }
 
 export function useRecipeFormatter() {
   const normalizeIngredient = (ingredient: RecipeFormIngredient) => ({
-    name: compact(ingredient.name),
+    ingredient_uuid: ingredient.ingredientUuid,
     quantity: Number(parseNumber(ingredient.quantity)),
     unit: compact(ingredient.unit),
-    season_months: mapSeasonMonths(ingredient.seasonMonths),
-    rayon: compact(ingredient.rayon) || null,
-    group: compact(ingredient.group) || null,
-    green_score: parseNumber(ingredient.greenScore),
   })
 
   const normalizeEquipment = (equipment: RecipeFormEquipment) => ({
-    name: compact(equipment.name),
-    quantity: parseNumber(equipment.quantity),
+    equipment_uuid: equipment.equipmentUuid,
+    quantity: parseNumber(equipment.quantity) ?? 1,
   })
 
   const normalizeSource = (source: RecipeFormSource) => ({
@@ -78,9 +177,17 @@ export function useRecipeFormatter() {
     uri: compact(source.uri) || null,
   })
 
+  const normalizeComponent = (component: RecipeFormComponent, rank: number) => ({
+    ...(component.uuid ? { uuid: component.uuid } : {}),
+    recipe_uuid: component.recipeUuid,
+    label: compact(component.label),
+    rank,
+    servings_multiplier: parseNumber(component.servingsMultiplier) ?? 1,
+  })
+
   const normalizeStep = (step: RecipeFormStep, rank: number) => ({
     name: compact(step.name),
-    description: compact(step.description),
+    description: compact(step.description) || null,
     preparation_time: parseNumber(step.preparationTime),
     cooking_time: parseNumber(step.cookingTime),
     rest_time: parseNumber(step.restTime),
@@ -92,17 +199,30 @@ export function useRecipeFormatter() {
   const normalizeFormData = (formData: RecipeFormData): RecipeCreatePayload => ({
     name: compact(formData.name),
     description: compact(formData.description) || null,
+    origin_country: compact(formData.originCountry) || null,
     servings: Number(parseNumber(formData.servings)),
+    unit_count: parseNumber(formData.unitCount),
+    difficulty: parseNumber(formData.difficulty),
+    price: parseNumber(formData.price),
     main_image: compact(formData.mainImage) || null,
     secondary_images: formData.secondaryImages
       .split(',')
       .map((item) => compact(item))
       .filter(Boolean),
-    ingredients: formData.ingredients.map(normalizeIngredient),
+    favorite: formData.favorite,
+    tag_uuids: [...formData.tagUuids],
+    components: formData.components
+      .filter((component) => component.recipeUuid)
+      .map((component, index) => normalizeComponent(component, index + 1)),
+    ingredients: formData.ingredients
+      .filter((ingredient) => ingredient.ingredientUuid && ingredient.quantity.trim() && ingredient.unit.trim())
+      .map(normalizeIngredient),
     equipment: formData.equipment
-      .filter((item) => compact(item.name))
+      .filter((item) => item.equipmentUuid)
       .map(normalizeEquipment),
-    steps: formData.steps.map((step, index) => normalizeStep(step, index + 1)),
+    steps: formData.steps
+      .filter(hasAnyStepInput)
+      .map((step, index) => normalizeStep(step, index + 1)),
     sources: formData.sources
       .filter((source) => compact(source.name) || compact(source.uri))
       .map(normalizeSource),

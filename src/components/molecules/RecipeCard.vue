@@ -1,13 +1,44 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Recipe } from '@/types/recipe'
+import { countryFlagFrom } from '@/utils/countryFlags'
 
-defineProps<{
+const props = defineProps<{
   recipe: Recipe
 }>()
 
 defineEmits<{
   click: [uuid: string]
 }>()
+
+const totalTime = computed(() =>
+  props.recipe.steps.reduce((total, step) => {
+    const stepTime =
+      step.total_time ??
+      (step.preparation_time ?? 0) + (step.cooking_time ?? 0) + (step.rest_time ?? 0)
+    return total + stepTime
+  }, 0),
+)
+
+const totalTimeLabel = computed(() => {
+  if (totalTime.value <= 0) return null
+  const hours = Math.floor(totalTime.value / 60)
+  const minutes = totalTime.value % 60
+  if (hours === 0) return `${minutes} min`
+  return minutes > 0 ? `${hours} h ${minutes}` : `${hours} h`
+})
+
+const originFlag = computed(() => countryFlagFrom(props.recipe.origin_country))
+const visibleTags = computed(() => props.recipe.tags.slice(0, 2))
+const hiddenTagCount = computed(() => Math.max(props.recipe.tags.length - visibleTags.value.length, 0))
+
+const scoreFrom = (value?: number | null): number => {
+  if (!value || !Number.isFinite(value)) return 0
+  return Math.min(5, Math.max(1, Math.trunc(value)))
+}
+
+const difficultyScore = computed(() => scoreFrom(props.recipe.difficulty))
+const priceScore = computed(() => scoreFrom(props.recipe.price))
 </script>
 
 <template>
@@ -19,23 +50,66 @@ defineEmits<{
     @keydown.enter="$emit('click', recipe.uuid)"
     @keydown.space.prevent="$emit('click', recipe.uuid)"
   >
-    <div v-if="recipe.main_image" class="recipe-card__media">
-      <img :src="recipe.main_image" :alt="recipe.name" class="recipe-card__image" />
-    </div>
-    <div v-else class="recipe-card__media recipe-card__media--placeholder">
-      <span class="recipe-card__emoji">🍲</span>
+    <div class="recipe-card__image-wrapper">
+      <img
+        v-if="recipe.main_image"
+        :src="recipe.main_image"
+        :alt="recipe.name"
+        class="recipe-card__image"
+        loading="lazy"
+      />
+      <div v-else class="recipe-card__image-placeholder" aria-hidden="true">
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" class="recipe-card__placeholder-icon">
+          <path d="M10 36V20c0-5.523 4.477-10 10-10h8c5.523 0 10 4.477 10 10v16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M6 36h36" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M24 10v4M18 13l2 3M30 13l-2 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+
+      <span
+        v-if="originFlag"
+        class="recipe-card__badge recipe-card__badge--origin"
+        :title="recipe.origin_country ?? 'Origine renseignée'"
+      >
+        {{ originFlag }}
+      </span>
+      <span v-if="recipe.favorite" class="recipe-card__badge recipe-card__badge--favorite" title="Recette favorite">
+        ★
+      </span>
     </div>
 
     <div class="recipe-card__body">
-      <div class="recipe-card__heading">
-        <h3 class="recipe-card__title">{{ recipe.name }}</h3>
-        <p v-if="recipe.description" class="recipe-card__description">{{ recipe.description }}</p>
-      </div>
+      <h3 class="recipe-card__title" :title="recipe.name">{{ recipe.name }}</h3>
 
       <div class="recipe-card__meta">
-        <span class="recipe-card__meta-item">{{ recipe.servings ?? '?' }} pers.</span>
-        <span class="recipe-card__meta-item">{{ recipe.ingredients.length }} ingrédients</span>
-        <span class="recipe-card__meta-item">{{ recipe.steps.length }} étapes</span>
+        <span v-for="tag in visibleTags" :key="tag.uuid" class="recipe-card__tag" :title="tag.name">
+          {{ tag.name }}
+        </span>
+        <span v-if="hiddenTagCount" class="recipe-card__tag recipe-card__tag--more">
+          +{{ hiddenTagCount }}
+        </span>
+      </div>
+
+      <div class="recipe-card__footer">
+        <span class="recipe-card__metric recipe-card__metric--difficulty" :aria-label="difficultyScore ? `Difficulté ${difficultyScore} sur 5` : undefined">
+          <template v-if="difficultyScore">
+            <span v-for="index in difficultyScore" :key="`difficulty-${index}`" aria-hidden="true">👨‍🍳</span>
+          </template>
+        </span>
+        <span class="recipe-card__metric recipe-card__metric--time">
+          <template v-if="totalTimeLabel">
+            <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="recipe-card__time-icon">
+              <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M8 5v3.5l2 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            {{ totalTimeLabel }}
+          </template>
+        </span>
+        <span class="recipe-card__metric recipe-card__metric--price" :aria-label="priceScore ? `Prix ${priceScore} sur 5` : undefined">
+          <template v-if="priceScore">
+            <span v-for="index in priceScore" :key="`price-${index}`" aria-hidden="true">€</span>
+          </template>
+        </span>
       </div>
     </div>
   </article>
@@ -45,24 +119,34 @@ defineEmits<{
 .recipe-card {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
-  border-radius: 22px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(109, 78, 40, 0.1);
-  box-shadow: 0 22px 40px rgba(81, 58, 19, 0.08);
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    transform var(--transition-base);
 }
 
 .recipe-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 28px 48px rgba(81, 58, 19, 0.13);
+  transform: translateY(-2px);
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-md);
 }
 
-.recipe-card__media {
-  height: 210px;
-  background: #f7efe0;
+.recipe-card:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.recipe-card__image-wrapper {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--color-secondary);
+  flex-shrink: 0;
 }
 
 .recipe-card__image {
@@ -70,58 +154,152 @@ defineEmits<{
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform 0.3s ease;
 }
 
-.recipe-card__media--placeholder {
+.recipe-card:hover .recipe-card__image {
+  transform: scale(1.04);
+}
+
+.recipe-card__image-placeholder {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    radial-gradient(circle at top, rgba(255, 206, 98, 0.38), transparent 38%),
-    linear-gradient(135deg, #f3d6a3 0%, #ebb26c 100%);
+  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-secondary-dark) 100%);
 }
 
-.recipe-card__emoji {
-  font-size: 4rem;
+.recipe-card__placeholder-icon {
+  width: 42px;
+  height: 42px;
+  color: var(--color-text-tertiary);
+  opacity: 0.5;
+}
+
+.recipe-card__badge {
+  position: absolute;
+  top: 8px;
+  min-width: 28px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(4px);
+  color: var(--color-primary);
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+
+.recipe-card__badge--origin {
+  left: 8px;
+}
+
+.recipe-card__badge--favorite {
+  right: 8px;
+  color: #f5a623;
 }
 
 .recipe-card__body {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 20px;
+  gap: 7px;
+  padding: 11px 12px 12px;
   flex: 1;
 }
 
 .recipe-card__title {
   margin: 0;
-  color: #2f2112;
-  font-size: 1.32rem;
-  font-weight: 800;
-}
-
-.recipe-card__description {
-  margin: 10px 0 0;
-  color: #6f5737;
-  line-height: 1.6;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  min-height: calc(0.86rem * 1.24 * 2);
+  color: var(--color-text-primary);
+  font-size: 0.86rem;
+  font-weight: 650;
+  line-height: 1.24;
   overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .recipe-card__meta {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 18px;
+  overflow: hidden;
 }
 
-.recipe-card__meta-item {
-  padding: 8px 10px;
-  border-radius: 999px;
-  background: #f7efe0;
-  color: #7b5c2d;
-  font-size: 0.86rem;
-  font-weight: 700;
+.recipe-card__tag {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  font-size: 0.64rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recipe-card__tag--more {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+}
+
+.recipe-card__footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.recipe-card__metric {
+  min-width: 0;
+  min-height: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 550;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.recipe-card__metric--difficulty {
+  justify-self: start;
+  color: var(--color-primary);
+  font-size: 0.68rem;
+}
+
+.recipe-card__metric--time {
+  justify-self: center;
+  gap: 5px;
+}
+
+.recipe-card__metric--price {
+  justify-self: end;
+  color: var(--color-primary);
+  font-weight: 750;
+}
+
+.recipe-card__time-icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
 }
 </style>

@@ -24,6 +24,14 @@ const router = createRouter({
       },
     },
     {
+      path: '/recipes/:id/edit',
+      name: 'recipes-edit',
+      component: () => import('../views/RecipeEditView.vue'),
+      meta: {
+        title: 'Modifier la recette',
+      },
+    },
+    {
       path: '/recipes/new',
       name: 'recipes-new',
       component: () => import('../views/RecipeAddView.vue'),
@@ -32,11 +40,104 @@ const router = createRouter({
       },
     },
     {
+      path: '/ingredients',
+      name: 'ingredients-home',
+      component: () => import('../views/IngredientListView.vue'),
+      meta: {
+        title: 'Ingrédients',
+      },
+    },
+    {
+      path: '/ingredients/runs',
+      name: 'ingredient-enrichment-runs',
+      component: () => import('../views/IngredientEnrichmentRunsView.vue'),
+      meta: {
+        title: 'Runs ingrédients',
+      },
+    },
+    {
+      path: '/ingredients/:id',
+      name: 'ingredients-detail',
+      component: () => import('../views/IngredientDetailView.vue'),
+      meta: {
+        title: 'Fiche ingrédient',
+      },
+    },
+    {
+      path: '/equipment',
+      name: 'equipment-home',
+      component: () => import('../views/EquipmentListView.vue'),
+      meta: {
+        title: 'Équipements',
+      },
+    },
+    {
+      path: '/equipment/:id',
+      name: 'equipment-detail',
+      component: () => import('../views/EquipmentDetailView.vue'),
+      meta: {
+        title: 'Fiche équipement',
+      },
+    },
+    {
+      path: '/settings/tags',
+      name: 'tags-home',
+      component: () => import('../views/TagListView.vue'),
+      meta: {
+        title: 'Réglages tags',
+      },
+    },
+    {
+      path: '/settings/tags/:id',
+      name: 'tags-detail',
+      component: () => import('../views/TagDetailView.vue'),
+      meta: {
+        title: 'Fiche tag',
+      },
+    },
+    {
+      path: '/settings/ingredients',
+      name: 'ingredient-settings',
+      component: () => import('../views/IngredientSettingsView.vue'),
+      meta: {
+        title: 'Réglages ingrédients',
+      },
+    },
+    {
+      path: '/tags',
+      redirect: { name: 'tags-home' },
+    },
+    {
+      path: '/tags/:id',
+      redirect: (to) => ({ name: 'tags-detail', params: { id: to.params.id } }),
+    },
+    {
       path: '/planning',
-      name: 'planning-home',
-      component: () => import('../views/PlanningView.vue'),
+      name: 'planning-list',
+      component: () => import('../views/planning/PlanningListView.vue'),
       meta: {
         title: 'Planification',
+      },
+    },
+    {
+      path: '/planning/new',
+      redirect: { name: 'planning-list' },
+    },
+    {
+      path: '/planning/preferences',
+      name: 'planning-preferences',
+      component: () => import('../views/planning/PlanningPreferencesView.vue'),
+      meta: {
+        title: 'Préférences planning',
+      },
+    },
+    {
+      path: '/planning/:uuid',
+      name: 'planning-detail',
+      component: () => import('../views/planning/PlanningDetailView.vue'),
+      props: true,
+      meta: {
+        title: 'Plan de repas',
       },
     },
     {

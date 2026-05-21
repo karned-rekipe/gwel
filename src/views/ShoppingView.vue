@@ -349,7 +349,12 @@ const yearFormatter = new Intl.DateTimeFormat('fr-FR', {
 const parseIsoDate = (value: string): Date | null => {
   const [year, month, day] = value.split('-').map(Number)
   if (!year || !month || !day) return null
-  return new Date(year, month - 1, day)
+
+  const date = new Date(year, month - 1, day)
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null
+  }
+  return date
 }
 
 const formatListPeriod = (list: ShoppingList): string => {

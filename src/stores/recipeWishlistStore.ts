@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { recipeService } from '@/services/recipeService'
+import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 import type { Recipe } from '@/types/recipe'
 
 interface WishlistEntry {
@@ -58,19 +59,42 @@ export const useRecipeWishlistStore = defineStore('recipeWishlist', () => {
   }
 
   const loadRecipes = async (): Promise<void> => {
+    const requestedUuids = [...new Set(recipeUuids.value)]
+    if (!requestedUuids.length) {
+      recipes.value = []
+      loading.value = false
+      error.value = null
+      return
+    }
+
     loading.value = true
     error.value = null
     try {
-      const loaded = await Promise.all(
-        entries.value.map(async (entry) => {
+      const catalog = useRecipeCatalogStore()
+      await catalog.ensureLoaded()
+
+      const catalogRecipes = requestedUuids
+        .map((uuid) => catalog.recipesByUuid.get(uuid) ?? null)
+        .filter((recipe): recipe is Recipe => recipe !== null)
+      const catalogRecipeUuids = new Set(catalogRecipes.map((recipe) => recipe.uuid))
+      const missingUuids = requestedUuids.filter((uuid) => !catalogRecipeUuids.has(uuid))
+
+      const loadedMissing = await Promise.all(
+        missingUuids.map(async (uuid) => {
           try {
-            return await recipeService.getByUuid(entry.recipeUuid)
+            return await recipeService.getByUuid(uuid)
           } catch {
             return null
           }
         }),
       )
-      recipes.value = loaded.filter((recipe): recipe is Recipe => recipe !== null)
+      const recipesByUuid = new Map(
+        [...catalogRecipes, ...loadedMissing.filter((recipe): recipe is Recipe => recipe !== null)]
+          .map((recipe) => [recipe.uuid, recipe]),
+      )
+      recipes.value = requestedUuids
+        .map((uuid) => recipesByUuid.get(uuid) ?? null)
+        .filter((recipe): recipe is Recipe => recipe !== null)
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Chargement de la liste d’envies impossible.'
     } finally {

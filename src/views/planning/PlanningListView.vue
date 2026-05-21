@@ -6,6 +6,7 @@ import type { MealCalendarParams } from '@/services/mealPlannerService'
 import { useHouseholdMembersStore } from '@/stores/householdMembersStore'
 import { useIngredientCatalogStore } from '@/stores/ingredientCatalogStore'
 import { useMealPlanStore } from '@/stores/mealPlanStore'
+import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 import { useTenantPreferencesStore } from '@/stores/tenantPreferencesStore'
 import type { HouseholdSchedule } from '@/types/householdSchedule'
 import type { SlotPatchOperation } from '@/types/mealPlan'
@@ -14,6 +15,7 @@ import type { MealSlotDefinition } from '@/types/tenantPreferences'
 const store = useMealPlanStore()
 const membersStore = useHouseholdMembersStore()
 const ingredientCatalog = useIngredientCatalogStore()
+const recipeCatalog = useRecipeCatalogStore()
 const preferencesStore = useTenantPreferencesStore()
 const actionError = ref<string | null>(null)
 const scheduleError = ref<string | null>(null)
@@ -114,6 +116,7 @@ onMounted(() => {
   void preferencesStore.fetchPreferences()
   void membersStore.fetchMembers()
   ingredientCatalog.warmup()
+  recipeCatalog.warmup()
   void loadHouseholdSchedule()
 })
 </script>

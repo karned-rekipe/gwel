@@ -66,6 +66,7 @@ export const useRecipeCatalogStore = defineStore('recipeCatalog', () => {
   const error = ref<string | null>(null)
   const hydrated = ref(false)
   let refreshPromise: Promise<void> | null = null
+  const recipesByUuid = computed(() => new Map(recipes.value.map((recipe) => [recipe.uuid, recipe])))
 
   const isFresh = computed(() => (
     recipes.value.length > 0 && Date.now() - loadedAt.value < CACHE_TTL_MS
@@ -154,6 +155,7 @@ export const useRecipeCatalogStore = defineStore('recipeCatalog', () => {
 
   return {
     recipes,
+    recipesByUuid,
     loadedAt,
     loading,
     refreshing,

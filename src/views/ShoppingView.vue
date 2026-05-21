@@ -103,6 +103,9 @@ const checkedCount = computed(() => current.value?.items.filter((item) => item.c
 const totalCount = computed(() => current.value?.items.length ?? 0)
 const hasMoreLists = computed(() => lists.value.length < listTotal.value)
 const selectedListUuid = computed(() => current.value?.uuid ?? '')
+const mobileListOptions = computed(() =>
+  [...lists.value].sort((a, b) => (b.period_start ?? b.created_at).localeCompare(a.period_start ?? a.created_at)),
+)
 const quantityEditMode = computed(() => editMode.value === 'quantities')
 const supplierEditMode = computed(() => editMode.value === 'suppliers')
 const isEditMode = computed(() => editMode.value !== 'view')
@@ -467,6 +470,11 @@ const selectList = async (uuid: string): Promise<void> => {
   }
 }
 
+const selectListFromEvent = (event: Event): void => {
+  const uuid = (event.target as HTMLSelectElement).value
+  void selectList(uuid)
+}
+
 const generateList = async (): Promise<void> => {
   if (!controls.dateStart || !controls.dateEnd) return
   loading.value = true
@@ -742,8 +750,8 @@ onMounted(async () => {
     if (listResult.status === 'rejected') {
       throw listResult.reason
     }
-    if (!current.value && lists.value[0]) {
-      await selectList(lists.value[0].uuid)
+    if (!current.value && mobileListOptions.value[0]) {
+      await selectList(mobileListOptions.value[0].uuid)
     }
     await nextTick()
     observeListSentinel()
@@ -799,6 +807,26 @@ onBeforeUnmount(() => {
     <p v-if="actionSuccess" class="shopping-page__success">{{ actionSuccess }}</p>
 
     <section class="shopping-page__workbench">
+      <section class="shopping-panel shopping-mobile-picker" aria-label="Sélection mobile de la liste de courses">
+        <label for="shopping-mobile-list">
+          Liste de courses
+          <select
+            id="shopping-mobile-list"
+            :value="selectedListUuid"
+            :disabled="listLoading || mobileListOptions.length === 0"
+            @change="selectListFromEvent"
+          >
+            <option v-if="mobileListOptions.length === 0" value="">Aucune liste disponible</option>
+            <option v-for="list in mobileListOptions" :key="list.uuid" :value="list.uuid">
+              {{ list.name }} - {{ formatListPeriod(list) }}
+            </option>
+          </select>
+        </label>
+        <p v-if="current" class="shopping-page__muted">
+          {{ current.items.length }} item{{ current.items.length > 1 ? 's' : '' }} dans la liste sélectionnée
+        </p>
+      </section>
+
       <aside class="shopping-page__side">
         <section class="shopping-panel shopping-picker" aria-label="Listes de courses récentes">
           <header class="shopping-panel__header">
@@ -1194,7 +1222,7 @@ onBeforeUnmount(() => {
 
 .shopping-page__workbench {
   display: grid;
-  grid-template-columns: minmax(250px, 340px) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 1fr) minmax(0, 3fr);
   gap: 14px;
   align-items: start;
 }
@@ -1203,6 +1231,7 @@ onBeforeUnmount(() => {
 .shopping-page__list {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .shopping-panel,
@@ -1266,8 +1295,23 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+.shopping-mobile-picker {
+  display: none;
+  min-width: 0;
+}
+
+.shopping-mobile-picker label,
+.shopping-mobile-picker select {
+  width: 100%;
+  min-width: 0;
+}
+
 .shopping-page__list-header {
   justify-content: space-between;
+}
+
+.shopping-page__list-header > div {
+  min-width: 0;
 }
 
 .shopping-page__list-actions {
@@ -1367,6 +1411,7 @@ onBeforeUnmount(() => {
   grid-template-columns: 28px minmax(72px, 112px) minmax(0, 1fr);
   gap: 8px;
   align-items: center;
+  min-width: 0;
   min-height: 30px;
   padding: 2px 0;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
@@ -1580,6 +1625,18 @@ onBeforeUnmount(() => {
   .shopping-page__header,
   .shopping-page__workbench {
     grid-template-columns: 1fr;
+  }
+
+  .shopping-mobile-picker {
+    display: grid;
+  }
+
+  .shopping-mobile-picker p {
+    margin: 0;
+  }
+
+  .shopping-page__side {
+    display: none;
   }
 
   .shopping-page__header,

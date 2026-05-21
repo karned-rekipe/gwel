@@ -319,8 +319,59 @@ const selectedSourceLinesTotal = computed(() => {
   return item.lines.reduce((total, line) => total + line.scaled_quantity, 0)
 })
 
+const fullDateFormatter = new Intl.DateTimeFormat('fr-FR', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+})
+
+const weekdayDayFormatter = new Intl.DateTimeFormat('fr-FR', {
+  weekday: 'long',
+  day: 'numeric',
+})
+
+const weekdayDayMonthFormatter = new Intl.DateTimeFormat('fr-FR', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+})
+
+const monthYearFormatter = new Intl.DateTimeFormat('fr-FR', {
+  month: 'long',
+  year: 'numeric',
+})
+
+const yearFormatter = new Intl.DateTimeFormat('fr-FR', {
+  year: 'numeric',
+})
+
+const parseIsoDate = (value: string): Date | null => {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return null
+  return new Date(year, month - 1, day)
+}
+
 const formatListPeriod = (list: ShoppingList): string => {
-  if (list.period_start && list.period_end) return `${list.period_start} -> ${list.period_end}`
+  if (list.period_start && list.period_end) {
+    const start = parseIsoDate(list.period_start)
+    const end = parseIsoDate(list.period_end)
+    if (!start || !end) return `${list.period_start} -> ${list.period_end}`
+
+    if (list.period_start === list.period_end) {
+      return `le ${fullDateFormatter.format(start)}`
+    }
+
+    if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+      return `du ${weekdayDayFormatter.format(start)} au ${weekdayDayFormatter.format(end)} ${monthYearFormatter.format(end)}`
+    }
+
+    if (start.getFullYear() === end.getFullYear()) {
+      return `du ${weekdayDayMonthFormatter.format(start)} au ${weekdayDayMonthFormatter.format(end)} ${yearFormatter.format(end)}`
+    }
+
+    return `du ${fullDateFormatter.format(start)} au ${fullDateFormatter.format(end)}`
+  }
   return 'Liste libre'
 }
 
@@ -924,7 +975,7 @@ onBeforeUnmount(() => {
           <div>
             <h2>{{ current.name }}</h2>
             <p v-if="current.period_start && current.period_end">
-              {{ current.period_start }} -> {{ current.period_end }}
+              {{ formatListPeriod(current) }}
             </p>
           </div>
           <div class="shopping-page__list-actions">

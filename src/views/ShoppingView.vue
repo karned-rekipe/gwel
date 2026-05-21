@@ -1269,9 +1269,10 @@ onBeforeUnmount(() => {
 
 .shopping-page__workbench {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(0, 3fr);
+  grid-template-columns: minmax(240px, 25%) minmax(0, 1fr);
   gap: 14px;
   align-items: start;
+  min-width: 0;
 }
 
 .shopping-page__side,
@@ -1284,10 +1285,15 @@ onBeforeUnmount(() => {
 .shopping-panel,
 .shopping-page__list,
 .shopping-page__empty--panel {
+  min-width: 0;
   padding: 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
+}
+
+.shopping-page__list {
+  overflow-x: hidden;
 }
 
 .shopping-panel__header {
@@ -1354,7 +1360,9 @@ onBeforeUnmount(() => {
 }
 
 .shopping-page__list-header {
+  flex-wrap: wrap;
   justify-content: space-between;
+  align-items: flex-start;
 }
 
 .shopping-page__list-header > div {
@@ -1367,6 +1375,8 @@ onBeforeUnmount(() => {
   gap: 8px;
   justify-content: flex-end;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .shopping-segmented {
@@ -1407,12 +1417,17 @@ onBeforeUnmount(() => {
 
 .shopping-supplier-edit {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .shopping-supplier-edit select {
+  flex: 1 1 160px;
   min-width: 160px;
+  max-width: 100%;
   min-height: 32px;
 }
 
@@ -1444,6 +1459,7 @@ onBeforeUnmount(() => {
 .shopping-group {
   display: grid;
   gap: 6px;
+  min-width: 0;
   padding-top: 10px;
   border-top: 1px solid var(--color-border);
 }
@@ -1451,6 +1467,7 @@ onBeforeUnmount(() => {
 .shopping-rayon {
   display: grid;
   gap: 2px;
+  min-width: 0;
 }
 
 .shopping-line {
@@ -1459,6 +1476,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   align-items: center;
   min-width: 0;
+  max-width: 100%;
   min-height: 30px;
   padding: 2px 0;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);

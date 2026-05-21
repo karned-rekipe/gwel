@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ingredientService } from '@/services/ingredientService'
 import { mealPlannerService } from '@/services/mealPlannerService'
 import { shoppingService } from '@/services/shoppingService'
@@ -42,14 +42,14 @@ interface SourceBreakdownLine {
   baseQuantity: number | null
 }
 
-const LIST_PAGE_SIZE = 20
+const INITIAL_LIST_BATCH_SIZE = 5
+const LIST_BATCH_INCREMENT = 10
 
 const lists = ref<ShoppingList[]>([])
-const listPage = ref(1)
+const visibleListLimit = ref(INITIAL_LIST_BATCH_SIZE)
 const listTotal = ref(0)
 const listLoading = ref(false)
 const listLoadingMore = ref(false)
-const listSentinel = ref<HTMLElement | null>(null)
 const suppliers = ref<Supplier[]>([])
 const current = ref<ShoppingList | null>(null)
 const currentEtag = ref('')
@@ -101,15 +101,21 @@ const manualForm = reactive({
 
 const checkedCount = computed(() => current.value?.items.filter((item) => item.checked).length ?? 0)
 const totalCount = computed(() => current.value?.items.length ?? 0)
-const hasMoreLists = computed(() => lists.value.length < listTotal.value)
 const selectedListUuid = computed(() => current.value?.uuid ?? '')
-const mobileListOptions = computed(() =>
-  [...lists.value].sort((a, b) => (b.period_start ?? b.created_at).localeCompare(a.period_start ?? a.created_at)),
-)
+const listSortDate = (list: ShoppingList): string => list.period_start ?? list.created_at
+const compareShoppingListsByStartDateDesc = (a: ShoppingList, b: ShoppingList): number => {
+  const byStartDate = listSortDate(b).localeCompare(listSortDate(a))
+  if (byStartDate !== 0) return byStartDate
+  return b.created_at.localeCompare(a.created_at)
+}
+const sortedLists = computed(() => [...lists.value].sort(compareShoppingListsByStartDateDesc))
+const displayedLists = computed(() => sortedLists.value.slice(0, visibleListLimit.value))
+const displayedListCount = computed(() => displayedLists.value.length)
+const hasMoreLists = computed(() => displayedListCount.value < listTotal.value)
+const mobileListOptions = computed(() => displayedLists.value)
 const quantityEditMode = computed(() => editMode.value === 'quantities')
 const supplierEditMode = computed(() => editMode.value === 'suppliers')
 const isEditMode = computed(() => editMode.value !== 'view')
-let listObserver: IntersectionObserver | null = null
 
 const supplierByUuid = computed(() => {
   const entries = suppliers.value.map((supplier) => [supplier.uuid, supplier] as const)
@@ -422,7 +428,7 @@ const loadSourceMealPlans = async (list: ShoppingList): Promise<void> => {
 
 const loadLists = async (reset = false): Promise<void> => {
   if (reset) {
-    listPage.value = 1
+    visibleListLimit.value = INITIAL_LIST_BATCH_SIZE
     listTotal.value = 0
     lists.value = []
   }
@@ -430,8 +436,8 @@ const loadLists = async (reset = false): Promise<void> => {
   listLoading.value = reset
   listLoadingMore.value = !reset
   try {
-    const response = await shoppingService.list({ page: listPage.value, per_page: LIST_PAGE_SIZE })
-    lists.value = reset ? response.data : [...lists.value, ...response.data]
+    const response = await shoppingService.list({ page: 1, per_page: visibleListLimit.value })
+    lists.value = response.data
     listTotal.value = response.pagination.total
   } finally {
     listLoading.value = false
@@ -440,21 +446,16 @@ const loadLists = async (reset = false): Promise<void> => {
 }
 
 const loadMoreLists = async (): Promise<void> => {
-  if (!hasMoreLists.value || listLoadingMore.value) return
-  listPage.value += 1
-  await loadLists()
-}
-
-const observeListSentinel = (): void => {
-  listObserver?.disconnect()
-  listObserver = null
-  if (!hasMoreLists.value || !listSentinel.value) return
-  listObserver = new IntersectionObserver((entries) => {
-    if (entries.some((entry) => entry.isIntersecting)) {
-      void loadMoreLists()
-    }
-  }, { rootMargin: '160px' })
-  listObserver.observe(listSentinel.value)
+  if (!hasMoreLists.value || listLoading.value || listLoadingMore.value) return
+  const previousLimit = visibleListLimit.value
+  visibleListLimit.value = Math.min(listTotal.value, visibleListLimit.value + LIST_BATCH_INCREMENT)
+  clearActionMessages()
+  try {
+    await loadLists()
+  } catch (err) {
+    visibleListLimit.value = previousLimit
+    actionError.value = err instanceof Error ? err.message : 'Chargement des listes impossible.'
+  }
 }
 
 const selectList = async (uuid: string): Promise<void> => {
@@ -785,22 +786,11 @@ onMounted(async () => {
     if (!current.value && mobileListOptions.value[0]) {
       await selectList(mobileListOptions.value[0].uuid)
     }
-    await nextTick()
-    observeListSentinel()
   } catch (err) {
     actionError.value = err instanceof Error ? err.message : 'Chargement impossible.'
   } finally {
     loading.value = false
   }
-})
-
-watch([hasMoreLists, listSentinel], async () => {
-  await nextTick()
-  observeListSentinel()
-})
-
-onBeforeUnmount(() => {
-  listObserver?.disconnect()
 })
 </script>
 
@@ -857,18 +847,30 @@ onBeforeUnmount(() => {
         <p v-if="current" class="shopping-page__muted">
           {{ current.items.length }} item{{ current.items.length > 1 ? 's' : '' }} dans la liste sélectionnée
         </p>
+        <div class="shopping-mobile-picker__footer">
+          <span>{{ displayedListCount }}/{{ listTotal }}</span>
+          <button
+            v-if="hasMoreLists"
+            type="button"
+            class="shopping-picker__more"
+            :disabled="listLoading || listLoadingMore"
+            @click="loadMoreLists"
+          >
+            {{ listLoadingMore ? 'Chargement…' : 'Charger plus' }}
+          </button>
+        </div>
       </section>
 
       <aside class="shopping-page__side">
         <section class="shopping-panel shopping-picker" aria-label="Listes de courses récentes">
           <header class="shopping-panel__header">
             <h2>Listes récentes</h2>
-            <span>{{ lists.length }}/{{ listTotal }}</span>
+            <span>{{ displayedListCount }}/{{ listTotal }}</span>
           </header>
           <p v-if="listLoading" class="shopping-page__muted">Chargement…</p>
-          <p v-else-if="!lists.length" class="shopping-page__muted">Aucune liste enregistrée.</p>
+          <p v-else-if="!displayedLists.length" class="shopping-page__muted">Aucune liste enregistrée.</p>
           <button
-            v-for="list in lists"
+            v-for="list in displayedLists"
             :key="list.uuid"
             type="button"
             class="shopping-picker__item"
@@ -878,11 +880,11 @@ onBeforeUnmount(() => {
             <strong>{{ list.name }}</strong>
             <span>{{ formatListPeriod(list) }} · {{ list.status }} · {{ list.items.length }} item{{ list.items.length > 1 ? 's' : '' }}</span>
           </button>
-          <div v-if="hasMoreLists" ref="listSentinel" class="shopping-picker__sentinel">
+          <div v-if="hasMoreLists" class="shopping-picker__sentinel">
             <button
               type="button"
               class="shopping-picker__more"
-              :disabled="listLoadingMore"
+              :disabled="listLoading || listLoadingMore"
               @click="loadMoreLists"
             >
               {{ listLoadingMore ? 'Chargement…' : 'Charger plus' }}
@@ -1357,6 +1359,18 @@ onBeforeUnmount(() => {
 .shopping-mobile-picker select {
   width: 100%;
   min-width: 0;
+}
+
+.shopping-mobile-picker__footer {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.shopping-mobile-picker__footer span {
+  color: var(--color-text-tertiary);
+  font-size: 0.78rem;
 }
 
 .shopping-page__list-header {

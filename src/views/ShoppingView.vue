@@ -67,6 +67,8 @@ const mealPlansByUuid = ref<Record<string, MealPlanRead>>({})
 const selectedSourceItem = ref<ShoppingItem | null>(null)
 const loadingSourceDetails = ref(false)
 const sourceDetailsError = ref<string | null>(null)
+const createListModalOpen = ref(false)
+const createListSubmitting = ref(false)
 
 const supplierEditForm = reactive({
   supplierUuid: '',
@@ -80,14 +82,21 @@ const formatDate = (value: Date): string => {
   return `${year}-${month}-${day}`
 }
 
-const today = new Date()
-const defaultEnd = new Date(today)
-defaultEnd.setDate(today.getDate() + 6)
+const defaultCreateListPeriod = (): { dateStart: string; dateEnd: string } => {
+  const start = new Date()
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  return {
+    dateStart: formatDate(start),
+    dateEnd: formatDate(end),
+  }
+}
 
-const controls = reactive({
-  dateStart: formatDate(today),
-  dateEnd: formatDate(defaultEnd),
-  generatedName: '',
+const initialCreateListPeriod = defaultCreateListPeriod()
+const createListForm = reactive({
+  dateStart: initialCreateListPeriod.dateStart,
+  dateEnd: initialCreateListPeriod.dateEnd,
+  name: '',
 })
 
 const manualForm = reactive({
@@ -532,24 +541,52 @@ const selectListFromEvent = (event: Event): void => {
   void selectList(uuid)
 }
 
+const resetCreateListForm = (): void => {
+  const period = defaultCreateListPeriod()
+  createListForm.dateStart = period.dateStart
+  createListForm.dateEnd = period.dateEnd
+  createListForm.name = ''
+}
+
+const openCreateListModal = (): void => {
+  clearActionMessages()
+  closeSourceDetails()
+  resetCreateListForm()
+  createListModalOpen.value = true
+}
+
+const closeCreateListModal = (): void => {
+  if (createListSubmitting.value) return
+  createListModalOpen.value = false
+}
+
 const generateList = async (): Promise<void> => {
-  if (!controls.dateStart || !controls.dateEnd) return
-  loading.value = true
+  if (!createListForm.dateStart || !createListForm.dateEnd || createListSubmitting.value) return
+  createListSubmitting.value = true
   clearActionMessages()
   try {
     const result = await shoppingService.generateFromPeriod({
-      date_start: controls.dateStart,
-      date_end: controls.dateEnd,
-      name: controls.generatedName || null,
+      date_start: createListForm.dateStart,
+      date_end: createListForm.dateEnd,
+      name: createListForm.name.trim() || null,
     })
     resetEditMode()
     closeSourceDetails()
     setCurrent(result.payload, result.etag)
-    await loadLists(true)
+    createListModalOpen.value = false
+    resetCreateListForm()
+    try {
+      await loadLists(true)
+    } catch (refreshErr) {
+      actionError.value =
+        refreshErr instanceof Error
+          ? `Liste créée, mais rafraîchissement impossible : ${refreshErr.message}`
+          : 'Liste créée, mais rafraîchissement impossible.'
+    }
   } catch (err) {
     actionError.value = err instanceof Error ? err.message : 'Génération impossible.'
   } finally {
-    loading.value = false
+    createListSubmitting.value = false
   }
 }
 
@@ -613,6 +650,7 @@ const handleShoppingLineKeyup = (event: KeyboardEvent, item: ShoppingItem): void
 }
 
 const openSourceDetails = async (item: ShoppingItem): Promise<void> => {
+  closeCreateListModal()
   selectedSourceItem.value = item
   sourceDetailsError.value = null
   if (!current.value) return
@@ -863,43 +901,28 @@ onMounted(async () => {
       </div>
     </header>
 
-    <section class="shopping-page__toolbar" aria-label="Pilotage courses">
-      <label>
-        Début
-        <input v-model="controls.dateStart" type="date" required />
-      </label>
-      <label>
-        Fin
-        <input v-model="controls.dateEnd" type="date" required />
-      </label>
-      <label>
-        Nom
-        <input v-model="controls.generatedName" type="text" placeholder="Courses semaine" />
-      </label>
-      <button type="button" :disabled="loading || !controls.dateStart || !controls.dateEnd" @click="generateList">
-        Générer
-      </button>
-    </section>
-
     <p v-if="actionError" class="shopping-page__error">{{ actionError }}</p>
     <p v-if="actionSuccess" class="shopping-page__success">{{ actionSuccess }}</p>
 
     <section class="shopping-page__workbench">
       <section class="shopping-panel shopping-mobile-picker" aria-label="Sélection mobile de la liste de courses">
-        <label for="shopping-mobile-list">
-          Liste de courses
-          <select
-            id="shopping-mobile-list"
-            :value="selectedListUuid"
-            :disabled="listLoading || mobileListOptions.length === 0"
-            @change="selectListFromEvent"
-          >
-            <option v-if="mobileListOptions.length === 0" value="">Aucune liste disponible</option>
-            <option v-for="list in mobileListOptions" :key="list.uuid" :value="list.uuid">
-              {{ list.name }} - {{ formatListPeriod(list) }}
-            </option>
-          </select>
-        </label>
+        <div class="shopping-mobile-picker__header">
+          <label for="shopping-mobile-list">
+            Liste de courses
+            <select
+              id="shopping-mobile-list"
+              :value="selectedListUuid"
+              :disabled="listLoading || mobileListOptions.length === 0"
+              @change="selectListFromEvent"
+            >
+              <option v-if="mobileListOptions.length === 0" value="">Aucune liste disponible</option>
+              <option v-for="list in mobileListOptions" :key="list.uuid" :value="list.uuid">
+                {{ list.name }} - {{ formatListPeriod(list) }}
+              </option>
+            </select>
+          </label>
+          <button type="button" class="shopping-picker__new" @click="openCreateListModal">+ Nouvelle liste</button>
+        </div>
         <p v-if="current" class="shopping-page__muted">
           {{ current.items.length }} item{{ current.items.length > 1 ? 's' : '' }} dans la liste sélectionnée
         </p>
@@ -919,9 +942,12 @@ onMounted(async () => {
 
       <aside class="shopping-page__side">
         <section class="shopping-panel shopping-picker" aria-label="Listes de courses récentes">
-          <header class="shopping-panel__header">
-            <h2>Listes récentes</h2>
-            <span>{{ displayedListCount }}/{{ listTotal }}</span>
+          <header class="shopping-panel__header shopping-panel__header--actions">
+            <div>
+              <h2>Listes récentes</h2>
+              <span>{{ displayedListCount }}/{{ listTotal }}</span>
+            </div>
+            <button type="button" class="shopping-picker__new" @click="openCreateListModal">+ Nouvelle liste</button>
           </header>
           <p v-if="listLoading" class="shopping-page__muted">Chargement…</p>
           <p v-else-if="!displayedLists.length" class="shopping-page__muted">Aucune liste enregistrée.</p>
@@ -1146,6 +1172,51 @@ onMounted(async () => {
     </section>
 
     <div
+      v-if="createListModalOpen"
+      class="shopping-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shopping-create-list-title"
+      @click.self="closeCreateListModal"
+    >
+      <section class="shopping-modal__panel shopping-modal__panel--narrow">
+        <header class="shopping-modal__header">
+          <div>
+            <p class="shopping-modal__eyebrow">Nouvelle liste</p>
+            <h2 id="shopping-create-list-title">Créer une liste de courses</h2>
+            <p>Choisissez la période à convertir en liste magasin.</p>
+          </div>
+          <button type="button" class="shopping-modal__close" aria-label="Fermer" @click="closeCreateListModal">x</button>
+        </header>
+
+        <form class="shopping-modal__form" @submit.prevent="generateList">
+          <div class="shopping-page__split">
+            <label>
+              Début
+              <input v-model="createListForm.dateStart" type="date" required />
+            </label>
+            <label>
+              Fin
+              <input v-model="createListForm.dateEnd" type="date" required />
+            </label>
+          </div>
+          <label>
+            Nom
+            <input v-model.trim="createListForm.name" type="text" placeholder="Courses semaine" />
+          </label>
+          <div class="shopping-modal__actions">
+            <button type="button" class="shopping-page__secondary" :disabled="createListSubmitting" @click="closeCreateListModal">
+              Annuler
+            </button>
+            <button type="submit" :disabled="createListSubmitting || !createListForm.dateStart || !createListForm.dateEnd">
+              {{ createListSubmitting ? 'Création…' : 'Créer la liste' }}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div
       v-if="selectedSourceItem"
       class="shopping-modal"
       role="dialog"
@@ -1205,7 +1276,6 @@ onMounted(async () => {
 }
 
 .shopping-page__header,
-.shopping-page__toolbar,
 .shopping-page__list-header,
 .shopping-page__summary,
 .shopping-page__split {
@@ -1265,11 +1335,6 @@ onMounted(async () => {
 .shopping-page__list-header p,
 .shopping-picker__item span {
   color: var(--color-text-secondary);
-}
-
-.shopping-page__toolbar {
-  flex-wrap: wrap;
-  margin-bottom: 14px;
 }
 
 .shopping-page label,
@@ -1361,6 +1426,16 @@ onMounted(async () => {
   align-items: baseline;
 }
 
+.shopping-panel__header--actions {
+  align-items: center;
+}
+
+.shopping-panel__header--actions > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
 .shopping-panel__header span {
   color: var(--color-text-tertiary);
   font-size: 0.78rem;
@@ -1398,6 +1473,10 @@ onMounted(async () => {
   color: var(--color-text-primary) !important;
 }
 
+.shopping-picker__new {
+  white-space: nowrap;
+}
+
 .shopping-picker__sentinel {
   display: grid;
 }
@@ -1415,6 +1494,13 @@ onMounted(async () => {
 .shopping-mobile-picker select {
   width: 100%;
   min-width: 0;
+}
+
+.shopping-mobile-picker__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
 }
 
 .shopping-mobile-picker__footer {
@@ -1675,7 +1761,7 @@ onMounted(async () => {
 
 .shopping-modal {
   position: fixed;
-  z-index: 40;
+  z-index: 200;
   inset: 0;
   display: grid;
   place-items: center;
@@ -1694,6 +1780,10 @@ onMounted(async () => {
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   box-shadow: 0 18px 54px rgba(0, 0, 0, 0.18);
+}
+
+.shopping-modal__panel--narrow {
+  width: min(520px, 100%);
 }
 
 .shopping-modal__header {
@@ -1722,6 +1812,26 @@ onMounted(async () => {
   border-radius: 999px;
   background: var(--color-surface);
   color: var(--color-text-primary);
+}
+
+.shopping-modal__form {
+  display: grid;
+  gap: 12px;
+}
+
+.shopping-modal__form .shopping-page__split {
+  flex-wrap: wrap;
+}
+
+.shopping-modal__form .shopping-page__split label {
+  flex: 1 1 180px;
+}
+
+.shopping-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .shopping-source-table {

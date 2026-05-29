@@ -1,7 +1,19 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
+import { isNotFoundError } from '@/services/http'
 import { tenantPreferencesService } from '@/services/tenantPreferencesService'
 import type { TenantPreferences, TenantPreferencesUpdate } from '@/types/tenantPreferences'
+
+const defaultPreferences = (): TenantPreferences => ({
+  uuid: 'local-tenant-preferences-placeholder',
+  version: 0,
+  exclusions: { ingredients: [], groups: [] },
+  favorites: { recipes: [] },
+  meal_slots: [
+    { code: 'lunch', label: 'Déjeuner', position: 0 },
+    { code: 'dinner', label: 'Dîner', position: 1 },
+  ],
+})
 
 export const useTenantPreferencesStore = defineStore('tenantPreferences', () => {
   const current = ref<TenantPreferences | null>(null)
@@ -17,6 +29,11 @@ export const useTenantPreferencesStore = defineStore('tenantPreferences', () => 
       current.value = payload
       currentEtag.value = etag
     } catch (err) {
+      if (isNotFoundError(err)) {
+        current.value = defaultPreferences()
+        currentEtag.value = null
+        return
+      }
       error.value = err instanceof Error ? err.message : 'Chargement impossible.'
     } finally {
       loading.value = false

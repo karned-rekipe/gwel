@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import MealPlanWeekGrid from '@/components/planning/MealPlanWeekGrid.vue'
 import { householdScheduleService } from '@/services/householdScheduleService'
+import { isNotFoundError } from '@/services/http'
 import type { MealCalendarParams } from '@/services/mealPlannerService'
 import { useHouseholdMembersStore } from '@/stores/householdMembersStore'
 import { useIngredientCatalogStore } from '@/stores/ingredientCatalogStore'
@@ -20,6 +21,10 @@ const preferencesStore = useTenantPreferencesStore()
 const actionError = ref<string | null>(null)
 const scheduleError = ref<string | null>(null)
 const householdSchedule = ref<HouseholdSchedule | null>(null)
+const defaultMealSlots: MealSlotDefinition[] = [
+  { code: 'lunch', label: 'Déjeuner', position: 0 },
+  { code: 'dinner', label: 'Dîner', position: 1 },
+]
 
 const addDays = (value: Date, daysToAdd: number): Date => {
   const result = new Date(value)
@@ -67,7 +72,7 @@ const fallbackMealSlots = computed<MealSlotDefinition[]>(() => {
 
 const availableMealSlots = computed<MealSlotDefinition[]>(() => {
   const configured = preferencesStore.current?.meal_slots ?? []
-  const source = configured.length ? configured : fallbackMealSlots.value
+  const source = configured.length ? configured : fallbackMealSlots.value.length ? fallbackMealSlots.value : defaultMealSlots
   return [...source].sort((left, right) => left.position - right.position)
 })
 
@@ -89,6 +94,10 @@ const loadHouseholdSchedule = async (): Promise<void> => {
     const response = await householdScheduleService.get()
     householdSchedule.value = response.payload
   } catch (err) {
+    if (isNotFoundError(err)) {
+      householdSchedule.value = null
+      return
+    }
     scheduleError.value = err instanceof Error ? err.message : 'Chargement du mode de répartition impossible.'
   }
 }

@@ -1,11 +1,32 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { mealPlannerService, type MealCalendarParams } from '@/services/mealPlannerService'
+import { isNotFoundError } from '@/services/http'
 import type { MealItem, MealItemPayload, MealPlanCreate, MealPlanRead, MealPlanStatus, MealPlanSummary, MealSlot, SlotPatchOperation } from '@/types/mealPlan'
 
 const messageFrom = (err: unknown): string => (err instanceof Error ? err.message : 'Action impossible.')
 const clonePlan = (plan: MealPlanRead): MealPlanRead => JSON.parse(JSON.stringify(plan)) as MealPlanRead
 const pendingItemUuid = (): string => `pending-${crypto.randomUUID()}`
+const isoToday = (): string => new Date().toISOString().slice(0, 10)
+
+const emptyCalendarPlan = (params: MealCalendarParams): MealPlanRead => {
+  const now = new Date().toISOString()
+  const dateStart = params.date_from || isoToday()
+  const dateEnd = params.date_to || dateStart
+
+  return {
+    uuid: 'local-calendar-placeholder',
+    version: 0,
+    created_at: now,
+    updated_at: now,
+    name: 'Planning',
+    status: 'draft',
+    date_start: dateStart,
+    date_end: dateEnd,
+    slots: [],
+    migration_metadata: null,
+  }
+}
 
 export const useMealPlanStore = defineStore('mealPlan', () => {
   const list = ref<MealPlanSummary[]>([])
@@ -55,6 +76,11 @@ export const useMealPlanStore = defineStore('mealPlan', () => {
       current.value = payload.data ?? null
       currentEtag.value = etag
     } catch (err) {
+      if (isNotFoundError(err)) {
+        current.value = emptyCalendarPlan(params)
+        currentEtag.value = null
+        return
+      }
       error.value = messageFrom(err)
     } finally {
       loading.value = false

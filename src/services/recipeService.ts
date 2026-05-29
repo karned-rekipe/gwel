@@ -19,6 +19,23 @@ export interface RecipeListFilters {
 
 const recipeApi = createHttpClient(`${appConfig.services.recipeApiBaseUrl}/v1`, 30000)
 
+function normalizeRecipe(recipe: Recipe): Recipe {
+  return {
+    ...recipe,
+    secondary_images: recipe.secondary_images ?? [],
+    favorite: recipe.favorite ?? false,
+    tag_uuids: recipe.tag_uuids ?? [],
+    tags: recipe.tags ?? [],
+    season_months: recipe.season_months ?? {},
+    migration_metadata: recipe.migration_metadata ?? {},
+    sources: recipe.sources ?? [],
+    components: recipe.components ?? [],
+    ingredients: recipe.ingredients ?? [],
+    equipment: recipe.equipment ?? [],
+    steps: recipe.steps ?? [],
+  }
+}
+
 export const recipeService = {
   async getPage(filters: RecipeListFilters = {}, signal?: AbortSignal): Promise<PaginatedResponse<Recipe>> {
     const params = Object.fromEntries(
@@ -29,7 +46,10 @@ export const recipeService = {
       signal,
     })
 
-    return response.data
+    return {
+      ...response.data,
+      data: response.data.data.map(normalizeRecipe),
+    }
   },
 
   async getAll(name?: string): Promise<Recipe[]> {
@@ -54,7 +74,7 @@ export const recipeService = {
 
   async getByUuid(uuid: string): Promise<Recipe> {
     const response = await recipeApi.get<ApiResponse<Recipe>>(`/recipes/${uuid}`)
-    return unwrapApiResponse(response.data)
+    return normalizeRecipe(unwrapApiResponse(response.data))
   },
 
   async searchByName(name: string): Promise<Recipe[]> {

@@ -24,7 +24,7 @@ function normalizeRecipe(recipe: Recipe): Recipe {
     ...recipe,
     secondary_images: recipe.secondary_images ?? [],
     favorite: recipe.favorite ?? false,
-    tag_uuids: recipe.tag_uuids ?? [],
+    tag_uuids: recipe.tag_uuids ?? recipe.tags?.map((tag) => tag.uuid) ?? [],
     tags: recipe.tags ?? [],
     season_months: recipe.season_months ?? {},
     migration_metadata: recipe.migration_metadata ?? {},

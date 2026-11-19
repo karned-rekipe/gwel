@@ -9,10 +9,7 @@ const defaultPreferences = (): TenantPreferences => ({
   version: 0,
   exclusions: { ingredients: [], groups: [] },
   favorites: { recipes: [] },
-  meal_slots: [
-    { code: 'lunch', label: 'Déjeuner', position: 0 },
-    { code: 'dinner', label: 'Dîner', position: 1 },
-  ],
+  meal_slots: [],
 })
 
 export const useTenantPreferencesStore = defineStore('tenantPreferences', () => {

@@ -42,7 +42,7 @@ interface SourceBreakdownLine {
   baseQuantity: number | null
 }
 
-const INITIAL_LIST_BATCH_SIZE = 5
+const INITIAL_LIST_BATCH_SIZE = 10
 const LIST_BATCH_INCREMENT = 10
 
 const lists = ref<ShoppingList[]>([])
@@ -878,7 +878,8 @@ onMounted(async () => {
       throw listResult.reason
     }
     if (!current.value && mobileListOptions.value[0]) {
-      await selectList(mobileListOptions.value[0].uuid)
+      const firstPopulatedList = mobileListOptions.value.find((list) => list.items.length > 0)
+      await selectList((firstPopulatedList ?? mobileListOptions.value[0]).uuid)
     }
   } catch (err) {
     actionError.value = err instanceof Error ? err.message : 'Chargement impossible.'

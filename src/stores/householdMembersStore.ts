@@ -1,6 +1,7 @@
 import { reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { householdMemberService } from '@/services/householdMemberService'
+import { isNotFoundError } from '@/services/http'
 import type { HouseholdMember, HouseholdMemberPayload } from '@/types/householdMember'
 
 export const useHouseholdMembersStore = defineStore('householdMembers', () => {
@@ -25,6 +26,10 @@ export const useHouseholdMembersStore = defineStore('householdMembers', () => {
     try {
       members.value = await householdMemberService.list()
     } catch (err) {
+      if (isNotFoundError(err)) {
+        members.value = []
+        return
+      }
       error.value = err instanceof Error ? err.message : 'Chargement des personnes impossible.'
     } finally {
       loading.value = false

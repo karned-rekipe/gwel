@@ -4,6 +4,19 @@ import type { ApiResponse, PaginatedResponse } from '@/types/api'
 
 const ACCESS_TOKEN_STORAGE_KEY = 'rekipe.access_token'
 
+export class ApiClientError extends Error {
+  readonly status?: number
+
+  constructor(message: string, status?: number) {
+    super(message)
+    this.name = 'ApiClientError'
+    this.status = status
+  }
+}
+
+export const isNotFoundError = (err: unknown): boolean =>
+  err instanceof ApiClientError ? err.status === 404 : err instanceof Error && err.message === 'Not Found'
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -125,7 +138,7 @@ export const createHttpClient = (baseURL: string, timeout = 10000): AxiosInstanc
     (error: AxiosError<unknown>) => {
       const apiMessage = formatApiErrorMessage(error.response?.data)
       const fallback = error.message || 'Erreur réseau'
-      return Promise.reject(new Error(apiMessage || fallback))
+      return Promise.reject(new ApiClientError(apiMessage || fallback, error.response?.status))
     },
   )
 

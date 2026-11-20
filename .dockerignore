@@ -1,0 +1,12 @@
+.git/
+.github/
+.vscode/
+.idea/
+node_modules/
+dist/
+coverage/
+cypress/videos/
+cypress/screenshots/
+*.log
+*.local
+.env

@@ -16,6 +16,7 @@ const { mutate: deleteRecipe, isPending: isDeleting } = useDeleteRecipe()
 const { mutate: generateRecipeImage, isPending: isGeneratingImage } = useGenerateRecipeImage()
 const wishlist = useRecipeWishlistStore()
 const deleteError = ref<string | null>(null)
+const imageError = ref<string | null>(null)
 const monthNames = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc']
 
 const recipeTags = computed(() => props.recipe.tags ?? [])
@@ -78,7 +79,12 @@ const handleEdit = (): void => {
 }
 
 const handleGenerateImage = (): void => {
-  generateRecipeImage(props.recipe)
+  imageError.value = null
+  generateRecipeImage(props.recipe, {
+    onError: (err) => {
+      imageError.value = err instanceof Error ? err.message : 'Génération de l’image impossible.'
+    },
+  })
 }
 
 const handleWishlistToggle = (): void => {
@@ -114,8 +120,8 @@ const handleDelete = (): void => {
           {{ isInWishlist ? 'Dans la liste d’envies' : 'Ajouter à la liste d’envies' }}
         </button>
         <IconActionButton
-          label="Image IA"
-          icon="▣"
+          :label="isGeneratingImage ? 'Génération de l’image en cours' : 'Image IA'"
+          :icon="isGeneratingImage ? '…' : '▣'"
           :disabled="isGeneratingImage"
           @click="handleGenerateImage"
         />
@@ -210,7 +216,8 @@ const handleDelete = (): void => {
       </section>
     </section>
 
-    <p v-if="deleteError" class="recipe-detail__error">{{ deleteError }}</p>
+    <p v-if="imageError" class="recipe-detail__error" role="alert">{{ imageError }}</p>
+    <p v-if="deleteError" class="recipe-detail__error" role="alert">{{ deleteError }}</p>
 
     <div class="recipe-detail__grid">
       <section class="recipe-detail__section">

@@ -18,11 +18,13 @@ export const mediaService = {
   async generateRecipeImage(params: {
     recipeUuid: string
     recipeName: string
+    ingredients?: string[]
     prompt?: string | null
   }): Promise<GeneratedRecipeImage> {
     const response = await mediaApi.post<GeneratedRecipeImage>('/recipe-images/generate', {
       recipe_uuid: params.recipeUuid,
       recipe_name: params.recipeName,
+      ingredients: params.ingredients ?? [],
       prompt: params.prompt?.trim() || null,
     })
     return response.data

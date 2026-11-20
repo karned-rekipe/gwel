@@ -146,6 +146,7 @@ export function useGenerateRecipeImage() {
       const generated = await mediaService.generateRecipeImage({
         recipeUuid: recipe.uuid,
         recipeName: recipe.name,
+        ingredients: (recipe.ingredients ?? []).map((ingredient) => ingredient.name),
       })
       await recipeService.update(recipe.uuid, { main_image: generated.image.url })
       return generated

@@ -6,8 +6,7 @@ import { VueQueryPlugin, type VueQueryPluginOptions } from '@tanstack/vue-query'
 
 import App from './App.vue'
 import router from './router'
-
-const app = createApp(App)
+import { initializeAuth } from './services/auth'
 
 // Configuration de Vue Query
 const vueQueryOptions: VueQueryPluginOptions = {
@@ -26,8 +25,20 @@ const vueQueryOptions: VueQueryPluginOptions = {
   }
 }
 
-app.use(createPinia())
-app.use(VueQueryPlugin, vueQueryOptions)
-app.use(router)
+const bootstrap = async (): Promise<void> => {
+  await initializeAuth()
 
-app.mount('#app')
+  const app = createApp(App)
+  app.use(createPinia())
+  app.use(VueQueryPlugin, vueQueryOptions)
+  app.use(router)
+  app.mount('#app')
+}
+
+void bootstrap().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : "Impossible d'initialiser l'application"
+  const root = document.querySelector<HTMLDivElement>('#app')
+  if (root) {
+    root.textContent = message
+  }
+})

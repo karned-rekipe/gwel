@@ -1,8 +1,7 @@
 import axios, { type AxiosError, type AxiosInstance } from 'axios'
 import { appConfig } from '@/config/env'
+import { getAccessToken } from '@/services/auth'
 import type { ApiResponse, PaginatedResponse } from '@/types/api'
-
-const ACCESS_TOKEN_STORAGE_KEY = 'rekipe.access_token'
 
 export class ApiClientError extends Error {
   readonly status?: number
@@ -97,16 +96,6 @@ const buildHeaders = (): Record<string, string> => {
     'X-Tenant-URI': appConfig.tenantUri,
   }
 
-  if (!appConfig.authDisabled) {
-    const token =
-      window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ??
-      window.sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
-
-    if (token) {
-      headers.Authorization = `Bearer ${token}`
-    }
-  }
-
   return headers
 }
 
@@ -117,13 +106,11 @@ export const createHttpClient = (baseURL: string, timeout = 10000): AxiosInstanc
     headers: buildHeaders(),
   })
 
-  client.interceptors.request.use((config) => {
+  client.interceptors.request.use(async (config) => {
     config.headers.set('X-Tenant-URI', appConfig.tenantUri)
 
     if (!appConfig.authDisabled) {
-      const token =
-        window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ??
-        window.sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+      const token = await getAccessToken()
 
       if (token) {
         config.headers.set('Authorization', `Bearer ${token}`)

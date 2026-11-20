@@ -272,6 +272,22 @@ Chaque liste affiche les états appropriés :
 ✅ **Performance** : Lazy loading, composables optimisés
 ✅ **Maintenabilité** : Séparation des responsabilités, design atomique
 
+## Image de déploiement
+
+```bash
+docker build -t gwel .
+docker run --rm -p 8080:8080 gwel
+```
+
+Le build de l'image active Keycloak et cible par défaut
+`https://keycloak.amazone.lan`, le realm `rekipe` et les routes relatives
+`/api/recipe`, `/api/recipe-agent` et `/api/media`. Au chargement, le frontend
+effectue un flux OpenID Connect Authorization Code avec PKCE, conserve les
+jetons dans la session du navigateur et renouvelle le jeton d'accès avant les
+appels API. Un tag Git `vX.Y.Z`
+publie automatiquement l'image multiarchitecture
+`ghcr.io/karned-rekipe/gwel:X.Y.Z`.
+
 ## 📚 Ressources
 
 - [Vue 3 Documentation](https://vuejs.org/)

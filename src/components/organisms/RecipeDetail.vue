@@ -79,6 +79,10 @@ const handleEdit = (): void => {
 }
 
 const handleGenerateImage = (): void => {
+  if (
+    props.recipe.main_image
+    && !window.confirm('Remplacer l’image actuelle par une nouvelle image générée par IA ?')
+  ) return
   imageError.value = null
   generateRecipeImage(props.recipe, {
     onError: (err) => {

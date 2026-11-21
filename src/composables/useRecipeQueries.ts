@@ -1,7 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { aiRecipeService } from '@/services/aiRecipeService'
-import { mediaService } from '@/services/mediaService'
 import { recipeService, type RecipeListFilters } from '@/services/recipeService'
 import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 import type { Recipe, RecipeCreatePayload } from '@/types/recipe'
@@ -142,15 +141,11 @@ export function useGenerateRecipeImage() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (recipe: Recipe) => {
-      const generated = await mediaService.generateRecipeImage({
-        recipeUuid: recipe.uuid,
-        recipeName: recipe.name,
-        ingredients: (recipe.ingredients ?? []).map((ingredient) => ingredient.name),
-      })
-      await recipeService.update(recipe.uuid, { main_image: generated.image.url })
-      return generated
-    },
+    mutationFn: (recipe: Recipe) => recipeService.generateImage(
+      recipe.uuid,
+      undefined,
+      Boolean(recipe.main_image?.trim()),
+    ),
     onSuccess: (_, recipe) => {
       queryClient.invalidateQueries({ queryKey: recipeKeys.detail(recipe.uuid) })
       queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })

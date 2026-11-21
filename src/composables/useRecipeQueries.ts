@@ -141,7 +141,11 @@ export function useGenerateRecipeImage() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (recipe: Recipe) => recipeService.generateImage(recipe.uuid),
+    mutationFn: (recipe: Recipe) => recipeService.generateImage(
+      recipe.uuid,
+      undefined,
+      Boolean(recipe.main_image?.trim()),
+    ),
     onSuccess: (_, recipe) => {
       queryClient.invalidateQueries({ queryKey: recipeKeys.detail(recipe.uuid) })
       queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })

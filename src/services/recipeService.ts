@@ -17,6 +17,18 @@ export interface RecipeListFilters {
   per_page?: number
 }
 
+export interface GeneratedRecipeImage {
+  recipe: Recipe
+  image: {
+    bucket: string
+    key: string
+    url: string
+    content_type: string
+    size_bytes: number
+  }
+  provider: string
+}
+
 const recipeApi = createHttpClient(`${appConfig.services.recipeApiBaseUrl}/v1`, 30000)
 
 function normalizeRecipe(recipe: Recipe): Recipe {
@@ -101,5 +113,25 @@ export const recipeService = {
   async duplicate(uuid: string): Promise<RecipeCreatedResponse> {
     const response = await recipeApi.post<ApiResponse<RecipeCreatedResponse>>(`/recipes/${uuid}/duplicate`)
     return unwrapApiResponse(response.data)
+  },
+
+  async generateImage(
+    uuid: string,
+    prompt?: string | null,
+    replaceExisting = false,
+  ): Promise<GeneratedRecipeImage> {
+    const response = await recipeApi.post<ApiResponse<GeneratedRecipeImage>>(
+      `/recipes/${uuid}/main-image`,
+      {
+        prompt: prompt?.trim() || null,
+        replace_existing: replaceExisting,
+      },
+      { timeout: 120000 },
+    )
+    const generated = unwrapApiResponse(response.data)
+    return {
+      ...generated,
+      recipe: normalizeRecipe(generated.recipe),
+    }
   },
 }

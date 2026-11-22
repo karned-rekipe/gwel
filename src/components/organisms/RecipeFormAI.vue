@@ -1,43 +1,57 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppButton from '@/components/atoms/AppButton.vue'
+import RecipeAIProcessingOverlay from '@/components/organisms/RecipeAIProcessingOverlay.vue'
+import { useRecipeAIProgress } from '@/composables/useRecipeAIProgress'
 import { useCreateRecipeWithAI } from '@/composables/useRecipeQueries'
-import type { AICreateResponse, RecipeAIInput } from '@/types/recipe'
+import { aiRecipeService } from '@/services/aiRecipeService'
+import type { AICreateResponse, RecipeAIInput, RecipeCreationSourceKind } from '@/types/recipe'
 
 const router = useRouter()
-type SourceMode = 'text' | 'url' | 'image-upload' | 'image-url'
-const allowedImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+type SourceMode = RecipeCreationSourceKind
+const allowedDocumentTypes = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
 const rawText = ref('')
 const sourceMode = ref<SourceMode>('text')
-const sourceOptions: Array<{ value: SourceMode; label: string }> = [
-  { value: 'text', label: 'Texte' },
-  { value: 'url', label: 'Lien recette' },
-  { value: 'image-upload', label: 'Image' },
-  { value: 'image-url', label: 'Lien image' },
+const sourceOptions: Array<{ value: SourceMode; icon: string; label: string; description: string }> = [
+  { value: 'text', icon: '✍️', label: 'Texte', description: 'Coller toute la recette' },
+  { value: 'link', icon: '🔗', label: 'Lien', description: 'Page Web, image ou PDF' },
+  { value: 'document', icon: '📄', label: 'Document', description: 'Importer une image ou un PDF' },
 ]
 const sourceUrl = ref('')
-const imageUrl = ref('')
-const imageBase64 = ref('')
-const imageMediaType = ref('')
+const documentBase64 = ref('')
+const documentMediaType = ref('')
 const selectedFileName = ref('')
 const fileError = ref('')
 const duplicateCandidate = ref<AICreateResponse | null>(null)
 const noActionMessage = ref('')
+const activeTrackingId = ref('')
+let resultTimer: number | null = null
 
 const { mutate: createRecipeWithAI, isPending, isError, error } = useCreateRecipeWithAI()
+const {
+  isVisible: showProcessingOverlay,
+  stage: processingStage,
+  completedStages: completedProcessingStages,
+  start: startProcessing,
+  complete: completeProcessing,
+  fail: failProcessing,
+  stop: stopProcessing,
+} = useRecipeAIProgress(() => (
+  activeTrackingId.value
+    ? aiRecipeService.getRunningRecipeCreation(activeTrackingId.value)
+    : Promise.resolve(null)
+))
 
 const isFormValid = computed(() => {
   switch (sourceMode.value) {
     case 'text':
       return rawText.value.trim().length >= 10
-    case 'url':
+    case 'link':
       return /^https?:\/\//i.test(sourceUrl.value.trim())
-    case 'image-url':
-      return /^https?:\/\//i.test(imageUrl.value.trim())
-    case 'image-upload':
-      return Boolean(imageBase64.value && imageMediaType.value && !fileError.value)
+    case 'document':
+      return Boolean(documentBase64.value && documentMediaType.value && !fileError.value)
   }
 })
 const duplicateRecipeLabel = computed(
@@ -47,7 +61,13 @@ const duplicateRecipeLabel = computed(
     'Cette recette',
 )
 
-watch([rawText, sourceUrl, imageUrl, sourceMode], () => {
+const sourceSubject = computed(() => {
+  if (sourceMode.value === 'link') return sourceUrl.value.trim() || 'Lien de recette'
+  if (sourceMode.value === 'document') return selectedFileName.value || 'Document de recette'
+  return 'Nouvelle recette depuis un texte'
+})
+
+watch([rawText, sourceUrl, sourceMode], () => {
   duplicateCandidate.value = null
   noActionMessage.value = ''
 })
@@ -56,12 +76,15 @@ const selectedInput = (): RecipeAIInput => {
   switch (sourceMode.value) {
     case 'text':
       return { kind: 'text', rawText: rawText.value }
-    case 'url':
-      return { kind: 'url', url: sourceUrl.value }
-    case 'image-url':
-      return { kind: 'image-url', url: imageUrl.value }
-    case 'image-upload':
-      return { kind: 'image-upload', base64: imageBase64.value, mediaType: imageMediaType.value }
+    case 'link':
+      return { kind: 'link', url: sourceUrl.value }
+    case 'document':
+      return {
+        kind: 'document',
+        base64: documentBase64.value,
+        mediaType: documentMediaType.value,
+        fileName: selectedFileName.value,
+      }
   }
 }
 
@@ -72,29 +95,29 @@ const setSourceMode = (mode: SourceMode): void => {
 const handleFileChange = (event: Event): void => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
-  imageBase64.value = ''
-  imageMediaType.value = ''
+  documentBase64.value = ''
+  documentMediaType.value = ''
   selectedFileName.value = ''
   fileError.value = ''
   duplicateCandidate.value = null
   noActionMessage.value = ''
   if (!file) return
-  if (!allowedImageTypes.has(file.type)) {
-    fileError.value = 'Utilise une image JPEG, PNG, WebP ou GIF.'
+  if (!allowedDocumentTypes.has(file.type)) {
+    fileError.value = 'Utilise un PDF ou une image JPEG, PNG, WebP ou GIF.'
     return
   }
   if (file.size > 10 * 1024 * 1024) {
-    fileError.value = 'L’image ne doit pas dépasser 10 Mo.'
+    fileError.value = 'Le document ne doit pas dépasser 10 Mo.'
     return
   }
   const reader = new FileReader()
   reader.onerror = () => {
-    fileError.value = 'Lecture de l’image impossible.'
+    fileError.value = 'Lecture du document impossible.'
   }
   reader.onload = () => {
     const result = String(reader.result || '')
-    imageBase64.value = result.includes(',') ? result.slice(result.indexOf(',') + 1) : result
-    imageMediaType.value = file.type
+    documentBase64.value = result.includes(',') ? result.slice(result.indexOf(',') + 1) : result
+    documentMediaType.value = file.type
     selectedFileName.value = file.name
   }
   reader.readAsDataURL(file)
@@ -104,14 +127,35 @@ const handleCancel = (): void => {
   router.push({ name: 'recipes-home' })
 }
 
+const createTrackingId = (): string =>
+  `recipe-create-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+
 const handleCreateResult = (result: AICreateResponse): void => {
   if (result.duplicate_confirmation_required) {
+    stopProcessing()
     duplicateCandidate.value = result
     noActionMessage.value = ''
     return
   }
 
-  router.push({ name: 'recipes-detail', params: { id: result.recipe_uuid } })
+  completeProcessing()
+  resultTimer = window.setTimeout(() => {
+    resultTimer = null
+    router.push({ name: 'recipes-detail', params: { id: result.recipe_uuid } })
+  }, 700)
+}
+
+const launchCreation = (allowDuplicate: boolean): void => {
+  activeTrackingId.value = createTrackingId()
+  startProcessing('reading_source')
+  createRecipeWithAI({
+    input: selectedInput(),
+    allowDuplicate,
+    trackingId: activeTrackingId.value,
+  }, {
+    onSuccess: handleCreateResult,
+    onError: failProcessing,
+  })
 }
 
 const handleSubmit = (): void => {
@@ -122,12 +166,7 @@ const handleSubmit = (): void => {
   duplicateCandidate.value = null
   noActionMessage.value = ''
 
-  createRecipeWithAI({
-    input: selectedInput(),
-    allowDuplicate: false,
-  }, {
-    onSuccess: handleCreateResult,
-  })
+  launchCreation(false)
 }
 
 const handleConfirmDuplicate = (): void => {
@@ -135,27 +174,35 @@ const handleConfirmDuplicate = (): void => {
     return
   }
 
-  createRecipeWithAI({
-    input: selectedInput(),
-    allowDuplicate: true,
-  }, {
-    onSuccess: handleCreateResult,
-  })
+  launchCreation(true)
 }
 
 const handleRejectDuplicate = (): void => {
   duplicateCandidate.value = null
   noActionMessage.value = 'Aucune recette créée.'
 }
+
+onBeforeUnmount(() => {
+  if (resultTimer !== null) window.clearTimeout(resultTimer)
+})
 </script>
 
 <template>
+  <RecipeAIProcessingOverlay
+    v-if="showProcessingOverlay"
+    :stage="processingStage"
+    :completed-stages="completedProcessingStages"
+    mode="create"
+    :source-kind="sourceMode"
+    :subject="sourceSubject"
+  />
+
   <section class="recipe-form-ai">
     <header class="recipe-form-ai__header">
       <h2 class="recipe-form-ai__title">Ajout assisté par IA</h2>
       <p class="recipe-form-ai__subtitle">
-        Colle une recette, fournis l’URL d’une fiche Web ou charge une image. L’agent complète les
-        métadonnées, reclasse ingrédients et étapes, puis génère l’image principale.
+        Choisis une source : texte complet, lien public ou document. L’assistant extrait le contenu,
+        structure les ingrédients et les étapes, complète les métadonnées puis crée l’image principale.
       </p>
     </header>
 
@@ -171,18 +218,22 @@ const handleRejectDuplicate = (): void => {
           :aria-selected="sourceMode === option.value"
           @click="setSourceMode(option.value)"
         >
-          {{ option.label }}
+          <span class="recipe-form-ai__source-icon" aria-hidden="true">{{ option.icon }}</span>
+          <span>
+            <strong>{{ option.label }}</strong>
+            <small>{{ option.description }}</small>
+          </span>
         </button>
       </div>
 
       <div v-if="sourceMode === 'text'" class="recipe-form-ai__field">
-        <label for="raw-text" class="recipe-form-ai__label">Texte brut</label>
+        <label for="raw-text" class="recipe-form-ai__label">Coller toute la recette</label>
         <textarea
           id="raw-text"
           v-model="rawText"
           class="recipe-form-ai__textarea"
           rows="16"
-          placeholder="Colle ici une recette en texte libre."
+          placeholder="Colle ici le titre, les ingrédients, les quantités et toutes les étapes."
           :disabled="isPending"
         ></textarea>
       </div>
@@ -192,25 +243,29 @@ const handleRejectDuplicate = (): void => {
         class="recipe-form-ai__hint"
         :class="{ 'recipe-form-ai__hint--error': rawText.length > 0 && rawText.length < 10 }"
       >
-        {{ rawText.length }} caractères saisis
+        Le texte sera analysé directement par le traitement linguistique · {{ rawText.length }} caractères saisis
       </p>
 
-      <div v-else-if="sourceMode === 'url'" class="recipe-form-ai__field">
-        <label for="source-url" class="recipe-form-ai__label">Lien vers la fiche recette</label>
+      <div v-else-if="sourceMode === 'link'" class="recipe-form-ai__field">
+        <label for="source-url" class="recipe-form-ai__label">Lien vers une recette</label>
         <input id="source-url" v-model="sourceUrl" class="recipe-form-ai__input" type="url" placeholder="https://…" :disabled="isPending" />
-        <p class="recipe-form-ai__hint">Seules les pages publiques HTTP(S) sont acceptées.</p>
-      </div>
-
-      <div v-else-if="sourceMode === 'image-url'" class="recipe-form-ai__field">
-        <label for="image-url" class="recipe-form-ai__label">Lien vers l’image</label>
-        <input id="image-url" v-model="imageUrl" class="recipe-form-ai__input" type="url" placeholder="https://…/recette.jpg" :disabled="isPending" />
-        <p class="recipe-form-ai__hint">L’OCR accepte les images JPEG, PNG, WebP ou GIF publiques.</p>
+        <p class="recipe-form-ai__hint">
+          Une page Web sera parcourue automatiquement ; une image ou un PDF public passera par l’OCR.
+        </p>
       </div>
 
       <div v-else class="recipe-form-ai__field">
-        <label for="image-file" class="recipe-form-ai__label">Image de la recette</label>
-        <input id="image-file" class="recipe-form-ai__file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" :disabled="isPending" @change="handleFileChange" />
+        <label for="recipe-document" class="recipe-form-ai__label">PDF ou image de la recette</label>
+        <input
+          id="recipe-document"
+          class="recipe-form-ai__file"
+          type="file"
+          accept="application/pdf,.pdf,image/jpeg,image/png,image/webp,image/gif"
+          :disabled="isPending"
+          @change="handleFileChange"
+        />
         <p v-if="selectedFileName" class="recipe-form-ai__hint">{{ selectedFileName }}</p>
+        <p v-else class="recipe-form-ai__hint">PDF, JPEG, PNG, WebP ou GIF · 10 Mo maximum.</p>
         <p v-if="fileError" class="recipe-form-ai__hint recipe-form-ai__hint--error">{{ fileError }}</p>
       </div>
 
@@ -266,7 +321,7 @@ const handleRejectDuplicate = (): void => {
           variant="primary"
           :disabled="!isFormValid || isPending || duplicateCandidate !== null"
         >
-          {{ isPending ? 'Traitement en cours…' : 'Structurer avec IA' }}
+          {{ isPending ? 'Traitement en cours…' : 'Créer avec l’IA' }}
         </AppButton>
       </div>
     </form>
@@ -313,27 +368,59 @@ const handleRejectDuplicate = (): void => {
 }
 
 .recipe-form-ai__source-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .recipe-form-ai__source-tab {
-  min-height: 40px;
-  padding: 8px 14px;
+  min-width: 0;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   color: var(--color-text-secondary);
   cursor: pointer;
   font: inherit;
-  font-weight: 650;
+  text-align: left;
+  transition: border-color var(--transition-base), background var(--transition-base);
 }
 
 .recipe-form-ai__source-tab--active {
   border-color: var(--color-primary);
   color: var(--color-text-primary);
   background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+}
+
+.recipe-form-ai__source-tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
+.recipe-form-ai__source-icon {
+  flex: 0 0 auto;
+  font-size: 1.55rem;
+}
+
+.recipe-form-ai__source-tab strong,
+.recipe-form-ai__source-tab small {
+  display: block;
+}
+
+.recipe-form-ai__source-tab strong {
+  color: var(--color-text-primary);
+  font-size: 0.94rem;
+}
+
+.recipe-form-ai__source-tab small {
+  margin-top: 3px;
+  color: var(--color-text-tertiary);
+  font-size: 0.72rem;
+  line-height: 1.25;
 }
 
 .recipe-form-ai__label {
@@ -430,6 +517,10 @@ const handleRejectDuplicate = (): void => {
 }
 
 @media (max-width: 720px) {
+  .recipe-form-ai__source-tabs {
+    grid-template-columns: 1fr;
+  }
+
   .recipe-form-ai__duplicate {
     grid-template-columns: 1fr;
   }

@@ -123,10 +123,12 @@ export function useCreateRecipeWithAI() {
     mutationFn: ({
       input,
       allowDuplicate = false,
+      trackingId,
     }: {
       input: RecipeAIInput
       allowDuplicate?: boolean
-    }) => aiRecipeService.createRecipeWithAI(input, allowDuplicate),
+      trackingId?: string
+    }) => aiRecipeService.createRecipeWithAI(input, allowDuplicate, trackingId),
     onSuccess: (result) => {
       if (result.created) {
         queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })

@@ -1,25 +1,62 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { RecipeEnrichmentStage } from '@/types/recipe'
+import type {
+  RecipeCreationSourceKind,
+  RecipeProcessingStage,
+} from '@/types/recipe'
 
-const props = defineProps<{
-  stage: RecipeEnrichmentStage
-  completedStages: RecipeEnrichmentStage[]
-  recipeName: string
-}>()
+const props = withDefaults(defineProps<{
+  stage: RecipeProcessingStage
+  completedStages: RecipeProcessingStage[]
+  mode?: 'create' | 'enrich'
+  sourceKind?: RecipeCreationSourceKind
+  subject: string
+}>(), {
+  mode: 'enrich',
+  sourceKind: 'text',
+})
 
-const stages: Array<{
-  key: RecipeEnrichmentStage
+type StageDefinition = {
+  key: RecipeProcessingStage
   icon: string
   label: string
   description: string
-}> = [
+}
+
+const sourceStage = computed<StageDefinition>(() => {
+  switch (props.sourceKind) {
+    case 'link':
+      return {
+        key: 'reading_source',
+        icon: '🔗',
+        label: 'Récupération du lien',
+        description: 'L’assistant détecte une page Web, une image ou un PDF, puis en extrait le contenu utile.',
+      }
+    case 'document':
+      return {
+        key: 'reading_source',
+        icon: '📄',
+        label: 'Lecture OCR du document',
+        description: 'Le service OCR lit l’image ou le PDF pour retrouver fidèlement le texte de la recette.',
+      }
+    default:
+      return {
+        key: 'reading_source',
+        icon: '✍️',
+        label: 'Lecture du texte',
+        description: 'Le traitement linguistique prépare le texte libre avant sa structuration en recette.',
+      }
+  }
+})
+
+const stages = computed<StageDefinition[]>(() => [
   {
     key: 'starting',
     icon: '✦',
     label: 'Préparation de l’assistant',
-    description: 'Nous préparons l’espace de travail et ouvrons un suivi dédié à cette recette.',
+    description: 'Nous préparons l’espace de travail et ouvrons le suivi de cette recette.',
   },
+  sourceStage.value,
   {
     key: 'loading_recipe',
     icon: '📖',
@@ -37,6 +74,12 @@ const stages: Array<{
     icon: '🔎',
     label: 'Vérification du résultat',
     description: 'Un second passage contrôle la cohérence de la structure, des quantités et des temps.',
+  },
+  {
+    key: 'checking_duplicate',
+    icon: '🗂️',
+    label: 'Recherche d’une recette existante',
+    description: 'Le catalogue est consulté pour éviter de créer un doublon sans votre accord.',
   },
   {
     key: 'organizing',
@@ -59,8 +102,10 @@ const stages: Array<{
   {
     key: 'saving',
     icon: '💾',
-    label: 'Enregistrement de la recette',
-    description: 'La fiche réorganisée est enregistrée tout en conservant ses favoris, tags et données existantes.',
+    label: props.mode === 'create' ? 'Création de la fiche' : 'Enregistrement de la recette',
+    description: props.mode === 'create'
+      ? 'La nouvelle recette structurée est enregistrée avec ses ingrédients, ses temps et ses étapes.'
+      : 'La fiche réorganisée est enregistrée tout en conservant ses favoris, tags et données existantes.',
   },
   {
     key: 'image',
@@ -71,28 +116,38 @@ const stages: Array<{
   {
     key: 'complete',
     icon: '✨',
-    label: 'Mise à niveau terminée',
-    description: 'La fiche est prête. Les nouvelles données sont en cours d’affichage.',
+    label: props.mode === 'create' ? 'Recette créée' : 'Mise à niveau terminée',
+    description: props.mode === 'create'
+      ? 'La nouvelle fiche est prête et va maintenant être affichée.'
+      : 'La fiche est prête. Les nouvelles données sont en cours d’affichage.',
   },
   {
     key: 'failed',
     icon: '!',
     label: 'Traitement interrompu',
-    description: 'Le traitement n’a pas pu être terminé. La fiche existante reste accessible.',
+    description: props.mode === 'create'
+      ? 'La recette n’a pas pu être créée. Vous allez pouvoir vérifier la source et réessayer.'
+      : 'Le traitement n’a pas pu être terminé. La fiche existante reste accessible.',
   },
-]
+])
 
-const visibleSteps = stages.filter(({ key }) => !['starting', 'complete', 'failed'].includes(key))
-const startingStage = stages[0]!
-const currentStage = computed(() => stages.find(({ key }) => key === props.stage) ?? startingStage)
-const currentIndex = computed(() => Math.max(0, stages.findIndex(({ key }) => key === props.stage)))
+const workflowKeys = computed<RecipeProcessingStage[]>(() => props.mode === 'create'
+  ? ['reading_source', 'analyzing', 'reviewing', 'checking_duplicate', 'organizing', 'ingredients', 'equipment', 'saving', 'image']
+  : ['loading_recipe', 'analyzing', 'reviewing', 'organizing', 'ingredients', 'equipment', 'saving', 'image'])
+const orderedKeys = computed<RecipeProcessingStage[]>(() => ['starting', ...workflowKeys.value, 'complete'])
+const visibleSteps = computed(() => workflowKeys.value
+  .map((key) => stages.value.find((item) => item.key === key))
+  .filter((item): item is StageDefinition => Boolean(item)))
+const startingStage = computed(() => stages.value[0]!)
+const currentStage = computed(() => stages.value.find(({ key }) => key === props.stage) ?? startingStage.value)
+const currentIndex = computed(() => Math.max(0, orderedKeys.value.indexOf(props.stage)))
 const progress = computed(() => {
   if (props.stage === 'failed') return 100
-  return Math.max(4, Math.round((currentIndex.value / (stages.length - 2)) * 100))
+  return Math.max(4, Math.round((currentIndex.value / (orderedKeys.value.length - 1)) * 100))
 })
-const isCompleted = (stage: RecipeEnrichmentStage): boolean =>
+const isCompleted = (stage: RecipeProcessingStage): boolean =>
   (props.completedStages.includes(stage) && stage !== props.stage)
-  || currentIndex.value > stages.findIndex(({ key }) => key === stage)
+  || currentIndex.value > orderedKeys.value.indexOf(stage)
 
 const elapsedSeconds = ref(0)
 let elapsedTimer: number | null = null
@@ -132,7 +187,7 @@ onBeforeUnmount(() => {
         <div class="recipe-ai-overlay__copy" aria-live="polite" aria-atomic="true">
           <h2 id="recipe-ai-overlay-title">{{ currentStage.label }}</h2>
           <p id="recipe-ai-overlay-description">{{ currentStage.description }}</p>
-          <strong>{{ recipeName }}</strong>
+          <strong>{{ subject }}</strong>
         </div>
 
         <div class="recipe-ai-overlay__progress" aria-hidden="true">

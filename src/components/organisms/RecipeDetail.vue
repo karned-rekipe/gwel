@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import IconActionButton from '@/components/resources/IconActionButton.vue'
 import RecipeAIProcessingOverlay from '@/components/organisms/RecipeAIProcessingOverlay.vue'
+import { useRecipeAIProgress } from '@/composables/useRecipeAIProgress'
 import { useDeleteRecipe, useEnrichRecipeWithAI, useGenerateRecipeImage } from '@/composables/useRecipeQueries'
 import { aiRecipeService } from '@/services/aiRecipeService'
 import { useRecipeWishlistStore } from '@/stores/recipeWishlistStore'
-import type { Recipe, RecipeEnrichmentStage, RecipeStep } from '@/types/recipe'
+import type { Recipe, RecipeStep } from '@/types/recipe'
 import { countryDisplayFrom } from '@/utils/countryFlags'
 
 const props = defineProps<{
@@ -22,13 +23,14 @@ const deleteError = ref<string | null>(null)
 const imageError = ref<string | null>(null)
 const enrichmentError = ref<string | null>(null)
 const enrichmentMessage = ref<string | null>(null)
-const showEnrichmentOverlay = ref(false)
-const enrichmentStage = ref<RecipeEnrichmentStage>('starting')
-const completedEnrichmentStages = ref<RecipeEnrichmentStage[]>([])
-let enrichmentPollTimer: number | null = null
-let enrichmentCompleteTimer: number | null = null
-let enrichmentPollPending = false
-let enrichmentProgressFinalized = false
+const {
+  isVisible: showEnrichmentOverlay,
+  stage: enrichmentStage,
+  completedStages: completedEnrichmentStages,
+  start: startEnrichmentProgress,
+  complete: completeEnrichmentProgress,
+  fail: failEnrichmentProgress,
+} = useRecipeAIProgress(() => aiRecipeService.getRunningRecipeEnrichment(props.recipe.uuid))
 const monthNames = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc']
 
 const recipeTags = computed(() => props.recipe.tags ?? [])
@@ -103,53 +105,6 @@ const handleGenerateImage = (): void => {
   })
 }
 
-const pollEnrichmentProgress = async (): Promise<void> => {
-  if (enrichmentPollPending || !showEnrichmentOverlay.value) return
-  enrichmentPollPending = true
-  try {
-    const run = await aiRecipeService.getRunningRecipeEnrichment(props.recipe.uuid)
-    if (enrichmentProgressFinalized || !showEnrichmentOverlay.value) return
-    if (!run) return
-    if (run.metadata.current_stage) enrichmentStage.value = run.metadata.current_stage
-    if (run.metadata.stage_history) completedEnrichmentStages.value = run.metadata.stage_history
-  } catch {
-    // La mise à niveau principale reste autoritaire ; une erreur de polling ne doit pas l'interrompre.
-  } finally {
-    enrichmentPollPending = false
-  }
-}
-
-const stopEnrichmentProgress = (): void => {
-  enrichmentProgressFinalized = true
-  if (enrichmentPollTimer !== null) window.clearInterval(enrichmentPollTimer)
-  if (enrichmentCompleteTimer !== null) window.clearTimeout(enrichmentCompleteTimer)
-  enrichmentPollTimer = null
-  enrichmentCompleteTimer = null
-  showEnrichmentOverlay.value = false
-}
-
-const startEnrichmentProgress = (): void => {
-  enrichmentProgressFinalized = false
-  enrichmentStage.value = 'starting'
-  completedEnrichmentStages.value = ['starting']
-  showEnrichmentOverlay.value = true
-  void pollEnrichmentProgress()
-  enrichmentPollTimer = window.setInterval(() => {
-    void pollEnrichmentProgress()
-  }, 450)
-}
-
-const completeEnrichmentProgress = (): void => {
-  enrichmentProgressFinalized = true
-  if (enrichmentPollTimer !== null) window.clearInterval(enrichmentPollTimer)
-  enrichmentPollTimer = null
-  enrichmentStage.value = 'complete'
-  if (!completedEnrichmentStages.value.includes('complete')) {
-    completedEnrichmentStages.value = [...completedEnrichmentStages.value, 'complete']
-  }
-  enrichmentCompleteTimer = window.setTimeout(stopEnrichmentProgress, 900)
-}
-
 const handleEnrich = (): void => {
   enrichmentError.value = null
   enrichmentMessage.value = null
@@ -162,13 +117,11 @@ const handleEnrich = (): void => {
       completeEnrichmentProgress()
     },
     onError: (err) => {
-      stopEnrichmentProgress()
+      failEnrichmentProgress()
       enrichmentError.value = err instanceof Error ? err.message : 'Mise à niveau impossible.'
     },
   })
 }
-
-onBeforeUnmount(stopEnrichmentProgress)
 
 const handleWishlistToggle = (): void => {
   wishlist.toggle(props.recipe.uuid)
@@ -193,7 +146,8 @@ const handleDelete = (): void => {
     v-if="showEnrichmentOverlay"
     :stage="enrichmentStage"
     :completed-stages="completedEnrichmentStages"
-    :recipe-name="recipe.name"
+    mode="enrich"
+    :subject="recipe.name"
   />
 
   <article class="recipe-detail">

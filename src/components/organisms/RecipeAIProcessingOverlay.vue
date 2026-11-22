@@ -100,6 +100,12 @@ const stages = computed<StageDefinition[]>(() => [
     description: 'Les équipements nécessaires sont identifiés et reliés aux fiches du catalogue.',
   },
   {
+    key: 'tags',
+    icon: '🏷️',
+    label: 'Sélection des tags',
+    description: 'L’assistant retient uniquement les tags pertinents déjà présents dans le catalogue.',
+  },
+  {
     key: 'saving',
     icon: '💾',
     label: props.mode === 'create' ? 'Création de la fiche' : 'Enregistrement de la recette',
@@ -132,8 +138,8 @@ const stages = computed<StageDefinition[]>(() => [
 ])
 
 const workflowKeys = computed<RecipeProcessingStage[]>(() => props.mode === 'create'
-  ? ['reading_source', 'analyzing', 'reviewing', 'checking_duplicate', 'organizing', 'ingredients', 'equipment', 'saving', 'image']
-  : ['loading_recipe', 'analyzing', 'reviewing', 'organizing', 'ingredients', 'equipment', 'saving', 'image'])
+  ? ['reading_source', 'analyzing', 'reviewing', 'checking_duplicate', 'organizing', 'ingredients', 'equipment', 'tags', 'saving', 'image']
+  : ['loading_recipe', 'analyzing', 'reviewing', 'organizing', 'ingredients', 'equipment', 'tags', 'saving', 'image'])
 const orderedKeys = computed<RecipeProcessingStage[]>(() => ['starting', ...workflowKeys.value, 'complete'])
 const visibleSteps = computed(() => workflowKeys.value
   .map((key) => stages.value.find((item) => item.key === key))

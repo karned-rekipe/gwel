@@ -531,6 +531,7 @@ export type RecipeProcessingStage =
   | 'organizing'
   | 'ingredients'
   | 'equipment'
+  | 'tags'
   | 'saving'
   | 'image'
   | 'complete'

@@ -142,9 +142,11 @@ export function useEnrichRecipeWithAI() {
 
   return useMutation({
     mutationFn: (recipeUuid: string) => aiRecipeService.enrichExistingRecipe(recipeUuid),
-    onSuccess: (_, recipeUuid) => {
-      queryClient.invalidateQueries({ queryKey: recipeKeys.detail(recipeUuid) })
-      queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
+    onSuccess: async (_, recipeUuid) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: recipeKeys.detail(recipeUuid) }),
+        queryClient.invalidateQueries({ queryKey: recipeKeys.lists() }),
+      ])
       refreshRecipeCatalog()
     },
   })

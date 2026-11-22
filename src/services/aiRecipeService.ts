@@ -1,6 +1,11 @@
 import { appConfig } from '@/config/env'
-import { createHttpClient } from '@/services/http'
-import type { CreateRecipeWithAIDTO, AICreateResponse, RecipeAIInput } from '@/types/recipe'
+import { createHttpClient, isNotFoundError } from '@/services/http'
+import type {
+  AICreateResponse,
+  CreateRecipeWithAIDTO,
+  RecipeAIInput,
+  RecipeEnrichmentRun,
+} from '@/types/recipe'
 
 class AIRecipeService {
   private api = createHttpClient(`${appConfig.services.recipeAgentApiBaseUrl}/v1`, 180000)
@@ -37,6 +42,22 @@ class AIRecipeService {
       { generate_image: true },
     )
     return response.data
+  }
+
+  async getRunningRecipeEnrichment(recipeUuid: string): Promise<RecipeEnrichmentRun | null> {
+    try {
+      const response = await this.api.get<RecipeEnrichmentRun>(
+        `/agent-runs/recipes/${recipeUuid}/running`,
+        {
+          headers: { 'Cache-Control': 'no-cache' },
+          params: { _cache: Date.now() },
+        },
+      )
+      return response.data
+    } catch (err) {
+      if (isNotFoundError(err)) return null
+      throw err
+    }
   }
 }
 

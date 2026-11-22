@@ -518,3 +518,31 @@ export interface AICreateResponse {
   image_generated: boolean
   warnings: string[]
 }
+
+export type RecipeEnrichmentStage =
+  | 'starting'
+  | 'loading_recipe'
+  | 'analyzing'
+  | 'reviewing'
+  | 'organizing'
+  | 'ingredients'
+  | 'equipment'
+  | 'saving'
+  | 'image'
+  | 'complete'
+  | 'failed'
+
+export interface RecipeEnrichmentRun {
+  uuid: string
+  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
+  raw_input: string
+  recipe_uuid?: string | null
+  recipe_name?: string | null
+  error?: string | null
+  metadata: Record<string, unknown> & {
+    current_stage?: RecipeEnrichmentStage
+    stage_history?: RecipeEnrichmentStage[]
+  }
+  created_at: string
+  updated_at: string
+}

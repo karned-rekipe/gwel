@@ -491,9 +491,20 @@ export interface RecipeCreatePayload {
 }
 
 export interface CreateRecipeWithAIDTO {
-  raw_text: string
+  raw_text?: string | null
+  source_url?: string | null
+  image_url?: string | null
+  image_base64?: string | null
+  image_media_type?: string | null
   allow_duplicate?: boolean
+  generate_image?: boolean
 }
+
+export type RecipeAIInput =
+  | { kind: 'text'; rawText: string }
+  | { kind: 'url'; url: string }
+  | { kind: 'image-url'; url: string }
+  | { kind: 'image-upload'; base64: string; mediaType: string }
 
 export interface AICreateResponse {
   recipe_uuid: string
@@ -503,4 +514,7 @@ export interface AICreateResponse {
   duplicate_confirmation_required: boolean
   existing_recipe_uuid?: string | null
   existing_recipe_name?: string | null
+  updated: boolean
+  image_generated: boolean
+  warnings: string[]
 }

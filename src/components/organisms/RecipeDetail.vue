@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import IconActionButton from '@/components/resources/IconActionButton.vue'
-import { useDeleteRecipe, useGenerateRecipeImage } from '@/composables/useRecipeQueries'
+import { useDeleteRecipe, useEnrichRecipeWithAI, useGenerateRecipeImage } from '@/composables/useRecipeQueries'
 import { useRecipeWishlistStore } from '@/stores/recipeWishlistStore'
 import type { Recipe, RecipeStep } from '@/types/recipe'
 import { countryDisplayFrom } from '@/utils/countryFlags'
@@ -14,9 +14,12 @@ const props = defineProps<{
 const router = useRouter()
 const { mutate: deleteRecipe, isPending: isDeleting } = useDeleteRecipe()
 const { mutate: generateRecipeImage, isPending: isGeneratingImage } = useGenerateRecipeImage()
+const { mutate: enrichRecipe, isPending: isEnriching } = useEnrichRecipeWithAI()
 const wishlist = useRecipeWishlistStore()
 const deleteError = ref<string | null>(null)
 const imageError = ref<string | null>(null)
+const enrichmentError = ref<string | null>(null)
+const enrichmentMessage = ref<string | null>(null)
 const monthNames = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc']
 
 const recipeTags = computed(() => props.recipe.tags ?? [])
@@ -91,6 +94,21 @@ const handleGenerateImage = (): void => {
   })
 }
 
+const handleEnrich = (): void => {
+  enrichmentError.value = null
+  enrichmentMessage.value = null
+  enrichRecipe(props.recipe.uuid, {
+    onSuccess: (result) => {
+      enrichmentMessage.value = result.warnings.length
+        ? `Fiche mise à niveau. ${result.warnings.join(' ')}`
+        : 'Fiche mise à niveau avec succès.'
+    },
+    onError: (err) => {
+      enrichmentError.value = err instanceof Error ? err.message : 'Mise à niveau impossible.'
+    },
+  })
+}
+
 const handleWishlistToggle = (): void => {
   wishlist.toggle(props.recipe.uuid)
 }
@@ -124,6 +142,12 @@ const handleDelete = (): void => {
           {{ isInWishlist ? 'Dans la liste d’envies' : 'Ajouter à la liste d’envies' }}
         </button>
         <IconActionButton
+          :label="isEnriching ? 'Mise à niveau en cours' : 'Compléter avec l’IA'"
+          :icon="isEnriching ? '…' : '✦'"
+          :disabled="isEnriching"
+          @click="handleEnrich"
+        />
+        <IconActionButton
           :label="isGeneratingImage ? 'Génération de l’image en cours' : 'Image IA'"
           :icon="isGeneratingImage ? '…' : '▣'"
           :disabled="isGeneratingImage"
@@ -133,6 +157,13 @@ const handleDelete = (): void => {
         <IconActionButton label="Supprimer" icon="×" variant="danger" :disabled="isDeleting" @click="handleDelete" />
       </div>
     </header>
+
+    <p v-if="enrichmentMessage" class="recipe-detail__feedback recipe-detail__feedback--success" role="status">
+      {{ enrichmentMessage }}
+    </p>
+    <p v-if="enrichmentError" class="recipe-detail__feedback recipe-detail__feedback--error" role="alert">
+      {{ enrichmentError }}
+    </p>
 
     <section class="recipe-detail__hero">
       <div class="recipe-detail__intro">
@@ -371,6 +402,24 @@ const handleDelete = (): void => {
   flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
+}
+
+.recipe-detail__feedback {
+  margin: -10px 0 18px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.recipe-detail__feedback--success {
+  background: rgba(52, 199, 89, 0.1);
+  border-color: rgba(52, 199, 89, 0.25);
+}
+
+.recipe-detail__feedback--error {
+  background: rgba(215, 0, 21, 0.08);
+  border-color: rgba(215, 0, 21, 0.2);
+  color: var(--color-danger);
 }
 
 .recipe-detail__wishlist-action {

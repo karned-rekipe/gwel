@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { Recipe } from '@/types/recipe'
 import { countryFlagFrom } from '@/utils/countryFlags'
+import { recipeCardImageUrl } from '@/utils/mediaUrls'
 
 const props = defineProps<{
   recipe: Recipe
@@ -39,6 +40,27 @@ const scoreFrom = (value?: number | null): number => {
 
 const difficultyScore = computed(() => scoreFrom(props.recipe.difficulty))
 const priceScore = computed(() => scoreFrom(props.recipe.price))
+const variantFailed = ref(false)
+const originalFailed = ref(false)
+const originalImageUrl = computed(() => props.recipe.main_image?.trim() || null)
+const cardImageUrl = computed(() => {
+  if (originalFailed.value) return null
+  if (variantFailed.value) return originalImageUrl.value
+  return recipeCardImageUrl(originalImageUrl.value)
+})
+
+const handleImageError = (): void => {
+  if (!variantFailed.value && cardImageUrl.value !== originalImageUrl.value) {
+    variantFailed.value = true
+    return
+  }
+  originalFailed.value = true
+}
+
+watch(originalImageUrl, () => {
+  variantFailed.value = false
+  originalFailed.value = false
+})
 </script>
 
 <template>
@@ -52,11 +74,16 @@ const priceScore = computed(() => scoreFrom(props.recipe.price))
   >
     <div class="recipe-card__image-wrapper">
       <img
-        v-if="recipe.main_image"
-        :src="recipe.main_image"
+        v-if="cardImageUrl"
+        :src="cardImageUrl"
         :alt="recipe.name"
         class="recipe-card__image"
         loading="lazy"
+        decoding="async"
+        fetchpriority="low"
+        width="480"
+        height="270"
+        @error="handleImageError"
       />
       <div v-else class="recipe-card__image-placeholder" aria-hidden="true">
         <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" class="recipe-card__placeholder-icon">

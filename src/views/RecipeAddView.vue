@@ -5,7 +5,7 @@ import RecipeFormAI from '@/components/organisms/RecipeFormAI.vue'
 
 type CreationMode = 'manual' | 'ai'
 
-const currentMode = ref<CreationMode>('manual')
+const currentMode = ref<CreationMode>('ai')
 
 const setMode = (mode: CreationMode): void => {
   currentMode.value = mode
@@ -21,16 +21,6 @@ const setMode = (mode: CreationMode): void => {
     <div class="recipe-add-view__tabs" role="tablist" aria-label="Mode de création">
       <button
         class="recipe-add-view__tab"
-        :class="{ 'recipe-add-view__tab--active': currentMode === 'manual' }"
-        role="tab"
-        :aria-selected="currentMode === 'manual'"
-        :tabindex="currentMode === 'manual' ? 0 : -1"
-        @click="setMode('manual')"
-      >
-        Création manuelle
-      </button>
-      <button
-        class="recipe-add-view__tab"
         :class="{ 'recipe-add-view__tab--active': currentMode === 'ai' }"
         role="tab"
         :aria-selected="currentMode === 'ai'"
@@ -39,11 +29,21 @@ const setMode = (mode: CreationMode): void => {
       >
         Création avec IA
       </button>
+      <button
+        class="recipe-add-view__tab"
+        :class="{ 'recipe-add-view__tab--active': currentMode === 'manual' }"
+        role="tab"
+        :aria-selected="currentMode === 'manual'"
+        :tabindex="currentMode === 'manual' ? 0 : -1"
+        @click="setMode('manual')"
+      >
+        Création manuelle
+      </button>
     </div>
 
     <div class="recipe-add-view__content">
-      <RecipeForm v-if="currentMode === 'manual'" />
-      <RecipeFormAI v-else />
+      <RecipeFormAI v-if="currentMode === 'ai'" />
+      <RecipeForm v-else />
     </div>
   </main>
 </template>

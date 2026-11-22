@@ -1,0 +1,19 @@
+site_name: Gwel
+site_description: Interface Web du système Rekipe
+repo_url: https://github.com/karned-rekipe/gwel
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: fr
+  font: false
+
+plugins:
+  - techdocs-core
+
+nav:
+  - Vue d'ensemble: index.md
+  - Architecture: architecture.md
+  - Parcours et API: api.md
+  - Déploiement: deployment.md
+  - Exploitation: operations.md

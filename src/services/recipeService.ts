@@ -85,7 +85,10 @@ export const recipeService = {
   },
 
   async getByUuid(uuid: string): Promise<Recipe> {
-    const response = await recipeApi.get<ApiResponse<Recipe>>(`/recipes/${uuid}`)
+    const response = await recipeApi.get<ApiResponse<Recipe>>(`/recipes/${uuid}`, {
+      headers: { 'Cache-Control': 'no-cache' },
+      params: { _cache: Date.now() },
+    })
     return normalizeRecipe(unwrapApiResponse(response.data))
   },
 

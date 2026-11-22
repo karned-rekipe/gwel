@@ -3,7 +3,7 @@ import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { aiRecipeService } from '@/services/aiRecipeService'
 import { recipeService, type RecipeListFilters } from '@/services/recipeService'
 import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
-import type { Recipe, RecipeCreatePayload } from '@/types/recipe'
+import type { Recipe, RecipeAIInput, RecipeCreatePayload } from '@/types/recipe'
 
 export const recipeKeys = {
   all: ['recipes'] as const,
@@ -121,18 +121,35 @@ export function useCreateRecipeWithAI() {
 
   return useMutation({
     mutationFn: ({
-      rawText,
+      input,
       allowDuplicate = false,
+      trackingId,
     }: {
-      rawText: string
+      input: RecipeAIInput
       allowDuplicate?: boolean
-    }) => aiRecipeService.createRecipeWithAI(rawText, allowDuplicate),
+      trackingId?: string
+    }) => aiRecipeService.createRecipeWithAI(input, allowDuplicate, trackingId),
     onSuccess: (result) => {
       if (result.created) {
         queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
         queryClient.invalidateQueries({ queryKey: recipeKeys.all })
         refreshRecipeCatalog()
       }
+    },
+  })
+}
+
+export function useEnrichRecipeWithAI() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (recipeUuid: string) => aiRecipeService.enrichExistingRecipe(recipeUuid),
+    onSuccess: async (_, recipeUuid) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: recipeKeys.detail(recipeUuid) }),
+        queryClient.invalidateQueries({ queryKey: recipeKeys.lists() }),
+      ])
+      refreshRecipeCatalog()
     },
   })
 }

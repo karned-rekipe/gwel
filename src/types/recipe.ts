@@ -491,9 +491,22 @@ export interface RecipeCreatePayload {
 }
 
 export interface CreateRecipeWithAIDTO {
-  raw_text: string
+  raw_text?: string | null
+  source_url?: string | null
+  image_url?: string | null
+  image_base64?: string | null
+  image_media_type?: string | null
+  tracking_id?: string | null
   allow_duplicate?: boolean
+  generate_image?: boolean
 }
+
+export type RecipeAIInput =
+  | { kind: 'text'; rawText: string }
+  | { kind: 'link'; url: string }
+  | { kind: 'document'; base64: string; mediaType: string; fileName: string }
+
+export type RecipeCreationSourceKind = RecipeAIInput['kind']
 
 export interface AICreateResponse {
   recipe_uuid: string
@@ -503,4 +516,41 @@ export interface AICreateResponse {
   duplicate_confirmation_required: boolean
   existing_recipe_uuid?: string | null
   existing_recipe_name?: string | null
+  updated: boolean
+  image_generated: boolean
+  warnings: string[]
 }
+
+export type RecipeProcessingStage =
+  | 'starting'
+  | 'reading_source'
+  | 'loading_recipe'
+  | 'analyzing'
+  | 'reviewing'
+  | 'checking_duplicate'
+  | 'organizing'
+  | 'ingredients'
+  | 'equipment'
+  | 'saving'
+  | 'image'
+  | 'complete'
+  | 'failed'
+
+export type RecipeEnrichmentStage = RecipeProcessingStage
+
+export interface RecipeProcessingRun {
+  uuid: string
+  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled'
+  raw_input: string
+  recipe_uuid?: string | null
+  recipe_name?: string | null
+  error?: string | null
+  metadata: Record<string, unknown> & {
+    current_stage?: RecipeProcessingStage
+    stage_history?: RecipeProcessingStage[]
+  }
+  created_at: string
+  updated_at: string
+}
+
+export type RecipeEnrichmentRun = RecipeProcessingRun

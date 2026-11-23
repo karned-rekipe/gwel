@@ -1,4 +1,11 @@
 import { appConfig } from '@/config/env'
+import {
+  pruneOidcTransactions,
+  readOidcTransaction,
+  removeOidcTransaction,
+  storeOidcTransaction,
+  type OidcTransaction,
+} from './oidcTransaction'
 
 const ACCESS_TOKEN_STORAGE_KEY = 'rekipe.access_token'
 const REFRESH_TOKEN_STORAGE_KEY = 'rekipe.refresh_token'
@@ -6,6 +13,7 @@ const EXPIRES_AT_STORAGE_KEY = 'rekipe.access_token_expires_at'
 const PKCE_VERIFIER_STORAGE_KEY = 'rekipe.pkce_verifier'
 const OIDC_STATE_STORAGE_KEY = 'rekipe.oidc_state'
 const REDIRECT_URI_STORAGE_KEY = 'rekipe.redirect_uri'
+const AUTH_CALLBACK_RETRY_PARAMETER = 'auth_callback_retry'
 
 type TokenResponse = {
   access_token: string
@@ -19,6 +27,16 @@ const keycloakEndpoint = (resource: 'auth' | 'token'): string => {
   const baseUrl = appConfig.keycloak.baseUrl.replace(/\/$/, '')
   return `${baseUrl}/realms/${encodeURIComponent(appConfig.keycloak.realm)}/protocol/openid-connect/${resource}`
 }
+
+const keycloakIssuer = (): string => {
+  const baseUrl = appConfig.keycloak.baseUrl.replace(/\/$/, '')
+  return `${baseUrl}/realms/${encodeURIComponent(appConfig.keycloak.realm)}`
+}
+
+const transactionStorages = () => ({
+  session: window.sessionStorage,
+  persistent: window.localStorage,
+})
 
 const toBase64Url = (bytes: Uint8Array): string => {
   const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('')
@@ -49,6 +67,72 @@ const currentUrlWithoutCallbackParameters = (): string => {
   const url = new URL(window.location.href)
   callbackParameterNames.forEach((name) => url.searchParams.delete(name))
   return url.toString()
+}
+
+const cleanRedirectUri = (redirectUri: string): string => {
+  const url = new URL(redirectUri)
+  url.searchParams.delete(AUTH_CALLBACK_RETRY_PARAMETER)
+  return url.toString()
+}
+
+const clearCallbackRetryParameter = (): void => {
+  const cleanUrl = cleanRedirectUri(window.location.href)
+  if (cleanUrl !== window.location.href) {
+    window.history.replaceState({}, document.title, cleanUrl)
+  }
+}
+
+const clearLegacyAuthorizationTransaction = (): void => {
+  window.sessionStorage.removeItem(OIDC_STATE_STORAGE_KEY)
+  window.sessionStorage.removeItem(PKCE_VERIFIER_STORAGE_KEY)
+  window.sessionStorage.removeItem(REDIRECT_URI_STORAGE_KEY)
+}
+
+const readLegacyAuthorizationTransaction = (
+  receivedState: string,
+): OidcTransaction | null => {
+  const expectedState = window.sessionStorage.getItem(OIDC_STATE_STORAGE_KEY)
+  const verifier = window.sessionStorage.getItem(PKCE_VERIFIER_STORAGE_KEY)
+  const redirectUri = window.sessionStorage.getItem(REDIRECT_URI_STORAGE_KEY)
+
+  if (
+    receivedState !== expectedState
+    || !verifier
+    || !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier)
+    || !redirectUri
+  ) {
+    return null
+  }
+
+  try {
+    if (new URL(redirectUri).origin !== window.location.origin) return null
+  } catch {
+    return null
+  }
+
+  return {
+    state: receivedState,
+    verifier,
+    redirectUri,
+    createdAt: Date.now(),
+  }
+}
+
+const restartInvalidAuthorizationCallback = async (url: URL): Promise<never> => {
+  const receivedState = url.searchParams.get('state')
+  if (receivedState) removeOidcTransaction(transactionStorages(), receivedState)
+  clearLegacyAuthorizationTransaction()
+
+  const cleanUrl = new URL(currentUrlWithoutCallbackParameters())
+  if (cleanUrl.searchParams.get(AUTH_CALLBACK_RETRY_PARAMETER) !== '1') {
+    cleanUrl.searchParams.set(AUTH_CALLBACK_RETRY_PARAMETER, '1')
+    window.location.replace(cleanUrl.toString())
+    return new Promise<never>(() => undefined)
+  }
+
+  cleanUrl.searchParams.delete(AUTH_CALLBACK_RETRY_PARAMETER)
+  window.history.replaceState({}, document.title, cleanUrl.toString())
+  throw new Error("La session d'authentification a expiré. Rechargez la page pour réessayer.")
 }
 
 const clearTokens = (): void => {
@@ -124,9 +208,13 @@ const redirectToLogin = async (): Promise<never> => {
   const verifier = randomValue(64)
   const redirectUri = currentUrlWithoutCallbackParameters()
 
-  window.sessionStorage.setItem(OIDC_STATE_STORAGE_KEY, state)
-  window.sessionStorage.setItem(PKCE_VERIFIER_STORAGE_KEY, verifier)
-  window.sessionStorage.setItem(REDIRECT_URI_STORAGE_KEY, redirectUri)
+  pruneOidcTransactions(transactionStorages(), window.location.origin)
+  storeOidcTransaction(transactionStorages(), {
+    state,
+    verifier,
+    redirectUri,
+    createdAt: Date.now(),
+  })
 
   const parameters = new URLSearchParams({
     client_id: appConfig.keycloak.clientId,
@@ -145,27 +233,34 @@ const redirectToLogin = async (): Promise<never> => {
 const completeAuthorizationCallback = async (url: URL): Promise<void> => {
   const code = url.searchParams.get('code')
   const receivedState = url.searchParams.get('state')
-  const expectedState = window.sessionStorage.getItem(OIDC_STATE_STORAGE_KEY)
-  const verifier = window.sessionStorage.getItem(PKCE_VERIFIER_STORAGE_KEY)
-  const redirectUri = window.sessionStorage.getItem(REDIRECT_URI_STORAGE_KEY)
+  const receivedIssuer = url.searchParams.get('iss')
+  const transaction = receivedState
+    ? readOidcTransaction(transactionStorages(), receivedState, window.location.origin)
+      ?? readLegacyAuthorizationTransaction(receivedState)
+    : null
 
-  if (!code || !receivedState || receivedState !== expectedState || !verifier || !redirectUri) {
-    throw new Error("La réponse d'authentification Keycloak n'a pas pu être vérifiée")
+  if (
+    !code
+    || !receivedState
+    || !transaction
+    || (receivedIssuer !== null && receivedIssuer !== keycloakIssuer())
+  ) {
+    return restartInvalidAuthorizationCallback(url)
   }
+
+  removeOidcTransaction(transactionStorages(), receivedState)
+  clearLegacyAuthorizationTransaction()
 
   const parameters = new URLSearchParams({
     grant_type: 'authorization_code',
     client_id: appConfig.keycloak.clientId,
     code,
-    code_verifier: verifier,
-    redirect_uri: redirectUri,
+    code_verifier: transaction.verifier,
+    redirect_uri: transaction.redirectUri,
   })
 
   storeTokens(await requestTokens(parameters))
-  window.sessionStorage.removeItem(OIDC_STATE_STORAGE_KEY)
-  window.sessionStorage.removeItem(PKCE_VERIFIER_STORAGE_KEY)
-  window.sessionStorage.removeItem(REDIRECT_URI_STORAGE_KEY)
-  window.history.replaceState({}, document.title, redirectUri)
+  window.history.replaceState({}, document.title, cleanRedirectUri(transaction.redirectUri))
 }
 
 export const initializeAuth = async (): Promise<void> => {
@@ -183,11 +278,15 @@ export const initializeAuth = async (): Promise<void> => {
     return
   }
 
-  if (hasUsableAccessToken()) return
+  if (hasUsableAccessToken()) {
+    clearCallbackRetryParameter()
+    return
+  }
 
   if (window.sessionStorage.getItem(REFRESH_TOKEN_STORAGE_KEY)) {
     try {
       await ensureFreshToken()
+      clearCallbackRetryParameter()
       return
     } catch {
       clearTokens()

@@ -40,6 +40,9 @@ const { data: recipe, isLoading, isError, error } = useRecipe(recipeUuid)
 <style scoped>
 .recipe-detail-view {
   min-height: calc(100vh - 88px);
+  background:
+    radial-gradient(circle at 78% 8%, rgba(255, 255, 255, 0.82), transparent 32%),
+    #fbf8f1;
 }
 
 .recipe-detail-view__loading,

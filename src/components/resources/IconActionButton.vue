@@ -4,6 +4,7 @@ defineProps<{
   icon: string
   variant?: 'neutral' | 'danger'
   disabled?: boolean
+  showLabel?: boolean
 }>()
 
 defineEmits<{
@@ -15,13 +16,17 @@ defineEmits<{
   <button
     type="button"
     class="icon-action"
-    :class="`icon-action--${variant ?? 'neutral'}`"
+    :class="[
+      `icon-action--${variant ?? 'neutral'}`,
+      { 'icon-action--labeled': showLabel },
+    ]"
     :title="label"
     :aria-label="label"
     :disabled="disabled"
     @click.stop="$emit('click')"
   >
-    {{ icon }}
+    <span class="icon-action__icon" aria-hidden="true">{{ icon }}</span>
+    <span v-if="showLabel" class="icon-action__label">{{ label }}</span>
   </button>
 </template>
 
@@ -41,6 +46,20 @@ defineEmits<{
   font-size: 0.95rem;
   font-weight: 700;
   line-height: 1;
+}
+
+.icon-action--labeled {
+  width: auto;
+  gap: 8px;
+  padding-inline: 13px;
+}
+
+.icon-action__icon {
+  flex: 0 0 auto;
+}
+
+.icon-action__label {
+  white-space: nowrap;
 }
 
 .icon-action:hover:not(:disabled) {

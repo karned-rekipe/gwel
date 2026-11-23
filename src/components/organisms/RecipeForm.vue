@@ -17,7 +17,7 @@ import {
   useTags,
 } from '@/composables/useCatalogQueries'
 import { useRecipeFormatter, useRecipeValidation } from '@/composables/useRecipe'
-import { useCreateRecipe, useSearchRecipes, useUpdateRecipe } from '@/composables/useRecipeQueries'
+import { useCreateRecipe, useDeleteRecipe, useSearchRecipes, useUpdateRecipe } from '@/composables/useRecipeQueries'
 import { ingredientService } from '@/services/ingredientService'
 import type {
   Equipment,
@@ -73,15 +73,25 @@ type CatalogModalType = 'ingredient' | 'equipment'
 const props = withDefaults(defineProps<{
   mode?: 'create' | 'edit'
   recipe?: Recipe | null
+  embedded?: boolean
 }>(), {
   mode: 'create',
   recipe: null,
+  embedded: false,
 })
+
+const emit = defineEmits<{
+  cancel: []
+  deleted: []
+  saved: []
+}>()
 
 const router = useRouter()
 const { mutate: createRecipe, isPending, isError, error } = useCreateRecipe()
 const { mutate: updateRecipe, isPending: isUpdatingRecipe, isError: isUpdateError, error: updateError } = useUpdateRecipe()
+const { mutate: deleteRecipe, isPending: isDeletingRecipe } = useDeleteRecipe()
 const { normalizeFormData } = useRecipeFormatter()
+const deleteError = ref('')
 
 const ingredientSearchTerm = ref('')
 const equipmentSearchTerm = ref('')
@@ -102,6 +112,7 @@ const isCheckingIngredientDuplicate = ref(false)
 
 const formData = reactive<RecipeFormData>({
   name: '',
+  subtitle: '',
   description: '',
   servings: '4',
   unitCount: '',
@@ -672,11 +683,33 @@ const handleTagInputKeydown = (event: KeyboardEvent): void => {
 }
 
 const handleCancel = (): void => {
+  if (props.embedded) {
+    emit('cancel')
+    return
+  }
   if (props.mode === 'edit' && props.recipe) {
     router.push({ name: 'recipes-detail', params: { id: props.recipe.uuid } })
     return
   }
   router.push({ name: 'recipes-home' })
+}
+
+const handleDelete = (): void => {
+  if (props.mode !== 'edit' || !props.recipe) return
+  if (!window.confirm(`Supprimer définitivement « ${props.recipe.name} » ?`)) return
+  deleteError.value = ''
+  deleteRecipe(props.recipe.uuid, {
+    onSuccess: () => {
+      if (props.embedded) {
+        emit('deleted')
+        return
+      }
+      router.push({ name: 'recipes-home' })
+    },
+    onError: (err) => {
+      deleteError.value = err.message || 'Suppression impossible.'
+    },
+  })
 }
 
 const handleSubmit = (): void => {
@@ -694,6 +727,10 @@ const handleSubmit = (): void => {
   if (props.mode === 'edit' && props.recipe) {
     updateRecipe({ uuid: props.recipe.uuid, data: payload }, {
       onSuccess: () => {
+        if (props.embedded) {
+          emit('saved')
+          return
+        }
         router.push({ name: 'recipes-detail', params: { id: props.recipe?.uuid } })
       },
     })
@@ -702,6 +739,10 @@ const handleSubmit = (): void => {
 
   createRecipe(payload, {
     onSuccess: ({ uuid }) => {
+      if (props.embedded) {
+        emit('saved')
+        return
+      }
       router.push({ name: 'recipes-detail', params: { id: uuid } })
     },
   })
@@ -709,6 +750,7 @@ const handleSubmit = (): void => {
 
 const fillFromRecipe = (recipe: Recipe): void => {
   formData.name = recipe.name
+  formData.subtitle = recipe.subtitle ?? ''
   formData.description = recipe.description ?? ''
   formData.servings = String(recipe.servings ?? 4)
   formData.unitCount = recipe.unit_count ? String(recipe.unit_count) : ''
@@ -782,9 +824,9 @@ const stepTimeItems = (step: RecipeFormStep) => [
 ]
 
 watch(
-  () => props.recipe,
-  (recipe) => {
-    if (recipe) fillFromRecipe(recipe)
+  () => props.recipe?.uuid,
+  () => {
+    if (props.recipe) fillFromRecipe(props.recipe)
   },
   { immediate: true },
 )
@@ -827,6 +869,12 @@ const fieldError = (key: string): string => (hasSubmitted.value ? validationErro
             placeholder="Ex. dhal de lentilles"
             required
             :error="fieldError('name')"
+          />
+          <AppInput
+            id="recipe-subtitle"
+            v-model="formData.subtitle"
+            label="Sous-titre (optionnel)"
+            placeholder="Ex. tarte citron meringuée"
           />
           <AppInput
             id="recipe-servings"
@@ -1147,11 +1195,25 @@ const fieldError = (key: string): string => (hasSubmitted.value ? validationErro
         {{ submitError || 'La sauvegarde de la recette a échoué.' }}
       </div>
 
+      <div v-if="deleteError" class="recipe-form__error" role="alert">
+        {{ deleteError }}
+      </div>
+
       <div class="recipe-form__actions">
-        <AppButton type="button" variant="secondary" :disabled="isSubmitPending" @click="handleCancel">
+        <AppButton
+          v-if="mode === 'edit' && recipe"
+          class="recipe-form__delete-action"
+          type="button"
+          variant="danger"
+          :disabled="isSubmitPending || isDeletingRecipe"
+          @click="handleDelete"
+        >
+          Supprimer la recette
+        </AppButton>
+        <AppButton type="button" variant="secondary" :disabled="isSubmitPending || isDeletingRecipe" @click="handleCancel">
           Annuler
         </AppButton>
-        <AppButton type="submit" variant="primary" :disabled="isSubmitPending">
+        <AppButton type="submit" variant="primary" :disabled="isSubmitPending || isDeletingRecipe">
           {{ submitLabel }}
         </AppButton>
       </div>
@@ -1946,8 +2008,13 @@ const fieldError = (key: string): string => (hasSubmitted.value ? validationErro
 .recipe-form__actions,
 .recipe-form__modal-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.recipe-form__delete-action {
+  margin-right: auto;
 }
 
 .recipe-form__modal-backdrop {

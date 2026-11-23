@@ -198,6 +198,7 @@ export function useRecipeFormatter() {
 
   const normalizeFormData = (formData: RecipeFormData): RecipeCreatePayload => ({
     name: compact(formData.name),
+    subtitle: compact(formData.subtitle) || null,
     description: compact(formData.description) || null,
     origin_country: compact(formData.originCountry) || null,
     servings: Number(parseNumber(formData.servings)),

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import ResourceList from '@/components/resources/ResourceList.vue'
 import ResourceSearchBar from '@/components/resources/ResourceSearchBar.vue'
 import RecipeCard from '@/components/molecules/RecipeCard.vue'
@@ -11,8 +11,10 @@ import type { Recipe } from '@/types/recipe'
 import { countryFlagFrom, countryOptions } from '@/utils/countryFlags'
 
 const PER_PAGE = 50
-const router = useRouter()
 const navigation = useListNavigation('recipes')
+const emit = defineEmits<{
+  open: [recipe: Recipe]
+}>()
 const currentMonth = new Date().getMonth() + 1
 const searchTerm = ref(navigation.state.search)
 const filters = reactive({
@@ -88,16 +90,13 @@ const loadRemaining = async (): Promise<void> => {
 }
 
 const handleRecipeClick = (recipe: Recipe): void => {
-  navigation.navigateToDetail(
-    router,
-    { name: 'recipes-detail', params: { id: recipe.uuid } },
-    {
-      search: searchTerm.value,
-      filters: { ...filterState.value },
-      page: lastPagination.value?.page ?? 1,
-      selectedUuid: recipe.uuid,
-    },
-  )
+  navigation.save({
+    search: searchTerm.value,
+    filters: { ...filterState.value },
+    page: lastPagination.value?.page ?? 1,
+    selectedUuid: recipe.uuid,
+  })
+  emit('open', recipe)
 }
 
 watch([searchTerm, filterState], () => {

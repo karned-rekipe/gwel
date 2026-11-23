@@ -1,25 +1,36 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import IconActionButton from '@/components/resources/IconActionButton.vue'
 import RecipeAIProcessingOverlay from '@/components/organisms/RecipeAIProcessingOverlay.vue'
 import { useRecipeAIProgress } from '@/composables/useRecipeAIProgress'
-import { useDeleteRecipe, useEnrichRecipeWithAI, useGenerateRecipeImage } from '@/composables/useRecipeQueries'
+import { useEnrichRecipeWithAI, useGenerateRecipeImage } from '@/composables/useRecipeQueries'
 import { aiRecipeService } from '@/services/aiRecipeService'
 import { useRecipeWishlistStore } from '@/stores/recipeWishlistStore'
 import type { Recipe, RecipeStep } from '@/types/recipe'
 import { countryDisplayFrom } from '@/utils/countryFlags'
+import {
+  DEFAULT_RECIPE_ACCENT,
+  extractAccentPalette,
+  type RecipeAccentPalette,
+} from '@/utils/imageAccent'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   recipe: Recipe
+  embedded?: boolean
+}>(), {
+  embedded: false,
+})
+
+const emit = defineEmits<{
+  back: []
+  edit: []
 }>()
 
 const router = useRouter()
-const { mutate: deleteRecipe, isPending: isDeleting } = useDeleteRecipe()
 const { mutate: generateRecipeImage, isPending: isGeneratingImage } = useGenerateRecipeImage()
 const { mutate: enrichRecipe, isPending: isEnriching } = useEnrichRecipeWithAI()
 const wishlist = useRecipeWishlistStore()
-const deleteError = ref<string | null>(null)
 const imageError = ref<string | null>(null)
 const enrichmentError = ref<string | null>(null)
 const enrichmentMessage = ref<string | null>(null)
@@ -40,6 +51,27 @@ const recipeSteps = computed(() => props.recipe.steps ?? [])
 const recipeSources = computed(() => props.recipe.sources ?? [])
 const recipeComponents = computed(() => props.recipe.components ?? [])
 const scoreSlots = [1, 2, 3, 4, 5]
+const accentPalette = ref<RecipeAccentPalette>({ ...DEFAULT_RECIPE_ACCENT })
+let accentRequest = 0
+let enrichmentMessageTimer: number | undefined
+
+const recipeAccentStyle = computed<Record<string, string>>(() => ({
+  '--recipe-accent': accentPalette.value.accent,
+  '--recipe-accent-vivid': accentPalette.value.vivid,
+  '--recipe-accent-soft': accentPalette.value.soft,
+}))
+
+const recipeInitial = computed(() => props.recipe.name.trim().charAt(0).toLocaleUpperCase('fr-FR') || 'R')
+
+watch(
+  () => props.recipe.main_image,
+  async (imageUrl) => {
+    const request = ++accentRequest
+    const palette = await extractAccentPalette(imageUrl)
+    if (request === accentRequest) accentPalette.value = palette
+  },
+  { immediate: true },
+)
 
 const scoreFrom = (value?: number | null): number => {
   if (!value || !Number.isFinite(value)) return 0
@@ -84,11 +116,40 @@ const stepTimeItems = (step: RecipeStep) => [
   { key: 'rest', label: 'Repos', value: formatDuration(step.rest_time) },
 ]
 
+const dismissEnrichmentMessage = (): void => {
+  if (enrichmentMessageTimer !== undefined) {
+    window.clearTimeout(enrichmentMessageTimer)
+    enrichmentMessageTimer = undefined
+  }
+  enrichmentMessage.value = null
+}
+
+const showEnrichmentMessage = (message: string): void => {
+  dismissEnrichmentMessage()
+  enrichmentMessage.value = message
+  enrichmentMessageTimer = window.setTimeout(() => {
+    enrichmentMessage.value = null
+    enrichmentMessageTimer = undefined
+  }, 5000)
+}
+
+onBeforeUnmount(() => {
+  if (enrichmentMessageTimer !== undefined) window.clearTimeout(enrichmentMessageTimer)
+})
+
 const handleBack = (): void => {
+  if (props.embedded) {
+    emit('back')
+    return
+  }
   router.push({ name: 'recipes-home' })
 }
 
 const handleEdit = (): void => {
+  if (props.embedded) {
+    emit('edit')
+    return
+  }
   router.push({ name: 'recipes-edit', params: { id: props.recipe.uuid } })
 }
 
@@ -107,13 +168,13 @@ const handleGenerateImage = (): void => {
 
 const handleEnrich = (): void => {
   enrichmentError.value = null
-  enrichmentMessage.value = null
+  dismissEnrichmentMessage()
   startEnrichmentProgress()
   enrichRecipe(props.recipe.uuid, {
     onSuccess: (result) => {
-      enrichmentMessage.value = result.warnings.length
+      showEnrichmentMessage(result.warnings.length
         ? `Fiche mise à niveau. ${result.warnings.join(' ')}`
-        : 'Fiche mise à niveau avec succès.'
+        : 'Fiche mise à niveau avec succès.')
       completeEnrichmentProgress()
     },
     onError: (err) => {
@@ -127,18 +188,6 @@ const handleWishlistToggle = (): void => {
   wishlist.toggle(props.recipe.uuid)
 }
 
-const handleDelete = (): void => {
-  if (!window.confirm('Supprimer cette recette ?')) return
-  deleteError.value = null
-  deleteRecipe(props.recipe.uuid, {
-    onSuccess: () => {
-      router.push({ name: 'recipes-home' })
-    },
-    onError: (err) => {
-      deleteError.value = err.message || 'Suppression impossible.'
-    },
-  })
-}
 </script>
 
 <template>
@@ -150,39 +199,32 @@ const handleDelete = (): void => {
     :subject="recipe.name"
   />
 
-  <article class="recipe-detail">
-    <header class="recipe-detail__header">
-      <IconActionButton label="Retour" icon="←" @click="handleBack" />
-      <div class="recipe-detail__header-actions">
+  <Teleport to="body">
+    <Transition name="recipe-detail-toast">
+      <div v-if="enrichmentMessage" class="recipe-detail__toast" role="status">
+        <span class="recipe-detail__toast-icon" aria-hidden="true">✓</span>
+        <span>{{ enrichmentMessage }}</span>
         <button
           type="button"
-          class="recipe-detail__wishlist-action"
-          :class="{ 'recipe-detail__wishlist-action--active': isInWishlist }"
-          @click="handleWishlistToggle"
+          class="recipe-detail__toast-close"
+          aria-label="Fermer la confirmation"
+          title="Fermer"
+          @click="dismissEnrichmentMessage"
         >
-          <span aria-hidden="true">{{ isInWishlist ? '★' : '☆' }}</span>
-          {{ isInWishlist ? 'Dans la liste d’envies' : 'Ajouter à la liste d’envies' }}
+          ×
         </button>
-        <IconActionButton
-          :label="isEnriching ? 'Mise à niveau en cours' : 'Compléter avec l’IA'"
-          :icon="isEnriching ? '…' : '✦'"
-          :disabled="isEnriching"
-          @click="handleEnrich"
-        />
-        <IconActionButton
-          :label="isGeneratingImage ? 'Génération de l’image en cours' : 'Image IA'"
-          :icon="isGeneratingImage ? '…' : '▣'"
-          :disabled="isGeneratingImage"
-          @click="handleGenerateImage"
-        />
-        <IconActionButton label="Modifier" icon="✎" @click="handleEdit" />
-        <IconActionButton label="Supprimer" icon="×" variant="danger" :disabled="isDeleting" @click="handleDelete" />
+      </div>
+    </Transition>
+  </Teleport>
+
+  <article class="recipe-detail" :style="recipeAccentStyle">
+    <header v-if="!embedded" class="recipe-detail__toolbar">
+      <div class="recipe-detail__toolbar-start">
+        <IconActionButton label="Retour" icon="←" @click="handleBack" />
+        <span class="recipe-detail__type">Fiche recette</span>
       </div>
     </header>
 
-    <p v-if="enrichmentMessage" class="recipe-detail__feedback recipe-detail__feedback--success" role="status">
-      {{ enrichmentMessage }}
-    </p>
     <p v-if="enrichmentError" class="recipe-detail__feedback recipe-detail__feedback--error" role="alert">
       {{ enrichmentError }}
     </p>
@@ -190,19 +232,58 @@ const handleDelete = (): void => {
     <section class="recipe-detail__hero">
       <div class="recipe-detail__intro">
         <div class="recipe-detail__title-row">
-          <h1 class="recipe-detail__title">{{ recipe.name }}</h1>
+          <div>
+            <h1 class="recipe-detail__title">{{ recipe.name }}</h1>
+            <p v-if="recipe.subtitle" class="recipe-detail__subtitle">{{ recipe.subtitle }}</p>
+          </div>
           <span v-if="recipe.favorite" class="recipe-detail__favorite" aria-label="Recette favorite" title="Recette favorite">
             ★
           </span>
         </div>
-        <p v-if="recipe.description" class="recipe-detail__description">{{ recipe.description }}</p>
         <div class="recipe-detail__tags">
           <router-link v-for="tag in recipeTags" :key="tag.uuid" :to="{ name: 'tags-detail', params: { id: tag.uuid } }" class="recipe-detail__tag">
             {{ tag.name }}
           </router-link>
         </div>
+        <p v-if="recipe.description" class="recipe-detail__description">{{ recipe.description }}</p>
+        <div class="recipe-detail__header-actions">
+          <button
+            type="button"
+            class="recipe-detail__wishlist-action"
+            :class="{ 'recipe-detail__wishlist-action--active': isInWishlist }"
+            :aria-pressed="isInWishlist"
+            :title="isInWishlist ? 'Retirer de mes envies' : 'Ajouter à mes envies'"
+            @click="handleWishlistToggle"
+          >
+            <span aria-hidden="true">{{ isInWishlist ? '♥' : '♡' }}</span>
+            {{ isInWishlist ? 'Dans mes envies' : 'Envie' }}
+          </button>
+          <IconActionButton
+            :label="isEnriching ? 'Mise à niveau en cours' : 'Compléter avec l’IA'"
+            :icon="isEnriching ? '…' : '✦'"
+            :disabled="isEnriching"
+            show-label
+            @click="handleEnrich"
+          />
+          <IconActionButton
+            :label="isGeneratingImage ? 'Génération de l’image en cours' : 'Image IA'"
+            :icon="isGeneratingImage ? '…' : '▣'"
+            :disabled="isGeneratingImage"
+            show-label
+            @click="handleGenerateImage"
+          />
+          <IconActionButton label="Modifier" icon="✎" show-label @click="handleEdit" />
+        </div>
       </div>
-      <img v-if="recipe.main_image" :src="recipe.main_image" :alt="recipe.name" class="recipe-detail__image" />
+
+      <figure class="recipe-detail__media">
+        <img v-if="recipe.main_image" :src="recipe.main_image" :alt="recipe.name" class="recipe-detail__image" />
+        <div v-else class="recipe-detail__image recipe-detail__image--placeholder" aria-hidden="true">
+          {{ recipeInitial }}
+        </div>
+        <span class="recipe-detail__accent-bubble recipe-detail__accent-bubble--large" aria-hidden="true"></span>
+        <span class="recipe-detail__accent-bubble recipe-detail__accent-bubble--small" aria-hidden="true"></span>
+      </figure>
 
       <section class="recipe-detail__meta" aria-label="Métadonnées recette">
         <div class="recipe-detail__meta-item">
@@ -274,7 +355,6 @@ const handleDelete = (): void => {
     </section>
 
     <p v-if="imageError" class="recipe-detail__error" role="alert">{{ imageError }}</p>
-    <p v-if="deleteError" class="recipe-detail__error" role="alert">{{ deleteError }}</p>
 
     <div class="recipe-detail__grid">
       <section class="recipe-detail__section">
@@ -303,7 +383,7 @@ const handleDelete = (): void => {
         <p v-else class="recipe-detail__empty">Aucun ustensile renseigné.</p>
       </section>
 
-      <section class="recipe-detail__section recipe-detail__section--wide">
+      <section class="recipe-detail__section recipe-detail__section--preparation recipe-detail__section--wide">
         <h2>Préparation</h2>
         <ol class="recipe-detail__steps">
           <li v-for="(step, index) in recipeSteps" :key="step.uuid ?? `${step.name}-${index}`">
@@ -401,12 +481,16 @@ const handleDelete = (): void => {
 
 <style scoped>
 .recipe-detail {
-  max-width: 1180px;
+  --recipe-accent: #57534e;
+  --recipe-accent-vivid: #91897f;
+  --recipe-accent-soft: #f1efeb;
+  max-width: 1480px;
   margin: 0 auto;
-  padding: 32px 24px 56px;
+  padding: 30px 28px 56px;
 }
 
-.recipe-detail__header,
+.recipe-detail__toolbar,
+.recipe-detail__toolbar-start,
 .recipe-detail__title-row,
 .recipe-detail__tags {
   display: flex;
@@ -414,16 +498,36 @@ const handleDelete = (): void => {
   gap: 10px;
 }
 
-.recipe-detail__header {
+.recipe-detail__toolbar {
   justify-content: space-between;
-  margin-bottom: 22px;
+  margin-bottom: 30px;
+}
+
+.recipe-detail__toolbar-start {
+  gap: 12px;
+}
+
+.recipe-detail__type {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 7px 13px;
+  border: 1px solid color-mix(in srgb, var(--recipe-accent) 18%, var(--color-border));
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .recipe-detail__header-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
+  gap: 8px;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 28px;
 }
 
 .recipe-detail__feedback {
@@ -433,11 +537,6 @@ const handleDelete = (): void => {
   border: 1px solid var(--color-border);
 }
 
-.recipe-detail__feedback--success {
-  background: rgba(52, 199, 89, 0.1);
-  border-color: rgba(52, 199, 89, 0.25);
-}
-
 .recipe-detail__feedback--error {
   background: rgba(215, 0, 21, 0.08);
   border-color: rgba(215, 0, 21, 0.2);
@@ -445,42 +544,71 @@ const handleDelete = (): void => {
 }
 
 .recipe-detail__wishlist-action {
-  min-height: 34px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 6px 11px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
+  gap: 9px;
+  padding: 10px 18px;
+  border: 1px solid var(--recipe-accent);
+  border-radius: var(--radius-full);
+  background: var(--recipe-accent);
+  color: #fff;
   cursor: pointer;
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 0.88rem;
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--recipe-accent) 22%, transparent);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background var(--transition-fast);
 }
 
 .recipe-detail__wishlist-action:hover {
-  border-color: color-mix(in srgb, #f5a623 42%, var(--color-border));
-  background: color-mix(in srgb, #f5a623 8%, var(--color-surface));
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--recipe-accent) 88%, #000);
+  box-shadow: 0 13px 28px color-mix(in srgb, var(--recipe-accent) 28%, transparent);
 }
 
-.recipe-detail__wishlist-action span,
-.recipe-detail__wishlist-action--active {
-  color: #f5a623;
+.recipe-detail__wishlist-action span {
+  color: inherit;
+  font-size: 1rem;
+}
+
+.recipe-detail__header-actions :deep(.icon-action) {
+  width: 44px;
+  height: 44px;
+  border-color: color-mix(in srgb, var(--recipe-accent) 22%, var(--color-border));
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, #fff 82%, transparent);
+  color: var(--recipe-accent);
+}
+
+.recipe-detail__header-actions :deep(.icon-action--labeled) {
+  width: auto;
+  padding-inline: 11px;
+  font-size: 0.84rem;
+}
+
+.recipe-detail__header-actions :deep(.icon-action:hover:not(:disabled)) {
+  border-color: color-mix(in srgb, var(--recipe-accent) 50%, var(--color-border));
+  background: var(--recipe-accent-soft);
 }
 
 .recipe-detail__hero {
   display: grid;
-  gap: 22px;
-  align-items: start;
+  gap: 34px;
+  align-items: stretch;
 }
 
 .recipe-detail__intro {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 18px;
 }
 
 .recipe-detail__title-row {
@@ -491,19 +619,33 @@ const handleDelete = (): void => {
 .recipe-detail__title {
   margin: 0;
   color: var(--color-text-primary);
-  font-size: clamp(2rem, 5vw, 4.2rem);
-  line-height: 1;
-  font-weight: 700;
+  font-size: clamp(2.4rem, 4.5vw, 4.25rem);
+  line-height: 0.94;
+  font-weight: 760;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+
+.recipe-detail__subtitle {
+  margin: 6px 0 0;
+  color: var(--recipe-accent);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(2rem, 3.8vw, 3.75rem);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+  text-wrap: balance;
 }
 
 .recipe-detail__tag {
-  border: 1px solid var(--color-border);
+  border: 1px solid color-mix(in srgb, var(--recipe-accent) 14%, transparent);
   border-radius: var(--radius-full);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font-size: 0.8rem;
+  background: var(--recipe-accent-soft);
+  color: var(--recipe-accent);
+  font-size: 0.76rem;
   font-weight: 650;
-  padding: 5px 9px;
+  padding: 6px 11px;
   white-space: nowrap;
 }
 
@@ -514,10 +656,10 @@ const handleDelete = (): void => {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--recipe-accent) 22%, transparent);
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.92);
-  color: #f5a623;
+  background: var(--recipe-accent-soft);
+  color: var(--recipe-accent);
   font-size: 1rem;
   font-weight: 800;
   line-height: 1;
@@ -525,10 +667,11 @@ const handleDelete = (): void => {
 }
 
 .recipe-detail__description {
-  max-width: 820px;
-  margin: 14px 0 0;
+  max-width: 650px;
+  margin: 24px 0 0;
   color: var(--color-text-secondary);
-  line-height: 1.6;
+  font-size: 0.98rem;
+  line-height: 1.75;
 }
 
 .recipe-detail__error {
@@ -539,44 +682,92 @@ const handleDelete = (): void => {
 
 .recipe-detail__tags {
   flex-wrap: wrap;
-  margin-top: 14px;
+  margin-top: 20px;
+}
+
+.recipe-detail__media {
+  position: relative;
+  min-width: 0;
+  margin: 0;
+  padding: 0 10px;
 }
 
 .recipe-detail__image {
+  position: relative;
+  z-index: 1;
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
+  display: block;
   object-fit: cover;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
+  border-radius: 34px 34px 26px 26px;
+  border: 1px solid color-mix(in srgb, var(--recipe-accent) 16%, var(--color-border));
+  box-shadow: 0 28px 60px color-mix(in srgb, var(--recipe-accent) 16%, rgba(0, 0, 0, 0.08));
+}
+
+.recipe-detail__image--placeholder {
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 65% 28%, color-mix(in srgb, var(--recipe-accent-vivid) 38%, transparent), transparent 34%),
+    var(--recipe-accent-soft);
+  color: var(--recipe-accent);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(5rem, 12vw, 9rem);
+  font-style: italic;
+}
+
+.recipe-detail__accent-bubble {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  border-radius: 50%;
+  background: var(--recipe-accent-vivid);
+  box-shadow: inset -10px -8px 0 color-mix(in srgb, var(--recipe-accent) 36%, transparent);
+}
+
+.recipe-detail__accent-bubble--large {
+  width: 54px;
+  height: 54px;
+  top: 18%;
+  left: -3px;
+}
+
+.recipe-detail__accent-bubble--small {
+  width: 30px;
+  height: 30px;
+  right: -2px;
+  bottom: 15%;
 }
 
 .recipe-detail__meta {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
-  margin-top: 18px;
+  margin-top: 4px;
   overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-border);
+  border: 1px solid color-mix(in srgb, var(--recipe-accent) 18%, var(--color-border));
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--recipe-accent) 14%, var(--color-border));
 }
 
 .recipe-detail__meta-item {
-  min-height: 70px;
-  padding: 14px;
-  background: var(--color-surface);
+  min-height: 88px;
+  padding: 18px;
+  background: color-mix(in srgb, var(--recipe-accent-soft) 62%, #fff);
 }
 
 .recipe-detail__meta-item span {
   display: block;
   color: var(--color-text-tertiary);
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .recipe-detail__meta-item strong {
   display: block;
-  margin-top: 6px;
+  margin-top: 8px;
   color: var(--color-text-primary);
   font-size: 1rem;
 }
@@ -600,25 +791,28 @@ const handleDelete = (): void => {
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
-  color: var(--color-primary);
+  color: var(--recipe-accent);
 }
 
 .recipe-detail__score {
-  gap: 4px;
+  gap: 6px;
   line-height: 1;
 }
 
 .recipe-detail__score--difficulty {
-  color: var(--color-primary);
-  font-size: 0.9rem !important;
+  color: var(--recipe-accent);
+  font-size: 1.2rem !important;
 }
 
 .recipe-detail__score--price {
-  color: var(--color-primary);
+  color: var(--recipe-accent);
+  font-size: 1.2rem !important;
   font-weight: 800;
 }
 
 .recipe-detail__score-symbol {
+  display: inline-flex;
+  line-height: 1;
   opacity: 1;
 }
 
@@ -630,22 +824,57 @@ const handleDelete = (): void => {
 
 .recipe-detail__grid {
   display: grid;
-  gap: 12px;
-  margin-top: 18px;
+  gap: 18px;
+  margin-top: 28px;
 }
 
-.recipe-detail__section,
+.recipe-detail__section {
+  border: 1px solid color-mix(in srgb, var(--recipe-accent) 34%, var(--color-border));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--recipe-accent-soft) 10%, var(--color-surface));
+  padding: 24px;
+  box-shadow: 0 12px 34px color-mix(in srgb, var(--recipe-accent) 7%, transparent);
+}
+
+.recipe-detail__section--preparation {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .recipe-detail__source-box {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  padding: 20px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 4px 0;
 }
 
-.recipe-detail__section h2,
+.recipe-detail__section h2 {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 20px;
+  color: var(--recipe-accent);
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.recipe-detail__section h2::after {
+  width: auto;
+  height: 1px;
+  flex: 1 1 auto;
+  background: color-mix(in srgb, var(--recipe-accent) 30%, transparent);
+  content: '';
+}
+
 .recipe-detail__source-box h2 {
-  margin: 0 0 16px;
-  font-size: 1.05rem;
+  margin: 0 0 8px;
+  color: var(--color-text-tertiary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .recipe-detail__ingredients,
@@ -667,8 +896,7 @@ const handleDelete = (): void => {
 }
 
 .recipe-detail__ingredients li:last-child,
-.recipe-detail__equipment li:last-child,
-.recipe-detail__steps li:last-child {
+.recipe-detail__equipment li:last-child {
   border-bottom: 0;
 }
 
@@ -684,8 +912,7 @@ const handleDelete = (): void => {
   color: var(--color-text-secondary);
 }
 
-.recipe-detail__equipment li,
-.recipe-detail__steps li {
+.recipe-detail__equipment li {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 12px;
@@ -693,16 +920,34 @@ const handleDelete = (): void => {
   border-bottom: 1px solid var(--color-border);
 }
 
+.recipe-detail__steps {
+  display: grid;
+  gap: 0;
+}
+
+.recipe-detail__steps > li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 20px;
+  padding: 26px 0;
+}
+
+.recipe-detail__steps > li + li {
+  border-top: 1px solid color-mix(in srgb, var(--recipe-accent) 18%, var(--color-border));
+}
+
 .recipe-detail__step-index {
-  width: 28px;
-  height: 28px;
+  width: 38px;
+  height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-full);
-  background: var(--color-secondary);
-  font-size: 0.85rem;
-  font-weight: 700;
+  background: var(--recipe-accent);
+  color: #fff;
+  font-size: 0.98rem;
+  font-weight: 800;
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--recipe-accent) 16%, transparent);
 }
 
 .recipe-detail__step-body {
@@ -712,64 +957,73 @@ const handleDelete = (): void => {
 .recipe-detail__step-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
+  gap: 20px;
   align-items: start;
 }
 
 .recipe-detail__steps h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.12rem;
+  font-weight: 730;
+  line-height: 1.4;
 }
 
 .recipe-detail__steps p {
-  margin: 8px 0 0;
+  max-width: 74ch;
+  margin: 10px 0 0;
   color: var(--color-text-secondary);
-  line-height: 1.55;
+  font-size: 1rem;
+  line-height: 1.7;
 }
 
 .recipe-detail__step-times {
   display: grid;
-  grid-template-columns: repeat(3, 82px);
-  gap: 6px;
+  grid-template-columns: repeat(3, 76px);
+  gap: 12px;
   justify-content: end;
 }
 
 .recipe-detail__step-time {
-  min-height: 28px;
+  min-height: 24px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
   justify-content: flex-start;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border: 0;
   background: transparent;
   color: var(--color-text-secondary);
-  font-size: 0.78rem;
+  font-size: 0.86rem;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  padding: 4px 6px;
+  padding: 2px 0;
   white-space: nowrap;
 }
 
 .recipe-detail__step-time-icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  color: var(--color-primary);
+  color: var(--recipe-accent);
+}
+
+.recipe-detail__ingredients a,
+.recipe-detail__equipment a,
+.recipe-detail__sources a {
+  color: var(--recipe-accent);
 }
 
 .recipe-detail__step-time-icon svg {
-  width: 15px;
-  height: 15px;
+  width: 17px;
+  height: 17px;
 }
 
 .recipe-detail__sources {
   display: grid;
-  gap: 12px;
+  gap: 6px;
 }
 
 .recipe-detail__components {
@@ -827,8 +1081,16 @@ const handleDelete = (): void => {
 
 .recipe-detail__sources li {
   display: grid;
-  gap: 4px;
+  gap: 2px;
+  color: var(--color-text-tertiary);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.recipe-detail__sources li strong {
   color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  font-weight: 650;
 }
 
 .recipe-detail__empty {
@@ -836,24 +1098,94 @@ const handleDelete = (): void => {
   color: var(--color-text-tertiary);
 }
 
+.recipe-detail__toast {
+  position: fixed;
+  z-index: 500;
+  top: 16px;
+  left: 50%;
+  width: min(520px, calc(100vw - 28px));
+  min-height: 50px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  background: rgba(29, 29, 31, 0.94);
+  color: #ffffff;
+  box-shadow: 0 18px 55px rgba(15, 23, 42, 0.28);
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1.4;
+  backdrop-filter: blur(16px) saturate(130%);
+  transform: translateX(-50%);
+}
+
+.recipe-detail__toast-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 0.78rem;
+}
+
+.recipe-detail__toast-close {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.74);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.recipe-detail__toast-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.recipe-detail-toast-enter-active,
+.recipe-detail-toast-leave-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.recipe-detail-toast-enter-from,
+.recipe-detail-toast-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -10px);
+}
+
 @media (min-width: 940px) {
   .recipe-detail__hero {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+    grid-template-columns: minmax(0, 0.9fr) minmax(440px, 1.1fr);
     grid-template-areas:
-      "intro image"
-      "meta image";
+      "intro media"
+      "meta meta";
+    column-gap: clamp(30px, 4vw, 58px);
+    row-gap: 30px;
   }
 
   .recipe-detail__intro {
     grid-area: intro;
   }
 
-  .recipe-detail__image {
-    grid-area: image;
+  .recipe-detail__media {
+    grid-area: media;
   }
 
   .recipe-detail__meta {
     grid-area: meta;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   .recipe-detail__grid {
@@ -874,19 +1206,16 @@ const handleDelete = (): void => {
     padding-inline: 18px;
   }
 
-  .recipe-detail__header {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
   .recipe-detail__header-actions {
     justify-content: flex-start;
+    margin-top: 28px;
+    padding-top: 0;
   }
 
   .recipe-detail__hero {
     grid-template-areas:
       "intro"
-      "image"
+      "media"
       "meta";
   }
 
@@ -894,8 +1223,8 @@ const handleDelete = (): void => {
     grid-area: intro;
   }
 
-  .recipe-detail__image {
-    grid-area: image;
+  .recipe-detail__media {
+    grid-area: media;
   }
 
   .recipe-detail__meta {
@@ -910,6 +1239,50 @@ const handleDelete = (): void => {
   .recipe-detail__step-times {
     grid-template-columns: repeat(3, minmax(74px, 1fr));
     justify-content: stretch;
+  }
+}
+
+@media (max-width: 520px) {
+  .recipe-detail {
+    padding-top: 24px;
+  }
+
+  .recipe-detail__toolbar {
+    margin-bottom: 18px;
+  }
+
+  .recipe-detail__intro {
+    padding-top: 4px;
+  }
+
+  .recipe-detail__title {
+    font-size: clamp(2.25rem, 11.5vw, 3.15rem);
+  }
+
+  .recipe-detail__subtitle {
+    font-size: clamp(1.75rem, 9.5vw, 2.7rem);
+  }
+
+  .recipe-detail__media {
+    padding-inline: 7px;
+  }
+
+  .recipe-detail__meta-item {
+    min-height: 80px;
+    padding: 14px;
+  }
+
+  .recipe-detail__step-times {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recipe-detail__section {
+    padding: 18px;
+  }
+
+  .recipe-detail__steps > li {
+    gap: 16px;
+    padding-block: 24px;
   }
 }
 </style>

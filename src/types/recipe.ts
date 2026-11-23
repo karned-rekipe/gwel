@@ -369,6 +369,7 @@ export interface Recipe {
   created_at?: string
   updated_at?: string
   name: string
+  subtitle?: string | null
   description?: string | null
   origin_country?: string | null
   servings?: number | null
@@ -435,6 +436,7 @@ export interface RecipeFormSource {
 
 export interface RecipeFormData {
   name: string
+  subtitle: string
   description: string
   servings: string
   unitCount: string
@@ -454,6 +456,7 @@ export interface RecipeFormData {
 
 export interface RecipeCreatePayload {
   name: string
+  subtitle?: string | null
   description?: string | null
   origin_country?: string | null
   servings: number

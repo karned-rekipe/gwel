@@ -102,6 +102,7 @@ const isCheckingIngredientDuplicate = ref(false)
 
 const formData = reactive<RecipeFormData>({
   name: '',
+  subtitle: '',
   description: '',
   servings: '4',
   unitCount: '',
@@ -709,6 +710,7 @@ const handleSubmit = (): void => {
 
 const fillFromRecipe = (recipe: Recipe): void => {
   formData.name = recipe.name
+  formData.subtitle = recipe.subtitle ?? ''
   formData.description = recipe.description ?? ''
   formData.servings = String(recipe.servings ?? 4)
   formData.unitCount = recipe.unit_count ? String(recipe.unit_count) : ''
@@ -827,6 +829,12 @@ const fieldError = (key: string): string => (hasSubmitted.value ? validationErro
             placeholder="Ex. dhal de lentilles"
             required
             :error="fieldError('name')"
+          />
+          <AppInput
+            id="recipe-subtitle"
+            v-model="formData.subtitle"
+            label="Sous-titre (optionnel)"
+            placeholder="Ex. tarte citron meringuée"
           />
           <AppInput
             id="recipe-servings"

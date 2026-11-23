@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import IconActionButton from '@/components/resources/IconActionButton.vue'
 import RecipeAIProcessingOverlay from '@/components/organisms/RecipeAIProcessingOverlay.vue'
 import { useRecipeAIProgress } from '@/composables/useRecipeAIProgress'
-import { useDeleteRecipe, useEnrichRecipeWithAI, useGenerateRecipeImage } from '@/composables/useRecipeQueries'
+import { useEnrichRecipeWithAI, useGenerateRecipeImage } from '@/composables/useRecipeQueries'
 import { aiRecipeService } from '@/services/aiRecipeService'
 import { useRecipeWishlistStore } from '@/stores/recipeWishlistStore'
 import type { Recipe, RecipeStep } from '@/types/recipe'
@@ -15,16 +15,22 @@ import {
   type RecipeAccentPalette,
 } from '@/utils/imageAccent'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   recipe: Recipe
+  embedded?: boolean
+}>(), {
+  embedded: false,
+})
+
+const emit = defineEmits<{
+  back: []
+  edit: []
 }>()
 
 const router = useRouter()
-const { mutate: deleteRecipe, isPending: isDeleting } = useDeleteRecipe()
 const { mutate: generateRecipeImage, isPending: isGeneratingImage } = useGenerateRecipeImage()
 const { mutate: enrichRecipe, isPending: isEnriching } = useEnrichRecipeWithAI()
 const wishlist = useRecipeWishlistStore()
-const deleteError = ref<string | null>(null)
 const imageError = ref<string | null>(null)
 const enrichmentError = ref<string | null>(null)
 const enrichmentMessage = ref<string | null>(null)
@@ -47,21 +53,13 @@ const recipeComponents = computed(() => props.recipe.components ?? [])
 const scoreSlots = [1, 2, 3, 4, 5]
 const accentPalette = ref<RecipeAccentPalette>({ ...DEFAULT_RECIPE_ACCENT })
 let accentRequest = 0
+let enrichmentMessageTimer: number | undefined
 
 const recipeAccentStyle = computed<Record<string, string>>(() => ({
   '--recipe-accent': accentPalette.value.accent,
   '--recipe-accent-vivid': accentPalette.value.vivid,
   '--recipe-accent-soft': accentPalette.value.soft,
 }))
-
-const heroEyebrow = computed(() => {
-  const category = recipeTags.value[0]?.name ?? 'Fiche recette'
-  const servings = props.recipe.servings ? `${props.recipe.servings} personnes` : null
-  return [category, servings]
-    .filter((part): part is string => Boolean(part))
-    .join(' · ')
-    .toLocaleUpperCase('fr-FR')
-})
 
 const recipeInitial = computed(() => props.recipe.name.trim().charAt(0).toLocaleUpperCase('fr-FR') || 'R')
 
@@ -118,11 +116,40 @@ const stepTimeItems = (step: RecipeStep) => [
   { key: 'rest', label: 'Repos', value: formatDuration(step.rest_time) },
 ]
 
+const dismissEnrichmentMessage = (): void => {
+  if (enrichmentMessageTimer !== undefined) {
+    window.clearTimeout(enrichmentMessageTimer)
+    enrichmentMessageTimer = undefined
+  }
+  enrichmentMessage.value = null
+}
+
+const showEnrichmentMessage = (message: string): void => {
+  dismissEnrichmentMessage()
+  enrichmentMessage.value = message
+  enrichmentMessageTimer = window.setTimeout(() => {
+    enrichmentMessage.value = null
+    enrichmentMessageTimer = undefined
+  }, 5000)
+}
+
+onBeforeUnmount(() => {
+  if (enrichmentMessageTimer !== undefined) window.clearTimeout(enrichmentMessageTimer)
+})
+
 const handleBack = (): void => {
+  if (props.embedded) {
+    emit('back')
+    return
+  }
   router.push({ name: 'recipes-home' })
 }
 
 const handleEdit = (): void => {
+  if (props.embedded) {
+    emit('edit')
+    return
+  }
   router.push({ name: 'recipes-edit', params: { id: props.recipe.uuid } })
 }
 
@@ -141,13 +168,13 @@ const handleGenerateImage = (): void => {
 
 const handleEnrich = (): void => {
   enrichmentError.value = null
-  enrichmentMessage.value = null
+  dismissEnrichmentMessage()
   startEnrichmentProgress()
   enrichRecipe(props.recipe.uuid, {
     onSuccess: (result) => {
-      enrichmentMessage.value = result.warnings.length
+      showEnrichmentMessage(result.warnings.length
         ? `Fiche mise à niveau. ${result.warnings.join(' ')}`
-        : 'Fiche mise à niveau avec succès.'
+        : 'Fiche mise à niveau avec succès.')
       completeEnrichmentProgress()
     },
     onError: (err) => {
@@ -161,18 +188,6 @@ const handleWishlistToggle = (): void => {
   wishlist.toggle(props.recipe.uuid)
 }
 
-const handleDelete = (): void => {
-  if (!window.confirm('Supprimer cette recette ?')) return
-  deleteError.value = null
-  deleteRecipe(props.recipe.uuid, {
-    onSuccess: () => {
-      router.push({ name: 'recipes-home' })
-    },
-    onError: (err) => {
-      deleteError.value = err.message || 'Suppression impossible.'
-    },
-  })
-}
 </script>
 
 <template>
@@ -184,24 +199,38 @@ const handleDelete = (): void => {
     :subject="recipe.name"
   />
 
+  <Teleport to="body">
+    <Transition name="recipe-detail-toast">
+      <div v-if="enrichmentMessage" class="recipe-detail__toast" role="status">
+        <span class="recipe-detail__toast-icon" aria-hidden="true">✓</span>
+        <span>{{ enrichmentMessage }}</span>
+        <button
+          type="button"
+          class="recipe-detail__toast-close"
+          aria-label="Fermer la confirmation"
+          title="Fermer"
+          @click="dismissEnrichmentMessage"
+        >
+          ×
+        </button>
+      </div>
+    </Transition>
+  </Teleport>
+
   <article class="recipe-detail" :style="recipeAccentStyle">
-    <header class="recipe-detail__toolbar">
+    <header v-if="!embedded" class="recipe-detail__toolbar">
       <div class="recipe-detail__toolbar-start">
         <IconActionButton label="Retour" icon="←" @click="handleBack" />
         <span class="recipe-detail__type">Fiche recette</span>
       </div>
     </header>
 
-    <p v-if="enrichmentMessage" class="recipe-detail__feedback recipe-detail__feedback--success" role="status">
-      {{ enrichmentMessage }}
-    </p>
     <p v-if="enrichmentError" class="recipe-detail__feedback recipe-detail__feedback--error" role="alert">
       {{ enrichmentError }}
     </p>
 
     <section class="recipe-detail__hero">
       <div class="recipe-detail__intro">
-        <p class="recipe-detail__eyebrow">{{ heroEyebrow }}</p>
         <div class="recipe-detail__title-row">
           <div>
             <h1 class="recipe-detail__title">{{ recipe.name }}</h1>
@@ -222,25 +251,28 @@ const handleDelete = (): void => {
             type="button"
             class="recipe-detail__wishlist-action"
             :class="{ 'recipe-detail__wishlist-action--active': isInWishlist }"
+            :aria-pressed="isInWishlist"
+            :title="isInWishlist ? 'Retirer de mes envies' : 'Ajouter à mes envies'"
             @click="handleWishlistToggle"
           >
-            <span aria-hidden="true">{{ isInWishlist ? '★' : '+' }}</span>
-            {{ isInWishlist ? 'Dans ma liste d’envies' : 'Ajouter à mes envies' }}
+            <span aria-hidden="true">{{ isInWishlist ? '♥' : '♡' }}</span>
+            {{ isInWishlist ? 'Dans mes envies' : 'Envie' }}
           </button>
           <IconActionButton
             :label="isEnriching ? 'Mise à niveau en cours' : 'Compléter avec l’IA'"
             :icon="isEnriching ? '…' : '✦'"
             :disabled="isEnriching"
+            show-label
             @click="handleEnrich"
           />
           <IconActionButton
             :label="isGeneratingImage ? 'Génération de l’image en cours' : 'Image IA'"
             :icon="isGeneratingImage ? '…' : '▣'"
             :disabled="isGeneratingImage"
+            show-label
             @click="handleGenerateImage"
           />
-          <IconActionButton label="Modifier" icon="✎" @click="handleEdit" />
-          <IconActionButton label="Supprimer" icon="×" variant="danger" :disabled="isDeleting" @click="handleDelete" />
+          <IconActionButton label="Modifier" icon="✎" show-label @click="handleEdit" />
         </div>
       </div>
 
@@ -323,7 +355,6 @@ const handleDelete = (): void => {
     </section>
 
     <p v-if="imageError" class="recipe-detail__error" role="alert">{{ imageError }}</p>
-    <p v-if="deleteError" class="recipe-detail__error" role="alert">{{ deleteError }}</p>
 
     <div class="recipe-detail__grid">
       <section class="recipe-detail__section">
@@ -453,9 +484,9 @@ const handleDelete = (): void => {
   --recipe-accent: #57534e;
   --recipe-accent-vivid: #91897f;
   --recipe-accent-soft: #f1efeb;
-  max-width: 1280px;
+  max-width: 1480px;
   margin: 0 auto;
-  padding: 40px 32px 64px;
+  padding: 30px 28px 56px;
 }
 
 .recipe-detail__toolbar,
@@ -495,7 +526,8 @@ const handleDelete = (): void => {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  margin-top: 28px;
+  margin-top: auto;
+  padding-top: 28px;
 }
 
 .recipe-detail__feedback {
@@ -503,11 +535,6 @@ const handleDelete = (): void => {
   padding: 12px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
-}
-
-.recipe-detail__feedback--success {
-  background: rgba(52, 199, 89, 0.1);
-  border-color: rgba(52, 199, 89, 0.25);
 }
 
 .recipe-detail__feedback--error {
@@ -560,32 +587,28 @@ const handleDelete = (): void => {
   color: var(--recipe-accent);
 }
 
+.recipe-detail__header-actions :deep(.icon-action--labeled) {
+  width: auto;
+  padding-inline: 11px;
+  font-size: 0.84rem;
+}
+
 .recipe-detail__header-actions :deep(.icon-action:hover:not(:disabled)) {
   border-color: color-mix(in srgb, var(--recipe-accent) 50%, var(--color-border));
   background: var(--recipe-accent-soft);
 }
 
-.recipe-detail__header-actions :deep(.icon-action--danger) {
-  color: var(--color-danger);
-}
-
 .recipe-detail__hero {
   display: grid;
   gap: 34px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .recipe-detail__intro {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   padding-top: 18px;
-}
-
-.recipe-detail__eyebrow {
-  margin: 0 0 14px;
-  color: var(--recipe-accent);
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 0.14em;
 }
 
 .recipe-detail__title-row {
@@ -596,7 +619,7 @@ const handleDelete = (): void => {
 .recipe-detail__title {
   margin: 0;
   color: var(--color-text-primary);
-  font-size: clamp(2.5rem, 4.9vw, 4.6rem);
+  font-size: clamp(2.4rem, 4.5vw, 4.25rem);
   line-height: 0.94;
   font-weight: 760;
   letter-spacing: -0.045em;
@@ -666,17 +689,17 @@ const handleDelete = (): void => {
   position: relative;
   min-width: 0;
   margin: 0;
-  padding: 0 12px 24px;
+  padding: 0 10px;
 }
 
 .recipe-detail__image {
   position: relative;
   z-index: 1;
   width: 100%;
-  aspect-ratio: 4 / 5;
+  aspect-ratio: 16 / 9;
   display: block;
   object-fit: cover;
-  border-radius: 48% 48% 34px 34px / 24% 24% 10% 10%;
+  border-radius: 34px 34px 26px 26px;
   border: 1px solid color-mix(in srgb, var(--recipe-accent) 16%, var(--color-border));
   box-shadow: 0 28px 60px color-mix(in srgb, var(--recipe-accent) 16%, rgba(0, 0, 0, 0.08));
 }
@@ -1075,14 +1098,81 @@ const handleDelete = (): void => {
   color: var(--color-text-tertiary);
 }
 
+.recipe-detail__toast {
+  position: fixed;
+  z-index: 500;
+  top: 16px;
+  left: 50%;
+  width: min(520px, calc(100vw - 28px));
+  min-height: 50px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  background: rgba(29, 29, 31, 0.94);
+  color: #ffffff;
+  box-shadow: 0 18px 55px rgba(15, 23, 42, 0.28);
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1.4;
+  backdrop-filter: blur(16px) saturate(130%);
+  transform: translateX(-50%);
+}
+
+.recipe-detail__toast-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 0.78rem;
+}
+
+.recipe-detail__toast-close {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.74);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.recipe-detail__toast-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.recipe-detail-toast-enter-active,
+.recipe-detail-toast-leave-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.recipe-detail-toast-enter-from,
+.recipe-detail-toast-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -10px);
+}
+
 @media (min-width: 940px) {
   .recipe-detail__hero {
-    grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.78fr);
+    grid-template-columns: minmax(0, 0.9fr) minmax(440px, 1.1fr);
     grid-template-areas:
       "intro media"
       "meta meta";
-    column-gap: clamp(42px, 6vw, 84px);
-    row-gap: 42px;
+    column-gap: clamp(30px, 4vw, 58px);
+    row-gap: 30px;
   }
 
   .recipe-detail__intro {
@@ -1118,6 +1208,8 @@ const handleDelete = (): void => {
 
   .recipe-detail__header-actions {
     justify-content: flex-start;
+    margin-top: 28px;
+    padding-top: 0;
   }
 
   .recipe-detail__hero {

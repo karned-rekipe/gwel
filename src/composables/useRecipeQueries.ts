@@ -4,6 +4,7 @@ import { aiRecipeService } from '@/services/aiRecipeService'
 import { recipeService, type RecipeListFilters } from '@/services/recipeService'
 import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 import type { Recipe, RecipeAIInput, RecipeCreatePayload } from '@/types/recipe'
+import { replaceEntityInCachedCollection } from '@/utils/entityCollections'
 
 export const recipeKeys = {
   all: ['recipes'] as const,
@@ -83,8 +84,12 @@ export function useUpdateRecipe() {
   return useMutation({
     mutationFn: ({ uuid, data }: { uuid: string; data: Partial<RecipeCreatePayload> }) =>
       recipeService.update(uuid, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: recipeKeys.detail(variables.uuid) })
+    onSuccess: (recipe, variables) => {
+      queryClient.setQueryData(recipeKeys.detail(variables.uuid), recipe)
+      queryClient.setQueriesData(
+        { queryKey: recipeKeys.lists() },
+        (cached) => replaceEntityInCachedCollection(cached, recipe),
+      )
       queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
       refreshRecipeCatalog()
     },
@@ -146,7 +151,7 @@ export function useEnrichRecipeWithAI() {
     mutationFn: (recipeUuid: string) => aiRecipeService.enrichExistingRecipe(recipeUuid),
     onSuccess: async (_, recipeUuid) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: recipeKeys.detail(recipeUuid) }),
+        queryClient.refetchQueries({ queryKey: recipeKeys.detail(recipeUuid), type: 'active' }),
         queryClient.invalidateQueries({ queryKey: recipeKeys.lists() }),
       ])
       refreshRecipeCatalog()
@@ -160,11 +165,14 @@ export function useGenerateRecipeImage() {
   return useMutation({
     mutationFn: (recipe: Recipe) => recipeService.generateImage(
       recipe.uuid,
-      undefined,
       Boolean(recipe.main_image?.trim()),
     ),
-    onSuccess: (_, recipe) => {
-      queryClient.invalidateQueries({ queryKey: recipeKeys.detail(recipe.uuid) })
+    onSuccess: (result, recipe) => {
+      queryClient.setQueryData(recipeKeys.detail(recipe.uuid), result.recipe)
+      queryClient.setQueriesData(
+        { queryKey: recipeKeys.lists() },
+        (cached) => replaceEntityInCachedCollection(cached, result.recipe),
+      )
       queryClient.invalidateQueries({ queryKey: recipeKeys.lists() })
       refreshRecipeCatalog()
     },

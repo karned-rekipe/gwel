@@ -21,6 +21,7 @@ export interface Ingredient {
   quantity?: number | null
   season_months: Record<number, number>
   media_profile: IngredientMediaProfile
+  suggested_media_profile?: IngredientMediaProfile | null
   seasonality_profile: IngredientSeasonalityProfile
   nutrition_profile: IngredientNutritionProfile
   sustainability_profile: IngredientSustainabilityProfile
@@ -277,6 +278,7 @@ export interface Equipment {
   updated_at?: string
   name: string
   description?: string | null
+  main_image?: string | null
 }
 
 export interface EquipmentPayload {

@@ -2,8 +2,13 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppButton from '@/components/atoms/AppButton.vue'
+import CreateAction from '@/components/atoms/CreateAction.vue'
 import AppInput from '@/components/atoms/AppInput.vue'
+import AppToast from '@/components/atoms/AppToast.vue'
 import IngredientCard from '@/components/ingredients/IngredientCard.vue'
+import IngredientLayer from '@/components/ingredients/IngredientLayer.vue'
+import RecipeLayer from '@/components/organisms/RecipeLayer.vue'
+import ResourceLayerDock from '@/components/resources/ResourceLayerDock.vue'
 import ResourceSearchBar from '@/components/resources/ResourceSearchBar.vue'
 import {
   useCreateIngredient,
@@ -12,33 +17,36 @@ import {
   useIngredientGroups,
   useIngredientRayons,
   useMergeIngredientDuplicates,
+  useGenerateIngredientImage,
   useRunIngredientEnrichment,
   useRunIngredientEnrichmentBatch,
   useUpdateIngredient,
 } from '@/composables/useCatalogQueries'
 import { useListNavigation } from '@/composables/useListNavigation'
 import { ingredientService } from '@/services/ingredientService'
-import { shoppingService } from '@/services/shoppingService'
 import type { PaginationInfo } from '@/types/api'
-import type { DuplicateGroup, Ingredient } from '@/types/recipe'
+import type { DuplicateGroup, Ingredient, Recipe } from '@/types/recipe'
 import type { Supplier } from '@/types/shopping'
+import {
+  removeEntityByUuid,
+  replaceEntityByUuid,
+  upsertEntityByUuid,
+} from '@/utils/entityCollections'
+import { ingredientDisplayMediaProfile } from '@/utils/ingredientImagePreview'
+import {
+  closeResourceLayer,
+  createResourceLayersState,
+  minimizeResourceLayer,
+  openResourceLayer,
+  renameResourceLayer,
+  restoreResourceLayer,
+  type ResourceLayersState,
+} from '@/utils/resourceLayers'
 
 const PER_PAGE = 72
-type QualityFilter =
-  | 'all'
-  | 'missing'
-  | 'without_image'
-  | 'season_now'
-  | 'with_allergen'
-  | 'nutrition_unknown'
-  | 'carbon_unknown'
-  | 'conversion_missing'
-  | 'ai_suggestion'
-
 const router = useRouter()
 const navigation = useListNavigation('ingredients')
 const searchTerm = ref(navigation.state.search)
-const qualityFilter = ref<QualityFilter>('all')
 const ingredients = ref<Ingredient[]>([])
 const suppliers = ref<Supplier[]>([])
 const pagination = ref<PaginationInfo | null>(null)
@@ -52,8 +60,14 @@ const isFormModalOpen = ref(false)
 const isDedupeModalOpen = ref(false)
 const deleteError = ref('')
 const enrichmentMessage = ref('')
+const imageGenerationMessage = ref('')
+const imageGenerationTone = ref<'success' | 'error'>('success')
 const activeEnrichmentUuid = ref<string | null>(null)
+const activeImageGenerationUuid = ref<string | null>(null)
 const duplicateTargets = reactive<Record<string, string>>({})
+const layers = ref<ResourceLayersState>(createResourceLayersState())
+const ingredientLayers = computed(() => layers.value.sessions.filter((session) => session.kind === 'ingredient'))
+const recipeLayers = computed(() => layers.value.sessions.filter((session) => session.kind === 'recipe'))
 
 const form = reactive({
   name: '',
@@ -73,8 +87,8 @@ const { mutate: deleteIngredient, isPending: isDeleting } = useDeleteIngredient(
 const { mutate: mergeDuplicates, isPending: isMerging } = useMergeIngredientDuplicates()
 const { mutate: runIngredientEnrichment, isPending: isRunningIngredientEnrichment } = useRunIngredientEnrichment()
 const { mutate: runEnrichmentBatch, isPending: isRunningEnrichmentBatch } = useRunIngredientEnrichmentBatch()
+const { mutate: generateIngredientImage } = useGenerateIngredientImage()
 
-const currentMonth = new Date().getMonth() + 1
 const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
 const enrichedAtFormatter = new Intl.DateTimeFormat('fr-FR', {
   day: '2-digit',
@@ -97,45 +111,39 @@ const fieldLabels: Record<string, string> = {
 
 const total = computed(() => pagination.value?.total ?? ingredients.value.length)
 const hasNext = computed(() => pagination.value?.has_next ?? false)
-const filteredIngredients = computed(() => ingredients.value.filter(matchesQualityFilter))
-const visibleIncompleteIngredients = computed(() => filteredIngredients.value.filter(isIngredientIncomplete))
-const isEmpty = computed(() => !isLoading.value && filteredIngredients.value.length === 0)
+const visibleIncompleteIngredients = computed(() => ingredients.value.filter(isIngredientIncomplete))
+const isEmpty = computed(() => !isLoading.value && ingredients.value.length === 0)
 const formModalTitle = computed(() => editingUuid.value ? 'Modifier un ingrédient' : 'Créer un ingrédient')
-const secondarySuppliers = computed(() => suppliers.value.filter((supplier) => supplier.uuid !== form.mainSupplierUuid))
 const supplierByUuid = computed(() => new Map(suppliers.value.map((supplier) => [supplier.uuid, supplier.name] as const)))
-const resultSummary = computed(() => {
-  const totalText = total.value > ingredients.value.length ? `sur ${total.value}` : ''
-  return `${filteredIngredients.value.length} affiché${filteredIngredients.value.length > 1 ? 's' : ''} ${totalText}`.trim()
-})
 
-function matchesQualityFilter(ingredient: Ingredient): boolean {
-  switch (qualityFilter.value) {
-    case 'missing':
-      return ingredient.enrichment_profile.missing_fields.length > 0 || ingredient.enrichment_profile.status === 'missing'
-    case 'without_image':
-      return !ingredient.media_profile.main_image_uri || ingredient.media_profile.image_status === 'missing'
-    case 'season_now':
-      return ingredient.seasonality_profile.availability_type === 'year_round'
-        || Number(ingredient.seasonality_profile.months[currentMonth] ?? 0) > 0
-    case 'with_allergen':
-      return ingredient.allergen_profile.allergens.some((allergen) =>
-        ['contains', 'may_contain'].includes(allergen.presence),
-      )
-    case 'nutrition_unknown':
-      return ingredient.nutrition_profile.nutri_score === 'unknown'
-        && ingredient.nutrition_profile.kcal_per_100g === null
-        && ingredient.nutrition_profile.kcal_per_100ml === null
-    case 'carbon_unknown':
-      return ingredient.sustainability_profile.carbon_kg_co2e_per_kg === null
-    case 'conversion_missing':
-      return ingredient.unit_profile.reference_unit === 'unknown' || ingredient.unit_profile.conversions.length === 0
-    case 'ai_suggestion':
-      return ingredient.enrichment_profile.status === 'suggested'
-    case 'all':
-      return true
+const matchesCurrentSearch = (ingredient: Ingredient): boolean => {
+  const term = searchTerm.value.trim().toLocaleLowerCase('fr-FR')
+  return !term || ingredient.name.toLocaleLowerCase('fr-FR').includes(term)
+}
+
+const syncIngredientInList = (ingredient: Ingredient, allowInsert = false): void => {
+  const isAlreadyVisible = ingredients.value.some((item) => item.uuid === ingredient.uuid)
+
+  if (!matchesCurrentSearch(ingredient)) {
+    ingredients.value = removeEntityByUuid(ingredients.value, ingredient.uuid)
+  } else if (isAlreadyVisible) {
+    ingredients.value = replaceEntityByUuid(ingredients.value, ingredient)
+  } else if (allowInsert) {
+    ingredients.value = upsertEntityByUuid(ingredients.value, ingredient)
+  }
+
+  if (selectedIngredient.value?.uuid === ingredient.uuid) {
+    selectedIngredient.value = ingredient
   }
 }
 
+const adjustTotal = (delta: number): void => {
+  if (!pagination.value) return
+  pagination.value = {
+    ...pagination.value,
+    total: Math.max(0, pagination.value.total + delta),
+  }
+}
 function isIngredientIncomplete(ingredient: Ingredient): boolean {
   return ingredient.enrichment_profile.missing_fields.length > 0
     || ingredient.enrichment_profile.status === 'missing'
@@ -173,7 +181,7 @@ const ingredientAlertLabel = (ingredient: Ingredient): string => {
 }
 
 const ingredientImageUrl = (ingredient: Ingredient): string | null =>
-  ingredient.media_profile.main_image_uri?.trim() || null
+  ingredientDisplayMediaProfile(ingredient).main_image_uri?.trim() || null
 
 const supplierName = (uuid: string | null | undefined): string => {
   if (!uuid) return '—'
@@ -265,9 +273,10 @@ const enrichVisibleMissingIngredients = (): void => {
   runEnrichmentBatch(
     { ingredientUuids, continueOnError: true },
     {
-      onSuccess: (results) => {
-        const failedCount = results.filter((result) => result.status === 'failed').length
-        enrichmentMessage.value = `${results.length - failedCount} enrichissement(s) lancé(s), ${failedCount} échec(s).`
+      onSuccess: (result) => {
+        result.ingredients.forEach((ingredient) => syncIngredientInList(ingredient))
+        const failedCount = result.runs.filter((run) => run.status === 'failed').length
+        enrichmentMessage.value = `${result.runs.length - failedCount} enrichissement(s) lancé(s), ${failedCount} échec(s).`
       },
       onError: (err) => {
         enrichmentMessage.value = err.message
@@ -374,37 +383,47 @@ const submit = (): void => {
     rayon_uuid: form.rayonUuid || null,
     main_supplier_uuid: form.mainSupplierUuid || null,
     secondary_supplier_uuids: form.secondarySupplierUuids.filter((uuid) => uuid && uuid !== form.mainSupplierUuid),
-    green_score: null,
-    quantity: null,
-    season_months: {},
   }
   if (!payload.name) return
 
-  const onSuccess = async (): Promise<void> => {
-    const selectedUuid = editingUuid.value
-    closeFormModal()
-    await reload(currentPage.value)
-    if (selectedUuid) {
-      selectedIngredient.value = ingredients.value.find((ingredient) => ingredient.uuid === selectedUuid) ?? null
-    }
-    await refetchDuplicates()
-  }
-
   if (editingUuid.value) {
-    updateIngredient({ uuid: editingUuid.value, data: payload }, { onSuccess })
+    const selectedUuid = editingUuid.value
+    updateIngredient(
+      { uuid: selectedUuid, data: payload },
+      {
+        onSuccess: async (updatedIngredient) => {
+          closeFormModal()
+          syncIngredientInList(updatedIngredient)
+          selectedIngredient.value = matchesCurrentSearch(updatedIngredient) ? updatedIngredient : null
+          await refetchDuplicates()
+        },
+      },
+    )
     return
   }
 
-  createIngredient(payload, { onSuccess })
+  createIngredient({
+    ...payload,
+    green_score: null,
+    quantity: null,
+    season_months: {},
+  }, {
+    onSuccess: async (createdIngredient) => {
+      closeFormModal()
+      syncIngredientInList(createdIngredient, true)
+      if (matchesCurrentSearch(createdIngredient)) adjustTotal(1)
+      await refetchDuplicates()
+    },
+  })
 }
 
 const enrichIngredient = (ingredient: Ingredient): void => {
   enrichmentMessage.value = ''
   activeEnrichmentUuid.value = ingredient.uuid
   runIngredientEnrichment(ingredient.uuid, {
-    onSuccess: async (result) => {
-      enrichmentMessage.value = `Enrichissement lancé pour ${ingredient.name} (${result.status}).`
-      await reload(currentPage.value)
+    onSuccess: (result) => {
+      enrichmentMessage.value = `Enrichissement lancé pour ${ingredient.name} (${result.run.status}).`
+      syncIngredientInList(result.ingredient)
     },
     onError: (err) => {
       enrichmentMessage.value = err.message
@@ -415,13 +434,35 @@ const enrichIngredient = (ingredient: Ingredient): void => {
   })
 }
 
+const generateImageForIngredient = (ingredient: Ingredient): void => {
+  imageGenerationMessage.value = ''
+  activeImageGenerationUuid.value = ingredient.uuid
+  generateIngredientImage(ingredient.uuid, {
+    onSuccess: (result) => {
+      syncIngredientInList(result.ingredient)
+      selectedIngredient.value = result.ingredient
+      imageGenerationTone.value = 'success'
+      imageGenerationMessage.value = 'Image générée. La suggestion est prête à être validée.'
+    },
+    onError: (err) => {
+      imageGenerationTone.value = 'error'
+      imageGenerationMessage.value = err.message
+    },
+    onSettled: () => {
+      activeImageGenerationUuid.value = null
+    },
+  })
+}
+
 const removeIngredient = (ingredient: Ingredient): void => {
   if (!window.confirm(`Supprimer ${ingredient.name} ?`)) return
   deleteError.value = ''
   deleteIngredient(ingredient.uuid, {
     onSuccess: async () => {
       selectedIngredient.value = null
-      await reload(currentPage.value)
+      const wasVisible = ingredients.value.some((item) => item.uuid === ingredient.uuid)
+      ingredients.value = removeEntityByUuid(ingredients.value, ingredient.uuid)
+      if (wasVisible) adjustTotal(-1)
       await refetchDuplicates()
     },
     onError: (err) => {
@@ -431,8 +472,43 @@ const removeIngredient = (ingredient: Ingredient): void => {
 }
 
 const openIngredient = (ingredient: Ingredient): void => {
-  selectedIngredient.value = ingredient
+  imageGenerationMessage.value = ''
+  layers.value = openResourceLayer(layers.value, {
+    kind: 'ingredient',
+    uuid: ingredient.uuid,
+    name: ingredient.name,
+  })
   navigation.save({ search: searchTerm.value, page: currentPage.value, selectedUuid: ingredient.uuid })
+}
+
+const openRecipe = (recipe: Recipe): void => {
+  layers.value = openResourceLayer(layers.value, {
+    kind: 'recipe',
+    uuid: recipe.uuid,
+    name: recipe.name,
+  })
+}
+
+const restoreLayer = (key: string): void => {
+  layers.value = restoreResourceLayer(layers.value, key)
+}
+
+const minimizeLayer = (key: string): void => {
+  layers.value = minimizeResourceLayer(layers.value, key)
+}
+
+const closeLayer = (key: string): void => {
+  layers.value = closeResourceLayer(layers.value, key)
+}
+
+const renameLayer = (key: string, title: string): void => {
+  layers.value = renameResourceLayer(layers.value, key, title)
+}
+
+const handleLayerDeleted = (ingredientUuid: string): void => {
+  const wasVisible = ingredients.value.some((item) => item.uuid === ingredientUuid)
+  ingredients.value = removeEntityByUuid(ingredients.value, ingredientUuid)
+  if (wasVisible) adjustTotal(-1)
 }
 
 const openFullIngredient = (ingredient: Ingredient): void => {
@@ -472,12 +548,6 @@ watch(searchTerm, async () => {
 
 onMounted(async () => {
   const pageToLoad = navigation.state.page || 1
-  try {
-    const supplierResponse = await shoppingService.listSuppliers({ per_page: 100 })
-    suppliers.value = supplierResponse.data
-  } catch {
-    suppliers.value = []
-  }
   await reload(pageToLoad)
   await navigation.restoreScroll()
 })
@@ -485,27 +555,19 @@ onMounted(async () => {
 
 <template>
   <main class="ingredient-page">
+    <AppToast
+      :message="imageGenerationMessage"
+      :tone="imageGenerationTone"
+      @dismiss="imageGenerationMessage = ''"
+    />
+
     <p v-if="deleteError" class="ingredient-page__error">{{ deleteError }}</p>
     <p v-if="enrichmentMessage" class="ingredient-page__notice">{{ enrichmentMessage }}</p>
 
     <section class="ingredient-page__toolbar" aria-label="Filtres ingrédients">
       <ResourceSearchBar v-model="searchTerm" placeholder="Rechercher un ingrédient">
         <div class="ingredient-page__toolbar-actions">
-          <select v-model="qualityFilter" class="ingredient-page__quality-select" aria-label="Filtrer par qualité">
-              <option value="all">Qualité · Tous</option>
-              <option value="missing">Informations manquantes</option>
-              <option value="without_image">Sans image</option>
-              <option value="season_now">De saison</option>
-              <option value="with_allergen">Contient allergène</option>
-              <option value="nutrition_unknown">Nutrition inconnue</option>
-              <option value="carbon_unknown">Carbone inconnu</option>
-              <option value="conversion_missing">Conversion manquante</option>
-              <option value="ai_suggestion">Suggestion IA</option>
-            </select>
-          <AppButton @click="openCreateModal">
-            <span aria-hidden="true">＋</span>
-            Nouvel ingrédient
-          </AppButton>
+          <CreateAction label="Créer un ingrédient" @click="openCreateModal" />
         </div>
       </ResourceSearchBar>
     </section>
@@ -516,12 +578,10 @@ onMounted(async () => {
       <p v-else-if="isEmpty" class="ingredient-page__state">Aucun ingrédient.</p>
       <div v-else class="ingredient-page__grid">
         <IngredientCard
-          v-for="ingredient in filteredIngredients"
+          v-for="ingredient in ingredients"
           :key="ingredient.uuid"
           :name="ingredient.name"
           :image-url="ingredientImageUrl(ingredient)"
-          :has-alert="hasIngredientAlert(ingredient)"
-          :alert-label="ingredientAlertLabel(ingredient)"
           @click="openIngredient(ingredient)"
         />
       </div>
@@ -535,6 +595,37 @@ onMounted(async () => {
         </AppButton>
       </footer>
     </section>
+
+    <IngredientLayer
+      v-for="session in ingredientLayers"
+      :key="session.key"
+      :uuid="session.uuid"
+      :fallback-title="session.title"
+      :expanded="layers.activeKey === session.key"
+      @minimize="minimizeLayer(session.key)"
+      @close="closeLayer(session.key)"
+      @title-change="renameLayer(session.key, $event)"
+      @updated="syncIngredientInList($event)"
+      @deleted="handleLayerDeleted(session.uuid)"
+      @open-recipe="openRecipe"
+    />
+    <RecipeLayer
+      v-for="session in recipeLayers"
+      :key="session.key"
+      :uuid="session.uuid"
+      :fallback-title="session.title"
+      :expanded="layers.activeKey === session.key"
+      @minimize="minimizeLayer(session.key)"
+      @close="closeLayer(session.key)"
+      @title-change="renameLayer(session.key, $event)"
+    />
+    <ResourceLayerDock
+      :sessions="layers.sessions"
+      :active-key="layers.activeKey"
+      @restore="restoreLayer"
+      @close="closeLayer"
+      @minimize="minimizeLayer"
+    />
 
     <div v-if="selectedIngredient" class="ingredient-page__modal-backdrop" @click.self="selectedIngredient = null">
       <section class="ingredient-page__modal ingredient-page__modal--info" role="dialog" aria-modal="true" :aria-label="`Fiche ${selectedIngredient.name}`">
@@ -565,8 +656,14 @@ onMounted(async () => {
             <p v-if="hasIngredientAlert(selectedIngredient)" class="ingredient-page__alert">
               {{ ingredientAlertLabel(selectedIngredient) }}
             </p>
-
             <div class="ingredient-page__modal-actions">
+              <AppButton
+                variant="secondary"
+                :disabled="activeImageGenerationUuid === selectedIngredient.uuid"
+                @click="generateImageForIngredient(selectedIngredient)"
+              >
+                {{ activeImageGenerationUuid === selectedIngredient.uuid ? 'Génération…' : 'Image IA' }}
+              </AppButton>
               <AppButton
                 variant="secondary"
                 :disabled="isRunningIngredientEnrichment && activeEnrichmentUuid === selectedIngredient.uuid"
@@ -584,8 +681,8 @@ onMounted(async () => {
         <div class="ingredient-page__info-grid">
           <article class="ingredient-page__info-tile">
             <span>Image</span>
-            <strong>{{ selectedIngredient.media_profile.image_status }}</strong>
-            <small>{{ selectedIngredient.media_profile.source }}</small>
+            <strong>{{ ingredientDisplayMediaProfile(selectedIngredient).image_status }}</strong>
+            <small>{{ ingredientDisplayMediaProfile(selectedIngredient).source }}</small>
           </article>
           <article class="ingredient-page__info-tile">
             <span>Saisonnalité</span>
@@ -655,19 +752,10 @@ onMounted(async () => {
               <option v-for="rayon in rayons ?? []" :key="rayon.uuid" :value="rayon.uuid">{{ rayon.name }}</option>
             </select>
           </label>
-          <label class="ingredient-page__field">
-            <span>Fournisseur principal</span>
-            <select v-model="form.mainSupplierUuid">
-              <option value="">Aucun</option>
-              <option v-for="supplier in suppliers" :key="supplier.uuid" :value="supplier.uuid">{{ supplier.name }}</option>
-            </select>
-          </label>
-          <label class="ingredient-page__field">
-            <span>Fournisseurs secondaires</span>
-            <select v-model="form.secondarySupplierUuids" multiple>
-              <option v-for="supplier in secondarySuppliers" :key="supplier.uuid" :value="supplier.uuid">{{ supplier.name }}</option>
-            </select>
-          </label>
+          <div class="ingredient-page__supplier-placeholder">
+            <strong>Fournisseurs</strong>
+            <span>Section réservée pour la prochaine itération.</span>
+          </div>
           <div class="ingredient-page__modal-actions">
             <AppButton type="button" variant="secondary" @click="closeFormModal">Annuler</AppButton>
             <AppButton type="submit" :disabled="!form.name.trim() || isCreating || isUpdating">
@@ -732,7 +820,6 @@ onMounted(async () => {
 }
 
 .ingredient-page__field select,
-.ingredient-page__quality-select,
 .ingredient-page__dedupe select {
   min-height: 38px;
   border: 1px solid var(--color-border);
@@ -745,6 +832,20 @@ onMounted(async () => {
 
 .ingredient-page__field select[multiple] {
   min-height: 84px;
+}
+
+.ingredient-page__supplier-placeholder {
+  display: grid;
+  gap: 4px;
+  padding: 13px 14px;
+  border: 1px dashed var(--color-border-hover);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-secondary) 35%, var(--color-surface));
+}
+
+.ingredient-page__supplier-placeholder span {
+  color: var(--color-text-tertiary);
+  font-size: 0.82rem;
 }
 
 .ingredient-page__settings {
@@ -767,8 +868,8 @@ onMounted(async () => {
 
 .ingredient-page__grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
 }
 
 .ingredient-page__state {
@@ -1019,30 +1120,6 @@ onMounted(async () => {
   font-size: 0.84rem;
 }
 
-@media (min-width: 640px) {
-  .ingredient-page__grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 860px) {
-  .ingredient-page__grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1120px) {
-  .ingredient-page__grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1320px) {
-  .ingredient-page__grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 860px) {
   .ingredient-page {
     width: min(100% - 24px, 100%);
@@ -1075,6 +1152,13 @@ onMounted(async () => {
   .ingredient-page__modal-form,
   .ingredient-page__dedupe-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .ingredient-page__grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
   }
 }
 </style>

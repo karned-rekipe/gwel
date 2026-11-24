@@ -5,8 +5,16 @@ import { ingredientEnrichmentAgentService } from '@/services/ingredientEnrichmen
 import { ingredientGroupService, ingredientRayonService } from '@/services/ingredientSettingService'
 import { ingredientService } from '@/services/ingredientService'
 import { tagService } from '@/services/tagService'
+import { replaceEntityInCachedCollection } from '@/utils/entityCollections'
+import {
+  ingredientContentSuggestionFields,
+  ingredientRunProposedImage,
+} from '@/utils/ingredientEnrichment'
+import { withIngredientImageSuggestionPreview } from '@/utils/ingredientImagePreview'
 import type {
   EquipmentPayload,
+  Ingredient,
+  IngredientEnrichmentRunResult,
   IngredientEnrichmentSuggestionActionPayload,
   IngredientPayload,
   IngredientSettingPayload,
@@ -48,6 +56,44 @@ export const settingKeys = {
   groupList: (name: string) => [...settingKeys.groups(), name] as const,
   rayons: () => [...settingKeys.all, 'rayons'] as const,
   rayonList: (name: string) => [...settingKeys.rayons(), name] as const,
+}
+
+const readIngredientWithSuggestionPreview = async (
+  ingredientUuid: string,
+  suggestionUuid?: string | null,
+): Promise<Ingredient> => {
+  const ingredient = await ingredientService.getByUuid(ingredientUuid)
+  if (!suggestionUuid) return ingredient
+
+  try {
+    const suggestions = await ingredientService.listEnrichmentSuggestions(ingredientUuid)
+    const suggestion = suggestions.find((item) => item.uuid === suggestionUuid)
+    return withIngredientImageSuggestionPreview(ingredient, suggestion)
+  } catch {
+    // The enrichment succeeded; keep its refreshed data if the suggestion preview read fails.
+    return ingredient
+  }
+}
+
+const applyIngredientContentCompletion = async (
+  run: IngredientEnrichmentRunResult,
+): Promise<Ingredient> => {
+  const contentFields = ingredientContentSuggestionFields(run)
+  if (run.suggestion_uuid && contentFields.length) {
+    await ingredientService.applyEnrichmentSuggestion(
+      run.ingredient_uuid,
+      run.suggestion_uuid,
+      { fields: contentFields },
+    )
+  }
+  if (run.suggestion_uuid && ingredientRunProposedImage(run)) {
+    await ingredientService.rejectEnrichmentSuggestion(
+      run.ingredient_uuid,
+      run.suggestion_uuid,
+      { fields: ['media_profile'] },
+    )
+  }
+  return ingredientService.getByUuid(run.ingredient_uuid)
 }
 
 export function useIngredients(name: MaybeRefOrGetter<string> = '') {
@@ -100,8 +146,12 @@ export function useUpdateIngredient() {
   return useMutation({
     mutationFn: ({ uuid, data }: { uuid: string; data: Partial<IngredientPayload> }) =>
       ingredientService.update(uuid, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ingredientKeys.detail(variables.uuid) })
+    onSuccess: (ingredient, variables) => {
+      queryClient.setQueryData(ingredientKeys.detail(variables.uuid), ingredient)
+      queryClient.setQueriesData(
+        { queryKey: ingredientKeys.lists() },
+        (cached) => replaceEntityInCachedCollection(cached, ingredient),
+      )
       queryClient.invalidateQueries({ queryKey: ingredientKeys.lists() })
       queryClient.invalidateQueries({ queryKey: recipeKeys.all })
     },
@@ -121,11 +171,37 @@ export function useDeleteIngredient() {
 export function useRunIngredientEnrichment() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (ingredientUuid: string) => ingredientEnrichmentAgentService.enrichIngredient(ingredientUuid),
-    onSuccess: (_, ingredientUuid) => {
-      queryClient.invalidateQueries({ queryKey: ingredientKeys.detail(ingredientUuid) })
+    mutationFn: async (ingredientUuid: string) => {
+      const run = await ingredientEnrichmentAgentService.enrichIngredient(ingredientUuid)
+      const ingredient = await applyIngredientContentCompletion(run)
+      return { run, ingredient }
+    },
+    onSuccess: (result, ingredientUuid) => {
+      queryClient.setQueryData(ingredientKeys.detail(ingredientUuid), result.ingredient)
+      queryClient.setQueriesData(
+        { queryKey: ingredientKeys.lists() },
+        (cached) => replaceEntityInCachedCollection(cached, result.ingredient),
+      )
       queryClient.invalidateQueries({ queryKey: ingredientKeys.suggestions(ingredientUuid) })
-      queryClient.invalidateQueries({ queryKey: ingredientKeys.lists() })
+    },
+  })
+}
+
+export function useGenerateIngredientImage() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (ingredientUuid: string) => {
+      const run = await ingredientService.generateImage(ingredientUuid)
+      const ingredient = await readIngredientWithSuggestionPreview(ingredientUuid, run.suggestion_uuid)
+      return { run, ingredient }
+    },
+    onSuccess: (result, ingredientUuid) => {
+      queryClient.setQueryData(ingredientKeys.detail(ingredientUuid), result.ingredient)
+      queryClient.setQueriesData(
+        { queryKey: ingredientKeys.lists() },
+        (cached) => replaceEntityInCachedCollection(cached, result.ingredient),
+      )
+      queryClient.invalidateQueries({ queryKey: ingredientKeys.suggestions(ingredientUuid) })
     },
   })
 }
@@ -133,14 +209,31 @@ export function useRunIngredientEnrichment() {
 export function useRunIngredientEnrichmentBatch() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (payload: { ingredientUuids: string[]; limit?: number; continueOnError?: boolean }) =>
-      ingredientEnrichmentAgentService.enrichBatch({
+    mutationFn: async (payload: { ingredientUuids: string[]; limit?: number; continueOnError?: boolean }) => {
+      const runs = await ingredientEnrichmentAgentService.enrichBatch({
         ingredient_uuids: payload.ingredientUuids,
         limit: payload.limit ?? payload.ingredientUuids.length,
         continue_on_error: payload.continueOnError ?? true,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ingredientKeys.all })
+      })
+      const ingredients = (await Promise.all(runs.map(async (run) => {
+        try {
+          return await applyIngredientContentCompletion(run)
+        } catch {
+          return null
+        }
+      }))).filter((ingredient): ingredient is Ingredient => ingredient !== null)
+
+      return { runs, ingredients }
+    },
+    onSuccess: (result) => {
+      result.ingredients.forEach((ingredient) => {
+        queryClient.setQueryData(ingredientKeys.detail(ingredient.uuid), ingredient)
+        queryClient.setQueriesData(
+          { queryKey: ingredientKeys.lists() },
+          (cached) => replaceEntityInCachedCollection(cached, ingredient),
+        )
+        queryClient.invalidateQueries({ queryKey: ingredientKeys.suggestions(ingredient.uuid) })
+      })
     },
   })
 }
@@ -255,8 +348,12 @@ export function useUpdateEquipment() {
   return useMutation({
     mutationFn: ({ uuid, data }: { uuid: string; data: Partial<EquipmentPayload> }) =>
       equipmentService.update(uuid, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: equipmentKeys.detail(variables.uuid) })
+    onSuccess: (equipment, variables) => {
+      queryClient.setQueryData(equipmentKeys.detail(variables.uuid), equipment)
+      queryClient.setQueriesData(
+        { queryKey: equipmentKeys.lists() },
+        (cached) => replaceEntityInCachedCollection(cached, equipment),
+      )
       queryClient.invalidateQueries({ queryKey: equipmentKeys.lists() })
       queryClient.invalidateQueries({ queryKey: recipeKeys.all })
     },
@@ -269,6 +366,22 @@ export function useDeleteEquipment() {
     mutationFn: (uuid: string) => equipmentService.delete(uuid),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: equipmentKeys.all })
+    },
+  })
+}
+
+export function useGenerateEquipmentImage() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ uuid, replaceExisting = false }: { uuid: string; replaceExisting?: boolean }) =>
+      equipmentService.generateImage(uuid, replaceExisting),
+    onSuccess: (result, variables) => {
+      queryClient.setQueryData(equipmentKeys.detail(variables.uuid), result.equipment)
+      queryClient.setQueriesData(
+        { queryKey: equipmentKeys.lists() },
+        (cached) => replaceEntityInCachedCollection(cached, result.equipment),
+      )
+      queryClient.invalidateQueries({ queryKey: equipmentKeys.lists() })
     },
   })
 }

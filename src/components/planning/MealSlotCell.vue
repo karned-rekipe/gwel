@@ -7,6 +7,7 @@ import MealItemRow from '@/components/planning/MealItemRow.vue'
 import RecipePicker from '@/components/planning/RecipePicker.vue'
 import { formatMealLabel } from '@/components/planning/mealSlotLabels'
 import { firstNameFor, initialsFor, membersForIds, textColorFor } from '@/components/planning/memberDisplay'
+import { useIngredientWishlistStore } from '@/stores/ingredientWishlistStore'
 import { useRecipeWishlistStore } from '@/stores/recipeWishlistStore'
 import type { HouseholdMember } from '@/types/householdMember'
 import type { MealItem, MealItemPayload, MealSlot, SlotPatchOperation } from '@/types/mealPlan'
@@ -57,6 +58,7 @@ const selectedIngredientUuid = ref('')
 const slotMemberDraftIds = ref<string[]>([])
 const addError = ref<string | null>(null)
 const wishlist = useRecipeWishlistStore()
+const ingredientWishlist = useIngredientWishlistStore()
 
 const mealLabel = computed(() => props.mealLabel ?? formatMealLabel(props.slot.slot_code))
 const plannedItemCount = computed(() => props.slot.items.length)
@@ -152,7 +154,7 @@ const switchMode = (mode: AddMode): void => {
   activeItemUuid.value = null
   resetItemForm()
   if (mode === 'wishlist') {
-    void wishlist.loadRecipes()
+    void Promise.all([wishlist.loadRecipes(), ingredientWishlist.loadIngredients()])
   }
 }
 
@@ -319,12 +321,15 @@ const isCurrentMoveTarget = (date: string, slotCode: string): boolean =>
   date === props.slot.date && slotCode === props.slot.slot_code
 
 const addItemToWishlist = (item: MealItem): void => {
-  if (!item.recipe_uuid) {
-    addError.value = 'Seules les recettes peuvent être ajoutées à la liste d’envies.'
-    return
+  if (item.recipe_uuid) {
+    wishlist.add(item.recipe_uuid)
+    activeItemUuid.value = null
+  } else if (item.ingredient_uuid) {
+    ingredientWishlist.add(item.ingredient_uuid)
+    activeItemUuid.value = null
+  } else {
+    addError.value = 'Seules les recettes et les ingrédients peuvent être ajoutés aux envies.'
   }
-  wishlist.add(item.recipe_uuid)
-  activeItemUuid.value = null
 }
 
 const updateItemHeadcount = (item: MealItem): void => {
@@ -446,7 +451,7 @@ const selectIngredient = (ingredient: Ingredient): void => {
   addError.value = null
 }
 
-const addIngredient = (ingredient?: Ingredient): void => {
+const addIngredient = (ingredient?: Ingredient): boolean => {
   if (ingredient) {
     selectIngredient(ingredient)
   }
@@ -455,10 +460,10 @@ const addIngredient = (ingredient?: Ingredient): void => {
   const ingredientToAdd = selectedIngredient.value
   const unit = ingredientToAdd ? unitFromIngredient(ingredientToAdd) || 'unité' : ''
 
-  if (headcount === null) return
+  if (headcount === null) return false
   if (!ingredientToAdd) {
     addError.value = "L'ingrédient doit être sélectionné dans la collection."
-    return
+    return false
   }
 
   addItem({
@@ -470,6 +475,13 @@ const addIngredient = (ingredient?: Ingredient): void => {
     headcount,
     member_ids: memberIdsForNewItem(),
   })
+  return true
+}
+
+const addWishlistIngredient = (ingredient: Ingredient): void => {
+  if (addIngredient(ingredient)) {
+    ingredientWishlist.remove(ingredient.uuid)
+  }
 }
 
 const addNote = (): void => {
@@ -689,14 +701,21 @@ const addNote = (): void => {
             </div>
 
             <div v-else-if="activeAddMode === 'wishlist'" class="meal-slot-modal__content meal-slot-modal__content--recipe">
-              <p v-if="wishlist.loading" class="meal-slot-modal__state">Chargement de la liste d’envies...</p>
-              <p v-else-if="wishlist.error" class="meal-slot-modal__error">{{ wishlist.error }}</p>
-              <p v-else-if="!wishlist.recipes.length" class="meal-slot-modal__state">Aucune recette dans la liste d’envies.</p>
+              <p v-if="wishlist.loading || ingredientWishlist.loading" class="meal-slot-modal__state">Chargement de la liste d’envies...</p>
+              <p v-else-if="wishlist.error || ingredientWishlist.error" class="meal-slot-modal__error">{{ wishlist.error || ingredientWishlist.error }}</p>
+              <p v-else-if="!wishlist.recipes.length && !ingredientWishlist.ingredients.length" class="meal-slot-modal__state">Aucune recette ni aucun ingrédient dans la liste d’envies.</p>
               <div v-else class="meal-slot-modal__wishlist-grid">
                 <article v-for="recipe in wishlist.recipes" :key="recipe.uuid" class="meal-slot-modal__wishlist-card" @click="addWishlistRecipe(recipe)">
                   <img v-if="recipe.main_image" :src="recipe.main_image" :alt="recipe.name" />
                   <span v-else aria-hidden="true">{{ recipe.name.charAt(0).toLocaleUpperCase('fr-FR') }}</span>
                   <strong>{{ recipe.name }}</strong>
+                  <small>Recette</small>
+                </article>
+                <article v-for="ingredient in ingredientWishlist.ingredients" :key="ingredient.uuid" class="meal-slot-modal__wishlist-card" @click="addWishlistIngredient(ingredient)">
+                  <img v-if="ingredient.media_profile.main_image_uri" :src="ingredient.media_profile.main_image_uri" :alt="ingredient.name" />
+                  <span v-else aria-hidden="true">{{ ingredient.name.charAt(0).toLocaleUpperCase('fr-FR') }}</span>
+                  <strong>{{ ingredient.name }}</strong>
+                  <small>Ingrédient</small>
                 </article>
               </div>
             </div>
@@ -1469,6 +1488,11 @@ const addNote = (): void => {
   font-size: 0.86rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.meal-slot-modal__wishlist-card small {
+  color: var(--color-text-tertiary);
+  font-size: 0.72rem;
 }
 
 @media (max-width: 520px) {

@@ -1,124 +1,63 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLoader from '@/components/atoms/AppLoader.vue'
-import ResourceDetailHeader from '@/components/resources/ResourceDetailHeader.vue'
-import { useDeleteEquipment, useEquipmentItem, useEquipmentRecipes } from '@/composables/useCatalogQueries'
+import EquipmentDetailPanel from '@/components/equipment/EquipmentDetailPanel.vue'
+import EquipmentEditor from '@/components/equipment/EquipmentEditor.vue'
+import IconActionButton from '@/components/resources/IconActionButton.vue'
+import { useDeleteEquipment, useEquipmentItem, useUpdateEquipment } from '@/composables/useCatalogQueries'
+import type { EquipmentPayload } from '@/types/recipe'
 
 const route = useRoute()
 const router = useRouter()
 const equipmentUuid = computed(() => route.params.id as string)
-
+const mode = ref<'detail' | 'edit'>('detail')
 const { data: equipment, isLoading, isError, error } = useEquipmentItem(equipmentUuid)
-const { data: recipes, isLoading: isLoadingRecipes } = useEquipmentRecipes(equipmentUuid)
-const { mutate: deleteEquipment, isPending: isDeleting } = useDeleteEquipment()
+const { mutate: updateEquipment, isPending: isSaving, error: saveError } = useUpdateEquipment()
+const { mutate: deleteEquipment, isPending: isDeleting, error: deleteError } = useDeleteEquipment()
 
-const goBack = (): void => {
-  router.push({ name: 'equipment-home' })
+const goBack = (): void => { router.push({ name: 'equipment-home' }) }
+const save = (payload: Partial<EquipmentPayload>): void => {
+  updateEquipment({ uuid: equipmentUuid.value, data: payload }, { onSuccess: () => { mode.value = 'detail' } })
 }
-
-const removeEquipment = (): void => {
-  if (!window.confirm('Supprimer cet équipement ?')) return
-  deleteEquipment(equipmentUuid.value, {
-    onSuccess: goBack,
-  })
+const remove = (): void => {
+  if (!equipment.value || !window.confirm(`Supprimer définitivement « ${equipment.value.name} » ?`)) return
+  deleteEquipment(equipmentUuid.value, { onSuccess: goBack })
 }
 </script>
 
 <template>
-  <main class="catalog-detail">
-    <div v-if="isLoading" class="catalog-detail__state">
-      <AppLoader variant="spinner" />
-    </div>
-
-    <section v-else-if="isError || !equipment" class="catalog-detail__state">
-      <h1 class="catalog-detail__title">Équipement introuvable</h1>
-      <p class="catalog-detail__text">{{ error?.message || 'La fiche n’est pas disponible.' }}</p>
-    </section>
-
-    <template v-else>
-      <ResourceDetailHeader
-        eyebrow="Équipement"
-        :title="equipment.name"
-        can-delete
+  <main class="catalog-route-detail">
+    <header class="catalog-route-detail__toolbar">
+      <IconActionButton label="Retour aux équipements" icon="←" show-label @click="goBack" />
+    </header>
+    <div v-if="isLoading" class="catalog-route-detail__state"><AppLoader variant="spinner" /><p>Chargement de l’équipement…</p></div>
+    <div v-else-if="isError || !equipment" class="catalog-route-detail__state catalog-route-detail__state--error"><h1>Équipement introuvable</h1><p>{{ error?.message || 'La fiche n’est pas disponible.' }}</p></div>
+    <EquipmentDetailPanel
+      v-else-if="mode === 'detail'"
+      :equipment="equipment"
+      @edit="mode = 'edit'"
+      @open-recipe="router.push({ name: 'recipes-detail', params: { id: $event.uuid } })"
+    />
+    <div v-else class="catalog-route-detail__editor">
+      <EquipmentEditor
+        :equipment="equipment"
+        :is-saving="isSaving"
         :is-deleting="isDeleting"
-        @back="goBack"
-        @delete="removeEquipment"
-      >
-        <p v-if="equipment.description" class="catalog-detail__text">{{ equipment.description }}</p>
-      </ResourceDetailHeader>
-
-      <section class="catalog-detail__panel">
-        <h2 class="catalog-detail__panel-title">Recettes associées</h2>
-        <p v-if="isLoadingRecipes" class="catalog-detail__text">Chargement…</p>
-        <p v-else-if="!recipes?.length" class="catalog-detail__text">Aucune recette associée.</p>
-        <ul v-else class="catalog-detail__list">
-          <li v-for="recipe in recipes" :key="recipe.uuid" class="catalog-detail__row">
-            <router-link :to="{ name: 'recipes-detail', params: { id: recipe.uuid } }">
-              {{ recipe.name }}
-            </router-link>
-            <span>{{ recipe.servings ?? '?' }} portion{{ recipe.servings && recipe.servings > 1 ? 's' : '' }}</span>
-          </li>
-        </ul>
-      </section>
-    </template>
+        :error="saveError?.message || deleteError?.message"
+        @cancel="mode = 'detail'"
+        @delete="remove"
+        @save="save"
+      />
+    </div>
   </main>
 </template>
 
 <style scoped>
-.catalog-detail {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 32px 24px 56px;
-}
-
-.catalog-detail__text,
-.catalog-detail__row span {
-  color: var(--color-text-secondary);
-}
-
-.catalog-detail__text {
-  margin: 14px 0 0;
-  line-height: 1.6;
-}
-
-.catalog-detail__title {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-size: clamp(2rem, 5vw, 3rem);
-  line-height: 1.05;
-}
-
-.catalog-detail__panel,
-.catalog-detail__state {
-  margin-top: 24px;
-  padding: 20px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-}
-
-.catalog-detail__panel-title {
-  margin: 0 0 14px;
-  color: var(--color-text-primary);
-  font-size: 1.1rem;
-}
-
-.catalog-detail__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.catalog-detail__row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.catalog-detail__row:last-child {
-  border-bottom: 0;
-}
+.catalog-route-detail { min-height: calc(100vh - 64px); background: #fbf8f1; }
+.catalog-route-detail__toolbar { position: sticky; top: 61px; z-index: 20; padding: 9px clamp(18px,3vw,40px); border-bottom: 1px solid var(--color-border); background: rgba(255,255,255,.88); backdrop-filter: blur(16px); }
+.catalog-route-detail__editor { padding: clamp(18px,3vw,40px); }
+.catalog-route-detail__state { min-height: 60vh; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 32px; text-align: center; }
+.catalog-route-detail__state h1, .catalog-route-detail__state p { margin: 0; }
+.catalog-route-detail__state--error { color: var(--color-danger); }
 </style>

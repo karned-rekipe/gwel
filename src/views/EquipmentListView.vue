@@ -2,20 +2,38 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppButton from '@/components/atoms/AppButton.vue'
+import CreateAction from '@/components/atoms/CreateAction.vue'
 import AppInput from '@/components/atoms/AppInput.vue'
+import AppToast from '@/components/atoms/AppToast.vue'
 import EquipmentCard from '@/components/equipment/EquipmentCard.vue'
+import EquipmentLayer from '@/components/equipment/EquipmentLayer.vue'
+import RecipeLayer from '@/components/organisms/RecipeLayer.vue'
+import ResourceLayerDock from '@/components/resources/ResourceLayerDock.vue'
 import ResourceSearchBar from '@/components/resources/ResourceSearchBar.vue'
 import {
   useCreateEquipment,
   useDeleteEquipment,
-  useEquipmentDuplicates,
-  useMergeEquipmentDuplicates,
+  useGenerateEquipmentImage,
   useUpdateEquipment,
 } from '@/composables/useCatalogQueries'
 import { useListNavigation } from '@/composables/useListNavigation'
 import { equipmentService } from '@/services/equipmentService'
 import type { PaginationInfo } from '@/types/api'
-import type { DuplicateGroup, Equipment } from '@/types/recipe'
+import type { Equipment, Recipe } from '@/types/recipe'
+import {
+  removeEntityByUuid,
+  replaceEntityByUuid,
+  upsertEntityByUuid,
+} from '@/utils/entityCollections'
+import {
+  closeResourceLayer,
+  createResourceLayersState,
+  minimizeResourceLayer,
+  openResourceLayer,
+  renameResourceLayer,
+  restoreResourceLayer,
+  type ResourceLayersState,
+} from '@/utils/resourceLayers'
 
 const PER_PAGE = 72
 const router = useRouter()
@@ -30,28 +48,54 @@ const loadError = ref('')
 const editingUuid = ref<string | null>(null)
 const selectedEquipment = ref<Equipment | null>(null)
 const isFormModalOpen = ref(false)
-const isDedupeModalOpen = ref(false)
 const deleteError = ref('')
-const duplicateTargets = reactive<Record<string, string>>({})
+const imageGenerationMessage = ref('')
+const imageGenerationTone = ref<'success' | 'error'>('success')
 const form = reactive({ name: '', description: '' })
+const layers = ref<ResourceLayersState>(createResourceLayersState())
+const equipmentLayers = computed(() => layers.value.sessions.filter((session) => session.kind === 'equipment'))
+const recipeLayers = computed(() => layers.value.sessions.filter((session) => session.kind === 'recipe'))
 
-const { data: duplicateGroups, refetch: refetchDuplicates } = useEquipmentDuplicates()
 const { mutate: createEquipment, isPending: isCreating } = useCreateEquipment()
 const { mutate: updateEquipment, isPending: isUpdating } = useUpdateEquipment()
 const { mutate: deleteEquipment, isPending: isDeleting } = useDeleteEquipment()
-const { mutate: mergeDuplicates, isPending: isMerging } = useMergeEquipmentDuplicates()
+const { mutate: generateEquipmentImage, isPending: isGeneratingEquipmentImage } = useGenerateEquipmentImage()
 
 const total = computed(() => pagination.value?.total ?? equipmentItems.value.length)
 const hasNext = computed(() => pagination.value?.has_next ?? false)
 const isEmpty = computed(() => !isLoading.value && equipmentItems.value.length === 0)
 const formModalTitle = computed(() => editingUuid.value ? 'Modifier un équipement' : 'Créer un équipement')
-const resultSummary = computed(() => {
-  const totalText = total.value > equipmentItems.value.length ? `sur ${total.value}` : ''
-  return `${equipmentItems.value.length} affiché${equipmentItems.value.length > 1 ? 's' : ''} ${totalText}`.trim()
-})
-
 const equipmentInitial = (equipment: Equipment): string =>
   equipment.name.trim().charAt(0).toLocaleUpperCase('fr-FR') || 'E'
+
+const matchesCurrentSearch = (equipment: Equipment): boolean => {
+  const term = searchTerm.value.trim().toLocaleLowerCase('fr-FR')
+  return !term || equipment.name.toLocaleLowerCase('fr-FR').includes(term)
+}
+
+const syncEquipmentInList = (equipment: Equipment, allowInsert = false): void => {
+  const isAlreadyVisible = equipmentItems.value.some((item) => item.uuid === equipment.uuid)
+
+  if (!matchesCurrentSearch(equipment)) {
+    equipmentItems.value = removeEntityByUuid(equipmentItems.value, equipment.uuid)
+  } else if (isAlreadyVisible) {
+    equipmentItems.value = replaceEntityByUuid(equipmentItems.value, equipment)
+  } else if (allowInsert) {
+    equipmentItems.value = upsertEntityByUuid(equipmentItems.value, equipment)
+  }
+
+  if (selectedEquipment.value?.uuid === equipment.uuid) {
+    selectedEquipment.value = equipment
+  }
+}
+
+const adjustTotal = (delta: number): void => {
+  if (!pagination.value) return
+  pagination.value = {
+    ...pagination.value,
+    total: Math.max(0, pagination.value.total + delta),
+  }
+}
 
 const fetchPage = async (page: number, append: boolean): Promise<void> => {
   const response = await equipmentService.getPage({
@@ -142,21 +186,27 @@ const submit = (): void => {
   }
   if (!payload.name) return
 
-  const onSuccess = async (): Promise<void> => {
-    const selectedUuid = editingUuid.value
-    closeFormModal()
-    await reload(currentPage.value)
-    if (selectedUuid) {
-      selectedEquipment.value = equipmentItems.value.find((equipment) => equipment.uuid === selectedUuid) ?? null
-    }
-    await refetchDuplicates()
-  }
-
   if (editingUuid.value) {
-    updateEquipment({ uuid: editingUuid.value, data: payload }, { onSuccess })
+    const selectedUuid = editingUuid.value
+    updateEquipment(
+      { uuid: selectedUuid, data: payload },
+      {
+        onSuccess: (updatedEquipment) => {
+          closeFormModal()
+          syncEquipmentInList(updatedEquipment)
+          selectedEquipment.value = matchesCurrentSearch(updatedEquipment) ? updatedEquipment : null
+        },
+      },
+    )
     return
   }
-  createEquipment(payload, { onSuccess })
+  createEquipment(payload, {
+    onSuccess: (createdEquipment) => {
+      closeFormModal()
+      syncEquipmentInList(createdEquipment, true)
+      if (matchesCurrentSearch(createdEquipment)) adjustTotal(1)
+    },
+  })
 }
 
 const removeEquipment = (equipment: Equipment): void => {
@@ -165,8 +215,9 @@ const removeEquipment = (equipment: Equipment): void => {
   deleteEquipment(equipment.uuid, {
     onSuccess: async () => {
       selectedEquipment.value = null
-      await reload(currentPage.value)
-      await refetchDuplicates()
+      const wasVisible = equipmentItems.value.some((item) => item.uuid === equipment.uuid)
+      equipmentItems.value = removeEntityByUuid(equipmentItems.value, equipment.uuid)
+      if (wasVisible) adjustTotal(-1)
     },
     onError: (err) => {
       deleteError.value = err.message
@@ -175,8 +226,43 @@ const removeEquipment = (equipment: Equipment): void => {
 }
 
 const openEquipment = (equipment: Equipment): void => {
-  selectedEquipment.value = equipment
+  imageGenerationMessage.value = ''
+  layers.value = openResourceLayer(layers.value, {
+    kind: 'equipment',
+    uuid: equipment.uuid,
+    name: equipment.name,
+  })
   navigation.save({ search: searchTerm.value, page: currentPage.value, selectedUuid: equipment.uuid })
+}
+
+const openRecipe = (recipe: Recipe): void => {
+  layers.value = openResourceLayer(layers.value, {
+    kind: 'recipe',
+    uuid: recipe.uuid,
+    name: recipe.name,
+  })
+}
+
+const restoreLayer = (key: string): void => {
+  layers.value = restoreResourceLayer(layers.value, key)
+}
+
+const minimizeLayer = (key: string): void => {
+  layers.value = minimizeResourceLayer(layers.value, key)
+}
+
+const closeLayer = (key: string): void => {
+  layers.value = closeResourceLayer(layers.value, key)
+}
+
+const renameLayer = (key: string, title: string): void => {
+  layers.value = renameResourceLayer(layers.value, key, title)
+}
+
+const handleLayerDeleted = (equipmentUuid: string): void => {
+  const wasVisible = equipmentItems.value.some((item) => item.uuid === equipmentUuid)
+  equipmentItems.value = removeEntityByUuid(equipmentItems.value, equipmentUuid)
+  if (wasVisible) adjustTotal(-1)
 }
 
 const openFullEquipment = (equipment: Equipment): void => {
@@ -187,21 +273,25 @@ const openFullEquipment = (equipment: Equipment): void => {
   )
 }
 
-const mergeDuplicateGroup = (group: DuplicateGroup): void => {
-  const targetUuid = duplicateTargets[group.normalized_name] || group.items[0]?.uuid
-  if (!targetUuid) return
-  mergeDuplicates(
+const generateImageForEquipment = (equipment: Equipment): void => {
+  if (
+    equipment.main_image
+    && !window.confirm('Remplacer l’image actuelle par une nouvelle image générée par IA ?')
+  ) return
+  deleteError.value = ''
+  imageGenerationMessage.value = ''
+  generateEquipmentImage(
+    { uuid: equipment.uuid, replaceExisting: Boolean(equipment.main_image?.trim()) },
     {
-      target_uuid: targetUuid,
-      duplicate_uuids: group.items.filter((item) => item.uuid !== targetUuid).map((item) => item.uuid),
-    },
-    {
-      onSuccess: async () => {
-        await reload(currentPage.value)
-        await refetchDuplicates()
+      onSuccess: (result) => {
+        syncEquipmentInList(result.equipment)
+        selectedEquipment.value = result.equipment
+        imageGenerationTone.value = 'success'
+        imageGenerationMessage.value = 'Image générée et attachée à l’équipement.'
       },
       onError: (err) => {
-        deleteError.value = err.message
+        imageGenerationTone.value = 'error'
+        imageGenerationMessage.value = err.message
       },
     },
   )
@@ -222,27 +312,18 @@ onMounted(async () => {
 
 <template>
   <main class="equipment-page">
-    <header class="equipment-page__header">
-      <div>
-        <p>Catalogue</p>
-        <h1>Mes équipements</h1>
-        <span>{{ resultSummary }}</span>
-      </div>
-      <AppButton @click="openCreateModal">Nouvel équipement</AppButton>
-    </header>
+    <AppToast
+      :message="imageGenerationMessage"
+      :tone="imageGenerationTone"
+      @dismiss="imageGenerationMessage = ''"
+    />
 
     <p v-if="deleteError" class="equipment-page__error">{{ deleteError }}</p>
 
     <section class="equipment-page__toolbar" aria-label="Filtres équipements">
       <ResourceSearchBar v-model="searchTerm" placeholder="Rechercher un équipement">
         <div class="equipment-page__toolbar-actions">
-          <AppButton
-            variant="secondary"
-            :disabled="!duplicateGroups?.length"
-            @click="isDedupeModalOpen = true"
-          >
-            Fusion
-          </AppButton>
+          <CreateAction label="Créer un équipement" @click="openCreateModal" />
         </div>
       </ResourceSearchBar>
     </section>
@@ -256,6 +337,7 @@ onMounted(async () => {
           v-for="equipment in equipmentItems"
           :key="equipment.uuid"
           :name="equipment.name"
+          :image-url="equipment.main_image"
           @click="openEquipment(equipment)"
         />
       </div>
@@ -270,6 +352,37 @@ onMounted(async () => {
       </footer>
     </section>
 
+    <EquipmentLayer
+      v-for="session in equipmentLayers"
+      :key="session.key"
+      :uuid="session.uuid"
+      :fallback-title="session.title"
+      :expanded="layers.activeKey === session.key"
+      @minimize="minimizeLayer(session.key)"
+      @close="closeLayer(session.key)"
+      @title-change="renameLayer(session.key, $event)"
+      @updated="syncEquipmentInList($event)"
+      @deleted="handleLayerDeleted(session.uuid)"
+      @open-recipe="openRecipe"
+    />
+    <RecipeLayer
+      v-for="session in recipeLayers"
+      :key="session.key"
+      :uuid="session.uuid"
+      :fallback-title="session.title"
+      :expanded="layers.activeKey === session.key"
+      @minimize="minimizeLayer(session.key)"
+      @close="closeLayer(session.key)"
+      @title-change="renameLayer(session.key, $event)"
+    />
+    <ResourceLayerDock
+      :sessions="layers.sessions"
+      :active-key="layers.activeKey"
+      @restore="restoreLayer"
+      @close="closeLayer"
+      @minimize="minimizeLayer"
+    />
+
     <div v-if="selectedEquipment" class="equipment-page__modal-backdrop" @click.self="selectedEquipment = null">
       <section class="equipment-page__modal equipment-page__modal--info" role="dialog" aria-modal="true" :aria-label="`Fiche ${selectedEquipment.name}`">
         <header class="equipment-page__modal-header">
@@ -279,13 +392,24 @@ onMounted(async () => {
 
         <div class="equipment-page__info">
           <div class="equipment-page__info-visual" aria-hidden="true">
-            <span>{{ equipmentInitial(selectedEquipment) }}</span>
+            <img
+              v-if="selectedEquipment.main_image"
+              :src="selectedEquipment.main_image"
+              :alt="selectedEquipment.name"
+            />
+            <span v-else>{{ equipmentInitial(selectedEquipment) }}</span>
           </div>
 
           <div class="equipment-page__info-main">
             <p>{{ selectedEquipment.description || 'Aucune description renseignée.' }}</p>
-
             <div class="equipment-page__modal-actions">
+              <AppButton
+                variant="secondary"
+                :disabled="isGeneratingEquipmentImage"
+                @click="generateImageForEquipment(selectedEquipment)"
+              >
+                {{ isGeneratingEquipmentImage ? 'Génération…' : 'Image IA' }}
+              </AppButton>
               <AppButton variant="secondary" @click="editEquipmentFromInfo(selectedEquipment)">Modifier</AppButton>
               <AppButton variant="secondary" @click="openFullEquipment(selectedEquipment)">Fiche complète</AppButton>
               <AppButton variant="danger" :disabled="isDeleting" @click="removeEquipment(selectedEquipment)">Supprimer</AppButton>
@@ -314,29 +438,6 @@ onMounted(async () => {
       </section>
     </div>
 
-    <div v-if="isDedupeModalOpen" class="equipment-page__modal-backdrop" @click.self="isDedupeModalOpen = false">
-      <section class="equipment-page__modal equipment-page__modal--dedupe" role="dialog" aria-modal="true" aria-label="Fusion des doublons">
-        <header class="equipment-page__modal-header">
-          <h2>Fusion des doublons</h2>
-          <button type="button" class="equipment-page__modal-close" aria-label="Fermer" @click="isDedupeModalOpen = false">×</button>
-        </header>
-        <div v-if="duplicateGroups?.length" class="equipment-page__dedupe">
-          <article v-for="group in duplicateGroups" :key="group.normalized_name" class="equipment-page__dedupe-row">
-            <div>
-              <strong>{{ group.normalized_name }}</strong>
-              <span>{{ group.items.length }} doublons</span>
-            </div>
-            <select v-model="duplicateTargets[group.normalized_name]">
-              <option v-for="item in group.items" :key="item.uuid" :value="item.uuid">{{ item.name }}</option>
-            </select>
-            <AppButton variant="secondary" :disabled="isMerging" @click="mergeDuplicateGroup(group)">
-              Fusionner
-            </AppButton>
-          </article>
-        </div>
-        <p v-else class="equipment-page__notice equipment-page__notice--modal">Aucun doublon détecté.</p>
-      </section>
-    </div>
   </main>
 </template>
 
@@ -345,34 +446,6 @@ onMounted(async () => {
   width: min(1440px, calc(100vw - 32px));
   margin: 0 auto;
   padding: 18px 0 48px;
-}
-
-.equipment-page__header {
-  display: flex;
-  gap: 16px;
-  align-items: end;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.equipment-page__header div {
-  min-width: 0;
-}
-
-.equipment-page__header p,
-.equipment-page__header span {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: 0.88rem;
-  font-weight: 650;
-}
-
-.equipment-page__header h1 {
-  margin: 3px 0 3px;
-  color: var(--color-text-primary);
-  font-size: clamp(1.8rem, 4vw, 2.6rem);
-  letter-spacing: 0;
-  line-height: 1.05;
 }
 
 .equipment-page__toolbar {
@@ -394,8 +467,8 @@ onMounted(async () => {
 
 .equipment-page__grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
 }
 
 .equipment-page__state {
@@ -451,8 +524,7 @@ onMounted(async () => {
   box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22);
 }
 
-.equipment-page__modal--info,
-.equipment-page__modal--dedupe {
+.equipment-page__modal--info {
   width: min(920px, 100%);
 }
 
@@ -512,6 +584,13 @@ onMounted(async () => {
   font-weight: 800;
 }
 
+.equipment-page__info-visual img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
 .equipment-page__info-main {
   display: flex;
   min-width: 0;
@@ -539,88 +618,14 @@ onMounted(async () => {
   justify-content: flex-end;
 }
 
-.equipment-page__dedupe {
-  display: grid;
-  gap: 1px;
-  overflow: hidden;
-  background: var(--color-border);
-}
-
-.equipment-page__dedupe-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px) auto;
-  gap: 10px;
-  align-items: center;
-  padding: 12px 18px;
-  background: var(--color-surface);
-}
-
-.equipment-page__dedupe-row div {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.equipment-page__dedupe-row strong {
-  overflow: hidden;
-  color: var(--color-text-primary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.equipment-page__dedupe-row span {
-  color: var(--color-text-secondary);
-  font-size: 0.84rem;
-}
-
-.equipment-page__dedupe select {
-  min-height: 38px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font: inherit;
-  padding: 8px 10px;
-}
-
-@media (min-width: 640px) {
-  .equipment-page__grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 860px) {
-  .equipment-page__grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1120px) {
-  .equipment-page__grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1320px) {
-  .equipment-page__grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 860px) {
   .equipment-page {
     width: min(100% - 24px, 100%);
     padding-top: 14px;
   }
 
-  .equipment-page__header,
   .equipment-page__info {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .equipment-page__header {
-    align-items: start;
-    flex-direction: column;
   }
 
   .equipment-page__toolbar :deep(.resource-search) {
@@ -637,8 +642,12 @@ onMounted(async () => {
     flex: 1;
   }
 
-  .equipment-page__dedupe-row {
-    grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 560px) {
+  .equipment-page__grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
   }
 }
 </style>

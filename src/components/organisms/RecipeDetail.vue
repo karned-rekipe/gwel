@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import AppToast from '@/components/atoms/AppToast.vue'
 import IconActionButton from '@/components/resources/IconActionButton.vue'
 import RecipeAIProcessingOverlay from '@/components/organisms/RecipeAIProcessingOverlay.vue'
 import { useRecipeAIProgress } from '@/composables/useRecipeAIProgress'
@@ -31,9 +32,8 @@ const router = useRouter()
 const { mutate: generateRecipeImage, isPending: isGeneratingImage } = useGenerateRecipeImage()
 const { mutate: enrichRecipe, isPending: isEnriching } = useEnrichRecipeWithAI()
 const wishlist = useRecipeWishlistStore()
-const imageError = ref<string | null>(null)
-const enrichmentError = ref<string | null>(null)
-const enrichmentMessage = ref<string | null>(null)
+const notificationMessage = ref<string | null>(null)
+const notificationTone = ref<'success' | 'warning' | 'error'>('success')
 const {
   isVisible: showEnrichmentOverlay,
   stage: enrichmentStage,
@@ -53,7 +53,6 @@ const recipeComponents = computed(() => props.recipe.components ?? [])
 const scoreSlots = [1, 2, 3, 4, 5]
 const accentPalette = ref<RecipeAccentPalette>({ ...DEFAULT_RECIPE_ACCENT })
 let accentRequest = 0
-let enrichmentMessageTimer: number | undefined
 
 const recipeAccentStyle = computed<Record<string, string>>(() => ({
   '--recipe-accent': accentPalette.value.accent,
@@ -116,26 +115,17 @@ const stepTimeItems = (step: RecipeStep) => [
   { key: 'rest', label: 'Repos', value: formatDuration(step.rest_time) },
 ]
 
-const dismissEnrichmentMessage = (): void => {
-  if (enrichmentMessageTimer !== undefined) {
-    window.clearTimeout(enrichmentMessageTimer)
-    enrichmentMessageTimer = undefined
-  }
-  enrichmentMessage.value = null
+const dismissNotification = (): void => {
+  notificationMessage.value = null
 }
 
-const showEnrichmentMessage = (message: string): void => {
-  dismissEnrichmentMessage()
-  enrichmentMessage.value = message
-  enrichmentMessageTimer = window.setTimeout(() => {
-    enrichmentMessage.value = null
-    enrichmentMessageTimer = undefined
-  }, 5000)
+const showNotification = (
+  message: string,
+  tone: 'success' | 'warning' | 'error' = 'success',
+): void => {
+  notificationTone.value = tone
+  notificationMessage.value = message
 }
-
-onBeforeUnmount(() => {
-  if (enrichmentMessageTimer !== undefined) window.clearTimeout(enrichmentMessageTimer)
-})
 
 const handleBack = (): void => {
   if (props.embedded) {
@@ -158,28 +148,39 @@ const handleGenerateImage = (): void => {
     props.recipe.main_image
     && !window.confirm('Remplacer l’image actuelle par une nouvelle image générée par IA ?')
   ) return
-  imageError.value = null
+  dismissNotification()
   generateRecipeImage(props.recipe, {
+    onSuccess: () => {
+      showNotification('Image générée et attachée à la recette.')
+    },
     onError: (err) => {
-      imageError.value = err instanceof Error ? err.message : 'Génération de l’image impossible.'
+      showNotification(
+        err instanceof Error ? err.message : 'Génération de l’image impossible.',
+        'error',
+      )
     },
   })
 }
 
 const handleEnrich = (): void => {
-  enrichmentError.value = null
-  dismissEnrichmentMessage()
+  dismissNotification()
   startEnrichmentProgress()
   enrichRecipe(props.recipe.uuid, {
     onSuccess: (result) => {
-      showEnrichmentMessage(result.warnings.length
-        ? `Fiche mise à niveau. ${result.warnings.join(' ')}`
-        : 'Fiche mise à niveau avec succès.')
+      showNotification(
+        result.warnings.length
+          ? `Fiche mise à niveau, avec un point à vérifier : ${result.warnings.join(' ')}`
+          : 'Fiche mise à niveau avec succès.',
+        result.warnings.length ? 'warning' : 'success',
+      )
       completeEnrichmentProgress()
     },
     onError: (err) => {
       failEnrichmentProgress()
-      enrichmentError.value = err instanceof Error ? err.message : 'Mise à niveau impossible.'
+      showNotification(
+        err instanceof Error ? err.message : 'Mise à niveau impossible.',
+        'error',
+      )
     },
   })
 }
@@ -199,23 +200,11 @@ const handleWishlistToggle = (): void => {
     :subject="recipe.name"
   />
 
-  <Teleport to="body">
-    <Transition name="recipe-detail-toast">
-      <div v-if="enrichmentMessage" class="recipe-detail__toast" role="status">
-        <span class="recipe-detail__toast-icon" aria-hidden="true">✓</span>
-        <span>{{ enrichmentMessage }}</span>
-        <button
-          type="button"
-          class="recipe-detail__toast-close"
-          aria-label="Fermer la confirmation"
-          title="Fermer"
-          @click="dismissEnrichmentMessage"
-        >
-          ×
-        </button>
-      </div>
-    </Transition>
-  </Teleport>
+  <AppToast
+    :message="notificationMessage"
+    :tone="notificationTone"
+    @dismiss="dismissNotification"
+  />
 
   <article class="recipe-detail" :style="recipeAccentStyle">
     <header v-if="!embedded" class="recipe-detail__toolbar">
@@ -224,10 +213,6 @@ const handleWishlistToggle = (): void => {
         <span class="recipe-detail__type">Fiche recette</span>
       </div>
     </header>
-
-    <p v-if="enrichmentError" class="recipe-detail__feedback recipe-detail__feedback--error" role="alert">
-      {{ enrichmentError }}
-    </p>
 
     <section class="recipe-detail__hero">
       <div class="recipe-detail__intro">
@@ -256,23 +241,25 @@ const handleWishlistToggle = (): void => {
             @click="handleWishlistToggle"
           >
             <span aria-hidden="true">{{ isInWishlist ? '♥' : '♡' }}</span>
-            {{ isInWishlist ? 'Dans mes envies' : 'Envie' }}
+            Envie
           </button>
           <IconActionButton
-            :label="isEnriching ? 'Mise à niveau en cours' : 'Compléter avec l’IA'"
+            label="Compléter"
             :icon="isEnriching ? '…' : '✦'"
             :disabled="isEnriching"
             show-label
+            pill
             @click="handleEnrich"
           />
           <IconActionButton
-            :label="isGeneratingImage ? 'Génération de l’image en cours' : 'Image IA'"
-            :icon="isGeneratingImage ? '…' : '▣'"
+            label="Générer"
+            :icon="isGeneratingImage ? '…' : 'photo'"
             :disabled="isGeneratingImage"
             show-label
+            pill
             @click="handleGenerateImage"
           />
-          <IconActionButton label="Modifier" icon="✎" show-label @click="handleEdit" />
+          <IconActionButton label="Modifier" icon="✎" show-label pill @click="handleEdit" />
         </div>
       </div>
 
@@ -353,8 +340,6 @@ const handleWishlistToggle = (): void => {
         </div>
       </section>
     </section>
-
-    <p v-if="imageError" class="recipe-detail__error" role="alert">{{ imageError }}</p>
 
     <div class="recipe-detail__grid">
       <section class="recipe-detail__section">
@@ -1096,73 +1081,6 @@ const handleWishlistToggle = (): void => {
 .recipe-detail__empty {
   margin: 0;
   color: var(--color-text-tertiary);
-}
-
-.recipe-detail__toast {
-  position: fixed;
-  z-index: 500;
-  top: 16px;
-  left: 50%;
-  width: min(520px, calc(100vw - 28px));
-  min-height: 50px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 8px 8px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 14px;
-  background: rgba(29, 29, 31, 0.94);
-  color: #ffffff;
-  box-shadow: 0 18px 55px rgba(15, 23, 42, 0.28);
-  font-size: 0.88rem;
-  font-weight: 650;
-  line-height: 1.4;
-  backdrop-filter: blur(16px) saturate(130%);
-  transform: translateX(-50%);
-}
-
-.recipe-detail__toast-icon {
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.14);
-  font-size: 0.78rem;
-}
-
-.recipe-detail__toast-close {
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.74);
-  cursor: pointer;
-  font: inherit;
-  font-size: 1.1rem;
-  line-height: 1;
-}
-
-.recipe-detail__toast-close:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
-}
-
-.recipe-detail-toast-enter-active,
-.recipe-detail-toast-leave-active {
-  transition: opacity 180ms ease, transform 180ms ease;
-}
-
-.recipe-detail-toast-enter-from,
-.recipe-detail-toast-leave-to {
-  opacity: 0;
-  transform: translate(-50%, -10px);
 }
 
 @media (min-width: 940px) {

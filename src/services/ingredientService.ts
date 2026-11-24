@@ -6,6 +6,7 @@ import type {
   DuplicateMergePayload,
   DuplicateMergeResult,
   Ingredient,
+  IngredientEnrichmentRunResult,
   IngredientEnrichmentSuggestion,
   IngredientEnrichmentSuggestionActionPayload,
   IngredientPayload,
@@ -166,6 +167,15 @@ export const ingredientService = {
     return unwrapPaginatedResponse(response.data)
   },
 
+  async generateImage(uuid: string): Promise<IngredientEnrichmentRunResult> {
+    const response = await ingredientApi.post<ApiResponse<IngredientEnrichmentRunResult>>(
+      `/ingredients/${uuid}/main-image`,
+      {},
+      { timeout: 120000 },
+    )
+    return unwrapApiResponse(response.data)
+  },
+
   async create(payload: IngredientPayload): Promise<Ingredient> {
     const response = await ingredientApi.post<ApiResponse<Ingredient>>('/ingredients/', payload, {
       headers: { Prefer: 'return=representation' },
@@ -173,8 +183,9 @@ export const ingredientService = {
     return normalizeIngredient(unwrapApiResponse(response.data))
   },
 
-  async update(uuid: string, payload: Partial<IngredientPayload>): Promise<void> {
+  async update(uuid: string, payload: Partial<IngredientPayload>): Promise<Ingredient> {
     await ingredientApi.patch(`/ingredients/${uuid}`, payload)
+    return this.getByUuid(uuid)
   },
 
   async listEnrichmentSuggestions(uuid: string): Promise<IngredientEnrichmentSuggestion[]> {

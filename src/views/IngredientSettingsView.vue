@@ -130,9 +130,13 @@ const enrichIncompleteIngredients = (): void => {
   runEnrichmentBatch(
     { ingredientUuids, continueOnError: true },
     {
-      onSuccess: (results) => {
-        const failedCount = results.filter((result) => result.status === 'failed').length
-        maintenanceMessage.value = `${results.length - failedCount} enrichissement(s) lancé(s), ${failedCount} échec(s).`
+      onSuccess: (result) => {
+        const enrichedByUuid = new Map(result.ingredients.map((ingredient) => [ingredient.uuid, ingredient]))
+        incompleteIngredients.value = incompleteIngredients.value.map(
+          (ingredient) => enrichedByUuid.get(ingredient.uuid) ?? ingredient,
+        )
+        const failedCount = result.runs.filter((run) => run.status === 'failed').length
+        maintenanceMessage.value = `${result.runs.length - failedCount} enrichissement(s) lancé(s), ${failedCount} échec(s).`
       },
       onError: (err) => {
         maintenanceMessage.value = err.message

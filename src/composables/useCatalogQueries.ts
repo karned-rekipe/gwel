@@ -6,10 +6,6 @@ import { ingredientGroupService, ingredientRayonService } from '@/services/ingre
 import { ingredientService } from '@/services/ingredientService'
 import { tagService } from '@/services/tagService'
 import { replaceEntityInCachedCollection } from '@/utils/entityCollections'
-import {
-  ingredientContentSuggestionFields,
-  ingredientRunProposedImage,
-} from '@/utils/ingredientEnrichment'
 import { withIngredientImageSuggestionPreview } from '@/utils/ingredientImagePreview'
 import type {
   EquipmentPayload,
@@ -75,21 +71,10 @@ const readIngredientWithSuggestionPreview = async (
   }
 }
 
-const applyIngredientContentCompletion = async (
+const readIngredientAfterCompletion = async (
   run: IngredientEnrichmentRunResult,
 ): Promise<Ingredient> => {
-  const contentFields = ingredientContentSuggestionFields(run)
-  if (run.suggestion_uuid && contentFields.length) {
-    await ingredientService.applyEnrichmentSuggestion(
-      run.ingredient_uuid,
-      run.suggestion_uuid,
-      { fields: contentFields },
-    )
-  }
-  return readIngredientWithSuggestionPreview(
-    run.ingredient_uuid,
-    ingredientRunProposedImage(run) ? run.suggestion_uuid : null,
-  )
+  return ingredientService.getByUuid(run.ingredient_uuid)
 }
 
 export function useIngredients(name: MaybeRefOrGetter<string> = '') {
@@ -168,8 +153,8 @@ export function useRunIngredientEnrichment() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (ingredientUuid: string) => {
-      const run = await ingredientEnrichmentAgentService.enrichIngredient(ingredientUuid)
-      const ingredient = await applyIngredientContentCompletion(run)
+      const run = await ingredientService.completeWithAI(ingredientUuid)
+      const ingredient = await readIngredientAfterCompletion(run)
       return { run, ingredient }
     },
     onSuccess: (result, ingredientUuid) => {
@@ -213,7 +198,7 @@ export function useRunIngredientEnrichmentBatch() {
       })
       const ingredients = (await Promise.all(runs.map(async (run) => {
         try {
-          return await applyIngredientContentCompletion(run)
+          return await readIngredientAfterCompletion(run)
         } catch {
           return null
         }

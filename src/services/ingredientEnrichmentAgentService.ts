@@ -29,14 +29,6 @@ export const ingredientEnrichmentAgentService = {
     return response.data
   },
 
-  async enrichIngredient(ingredientUuid: string): Promise<IngredientEnrichmentRunResult> {
-    const response = await enrichmentAgentApi.post<ApiResponse<IngredientEnrichmentRunResult>>(
-      '/ingredient-enrichment/runs',
-      { ingredient_uuid: ingredientUuid },
-    )
-    return unwrapApiResponse(response.data)
-  },
-
   async getRunningIngredientEnrichment(
     ingredientUuid: string,
   ): Promise<IngredientEnrichmentRun | null> {

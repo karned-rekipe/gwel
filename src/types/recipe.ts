@@ -202,6 +202,8 @@ export interface IngredientEnrichmentRunResult {
   completeness_score: number
   missing_fields: string[]
   proposed_fields: string[]
+  image_generated: boolean
+  warnings: string[]
   error?: string | null
 }
 

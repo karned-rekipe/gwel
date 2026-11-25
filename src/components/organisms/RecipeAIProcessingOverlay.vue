@@ -131,7 +131,9 @@ const stages = computed<StageDefinition[]>(() => [
     key: 'image',
     icon: '🖼️',
     label: 'Vérification de l’image',
-    description: 'L’assistant conserve l’image actuelle ou en génère une si la recette n’en possède pas encore.',
+    description: props.mode === 'ingredient'
+      ? 'L’assistant conserve l’image actuelle ou en génère une si l’ingrédient n’en possède pas encore.'
+      : 'L’assistant conserve l’image actuelle ou en génère une si la recette n’en possède pas encore.',
   },
   {
     key: 'complete',
@@ -163,7 +165,7 @@ const workflowKeys = computed<RecipeProcessingStage[]>(() => {
   if (props.mode === 'create') {
     return ['reading_source', 'analyzing', 'reviewing', 'checking_duplicate', 'organizing', 'ingredients', 'equipment', 'tags', 'saving', 'image']
   }
-  if (props.mode === 'ingredient') return ['loading_recipe', 'analyzing', 'reviewing', 'saving']
+  if (props.mode === 'ingredient') return ['loading_recipe', 'analyzing', 'reviewing', 'image', 'saving']
   return ['loading_recipe', 'analyzing', 'reviewing', 'organizing', 'ingredients', 'equipment', 'tags', 'saving', 'image']
 })
 const orderedKeys = computed<RecipeProcessingStage[]>(() => ['starting', ...workflowKeys.value, 'complete'])

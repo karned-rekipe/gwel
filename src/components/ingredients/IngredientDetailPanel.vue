@@ -113,10 +113,13 @@ const enrich = (): void => {
     onSuccess: (result) => {
       emit('updated', result.ingredient)
       completeEnrichmentProgress()
-      notificationTone.value = 'success'
-      notificationMessage.value = result.run.proposed_fields.length
-        ? 'La complétion est terminée.'
-        : 'La fiche est déjà complète.'
+      notificationTone.value = result.run.warnings.length ? 'warning' : 'success'
+      notificationMessage.value = result.run.warnings[0]
+        ?? (result.run.proposed_fields.length
+          ? result.run.image_generated
+            ? 'La complétion et l’image sont terminées.'
+            : 'La complétion est terminée.'
+          : 'La fiche est déjà complète.')
     },
     onError: (error) => {
       failEnrichmentProgress()

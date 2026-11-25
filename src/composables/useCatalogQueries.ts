@@ -86,14 +86,10 @@ const applyIngredientContentCompletion = async (
       { fields: contentFields },
     )
   }
-  if (run.suggestion_uuid && ingredientRunProposedImage(run)) {
-    await ingredientService.rejectEnrichmentSuggestion(
-      run.ingredient_uuid,
-      run.suggestion_uuid,
-      { fields: ['media_profile'] },
-    )
-  }
-  return ingredientService.getByUuid(run.ingredient_uuid)
+  return readIngredientWithSuggestionPreview(
+    run.ingredient_uuid,
+    ingredientRunProposedImage(run) ? run.suggestion_uuid : null,
+  )
 }
 
 export function useIngredients(name: MaybeRefOrGetter<string> = '') {

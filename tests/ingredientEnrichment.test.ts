@@ -15,6 +15,8 @@ const run = (proposedFields: string[]): IngredientEnrichmentRunResult => ({
   completeness_score: 25,
   missing_fields: proposedFields,
   proposed_fields: proposedFields,
+  image_generated: proposedFields.includes('media_profile'),
+  warnings: [],
 })
 
 test('completion applies content fields but never the image field', () => {

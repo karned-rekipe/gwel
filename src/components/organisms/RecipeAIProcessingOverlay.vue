@@ -8,7 +8,7 @@ import type {
 const props = withDefaults(defineProps<{
   stage: RecipeProcessingStage
   completedStages: RecipeProcessingStage[]
-  mode?: 'create' | 'enrich'
+  mode?: 'create' | 'enrich' | 'ingredient'
   sourceKind?: RecipeCreationSourceKind
   subject: string
 }>(), {
@@ -54,26 +54,34 @@ const stages = computed<StageDefinition[]>(() => [
     key: 'starting',
     icon: '✦',
     label: 'Préparation de l’assistant',
-    description: 'Nous préparons l’espace de travail et ouvrons le suivi de cette recette.',
+    description: props.mode === 'ingredient'
+      ? 'Nous préparons l’espace de travail et ouvrons le suivi de cet ingrédient.'
+      : 'Nous préparons l’espace de travail et ouvrons le suivi de cette recette.',
   },
   sourceStage.value,
   {
     key: 'loading_recipe',
     icon: '📖',
-    label: 'Lecture de la fiche',
-    description: 'L’assistant charge la recette actuelle pour préserver les données déjà structurées.',
+    label: props.mode === 'ingredient' ? 'Lecture de l’ingrédient' : 'Lecture de la fiche',
+    description: props.mode === 'ingredient'
+      ? 'L’assistant charge la fiche actuelle et repère les informations déjà renseignées.'
+      : 'L’assistant charge la recette actuelle pour préserver les données déjà structurées.',
   },
   {
     key: 'analyzing',
     icon: '🧠',
-    label: 'Analyse de la recette',
-    description: 'Le modèle repère les ingrédients, les étapes, l’origine et les informations manquantes.',
+    label: props.mode === 'ingredient' ? 'Analyse de l’ingrédient' : 'Analyse de la recette',
+    description: props.mode === 'ingredient'
+      ? 'Le modèle complète la saisonnalité, la nutrition, l’environnement, les unités et les usages manquants.'
+      : 'Le modèle repère les ingrédients, les étapes, l’origine et les informations manquantes.',
   },
   {
     key: 'reviewing',
     icon: '🔎',
     label: 'Vérification du résultat',
-    description: 'Un second passage contrôle la cohérence de la structure, des quantités et des temps.',
+    description: props.mode === 'ingredient'
+      ? 'Un second passage vérifie que chaque profil demandé est réellement renseigné et cohérent.'
+      : 'Un second passage contrôle la cohérence de la structure, des quantités et des temps.',
   },
   {
     key: 'checking_duplicate',
@@ -108,23 +116,37 @@ const stages = computed<StageDefinition[]>(() => [
   {
     key: 'saving',
     icon: '💾',
-    label: props.mode === 'create' ? 'Création de la fiche' : 'Enregistrement de la recette',
+    label: props.mode === 'create'
+      ? 'Création de la fiche'
+      : props.mode === 'ingredient'
+        ? 'Enregistrement des données'
+        : 'Enregistrement de la recette',
     description: props.mode === 'create'
       ? 'La nouvelle recette structurée est enregistrée avec ses ingrédients, ses temps et ses étapes.'
+      : props.mode === 'ingredient'
+        ? 'Les données validées par le relecteur sont préparées puis appliquées à la fiche.'
       : 'La fiche réorganisée est enregistrée tout en conservant ses favoris, tags et données existantes.',
   },
   {
     key: 'image',
     icon: '🖼️',
     label: 'Vérification de l’image',
-    description: 'L’assistant conserve l’image actuelle ou en génère une si la recette n’en possède pas encore.',
+    description: props.mode === 'ingredient'
+      ? 'L’assistant conserve l’image actuelle ou en génère une si l’ingrédient n’en possède pas encore.'
+      : 'L’assistant conserve l’image actuelle ou en génère une si la recette n’en possède pas encore.',
   },
   {
     key: 'complete',
     icon: '✨',
-    label: props.mode === 'create' ? 'Recette créée' : 'Mise à niveau terminée',
+    label: props.mode === 'create'
+      ? 'Recette créée'
+      : props.mode === 'ingredient'
+        ? 'Complétion terminée'
+        : 'Mise à niveau terminée',
     description: props.mode === 'create'
       ? 'La nouvelle fiche est prête et va maintenant être affichée.'
+      : props.mode === 'ingredient'
+        ? 'La fiche complétée est prête et ses nouvelles données vont maintenant être affichées.'
       : 'La fiche est prête. Les nouvelles données sont en cours d’affichage.',
   },
   {
@@ -133,13 +155,19 @@ const stages = computed<StageDefinition[]>(() => [
     label: 'Traitement interrompu',
     description: props.mode === 'create'
       ? 'La recette n’a pas pu être créée. Vous allez pouvoir vérifier la source et réessayer.'
+      : props.mode === 'ingredient'
+        ? 'La complétion n’a pas pu être terminée. La fiche existante reste inchangée.'
       : 'Le traitement n’a pas pu être terminé. La fiche existante reste accessible.',
   },
 ])
 
-const workflowKeys = computed<RecipeProcessingStage[]>(() => props.mode === 'create'
-  ? ['reading_source', 'analyzing', 'reviewing', 'checking_duplicate', 'organizing', 'ingredients', 'equipment', 'tags', 'saving', 'image']
-  : ['loading_recipe', 'analyzing', 'reviewing', 'organizing', 'ingredients', 'equipment', 'tags', 'saving', 'image'])
+const workflowKeys = computed<RecipeProcessingStage[]>(() => {
+  if (props.mode === 'create') {
+    return ['reading_source', 'analyzing', 'reviewing', 'checking_duplicate', 'organizing', 'ingredients', 'equipment', 'tags', 'saving', 'image']
+  }
+  if (props.mode === 'ingredient') return ['loading_recipe', 'analyzing', 'reviewing', 'image', 'saving']
+  return ['loading_recipe', 'analyzing', 'reviewing', 'organizing', 'ingredients', 'equipment', 'tags', 'saving', 'image']
+})
 const orderedKeys = computed<RecipeProcessingStage[]>(() => ['starting', ...workflowKeys.value, 'complete'])
 const visibleSteps = computed(() => workflowKeys.value
   .map((key) => stages.value.find((item) => item.key === key))
@@ -183,7 +211,9 @@ onBeforeUnmount(() => {
       aria-describedby="recipe-ai-overlay-description"
     >
       <section class="recipe-ai-overlay__card">
-        <p class="recipe-ai-overlay__eyebrow">Assistant culinaire</p>
+        <p class="recipe-ai-overlay__eyebrow">
+          {{ mode === 'ingredient' ? 'Assistant ingrédients' : 'Assistant culinaire' }}
+        </p>
 
         <div class="recipe-ai-overlay__visual" :class="{ 'is-complete': stage === 'complete' }" aria-hidden="true">
           <span class="recipe-ai-overlay__orbit"></span>

@@ -1,7 +1,14 @@
 import { onBeforeUnmount, ref } from 'vue'
-import type { RecipeProcessingRun, RecipeProcessingStage } from '@/types/recipe'
+import type { RecipeProcessingStage } from '@/types/recipe'
 
-type ProgressLoader = () => Promise<RecipeProcessingRun | null>
+interface AIProgressRun {
+  metadata: {
+    current_stage?: RecipeProcessingStage
+    stage_history?: RecipeProcessingStage[]
+  }
+}
+
+type ProgressLoader = () => Promise<AIProgressRun | null>
 
 export function useRecipeAIProgress(loadRun: ProgressLoader) {
   const isVisible = ref(false)

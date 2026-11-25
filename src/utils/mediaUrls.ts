@@ -3,7 +3,7 @@ const RELATIVE_URL_BASE = 'http://rekipe.local'
 
 const isAbsoluteUrl = (value: string): boolean => /^[a-z][a-z\d+.-]*:\/\//i.test(value)
 
-export const recipeCardImageUrl = (imageUrl?: string | null): string | null => {
+export const mediaCardImageUrl = (imageUrl?: string | null): string | null => {
   const value = imageUrl?.trim()
   if (!value) return null
 
@@ -20,3 +20,5 @@ export const recipeCardImageUrl = (imageUrl?: string | null): string | null => {
   if (isAbsoluteUrl(value)) return parsed.toString()
   return `${parsed.pathname}${parsed.search}${parsed.hash}`
 }
+
+export const recipeCardImageUrl = mediaCardImageUrl

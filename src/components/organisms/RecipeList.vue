@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import CreateAction from '@/components/atoms/CreateAction.vue'
 import ResourceList from '@/components/resources/ResourceList.vue'
 import ResourceSearchBar from '@/components/resources/ResourceSearchBar.vue'
 import RecipeCard from '@/components/molecules/RecipeCard.vue'
@@ -159,10 +159,7 @@ onMounted(() => {
             <option value="current">De saison</option>
             <option value="year_round">Toute saison</option>
           </select>
-          <RouterLink to="/recipes/new" class="recipe-list__create" aria-label="Créer une recette">
-            <span aria-hidden="true">＋</span>
-            Créer
-          </RouterLink>
+          <CreateAction to="/recipes/new" label="Créer une recette" />
         </div>
       </template>
 
@@ -187,28 +184,6 @@ onMounted(() => {
   max-width: none;
   margin: 0;
   padding: 18px 24px 48px;
-}
-
-.recipe-list__create {
-  min-height: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--color-primary);
-  color: #ffffff;
-  font-size: 0.9rem;
-  font-weight: 700;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.recipe-list__create:hover {
-  background: var(--color-primary-dark);
-  color: #ffffff;
-  text-decoration: none;
 }
 
 .recipe-list__toolbar {

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import IngredientCard from '@/components/ingredients/IngredientCard.vue'
 import { useIngredientCatalogStore } from '@/stores/ingredientCatalogStore'
 import type { Ingredient } from '@/types/recipe'
+import { ingredientDisplayMediaProfile } from '@/utils/ingredientImagePreview'
 
 const props = withDefaults(defineProps<{
   disabled?: boolean
@@ -87,7 +88,7 @@ onMounted(() => {
         v-for="ingredient in ingredients"
         :key="ingredient.uuid"
         :name="ingredient.name"
-        :image-url="ingredient.media_profile.main_image_uri"
+        :image-url="ingredientDisplayMediaProfile(ingredient).main_image_uri"
         :class="{ 'ingredient-picker__card--selected': selectedUuid === ingredient.uuid }"
         @click="selectIngredient(ingredient)"
       />

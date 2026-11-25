@@ -12,6 +12,18 @@ import type {
 
 const equipmentApi = createHttpClient(`${appConfig.services.recipeApiBaseUrl}/v1`)
 
+export interface GeneratedEquipmentImage {
+  equipment: Equipment
+  image: {
+    bucket: string
+    key: string
+    url: string
+    content_type: string
+    size_bytes: number
+  }
+  provider: string
+}
+
 export const equipmentService = {
   async getPage(params: {
     name?: string
@@ -39,7 +51,10 @@ export const equipmentService = {
   },
 
   async getByUuid(uuid: string): Promise<Equipment> {
-    const response = await equipmentApi.get<ApiResponse<Equipment>>(`/equipment/${uuid}`)
+    const response = await equipmentApi.get<ApiResponse<Equipment>>(`/equipment/${uuid}`, {
+      headers: { 'Cache-Control': 'no-cache' },
+      params: { _cache: Date.now() },
+    })
     return unwrapApiResponse(response.data)
   },
 
@@ -55,12 +70,27 @@ export const equipmentService = {
     return unwrapApiResponse(response.data)
   },
 
-  async update(uuid: string, payload: Partial<EquipmentPayload>): Promise<void> {
+  async update(uuid: string, payload: Partial<EquipmentPayload>): Promise<Equipment> {
     await equipmentApi.patch(`/equipment/${uuid}`, payload)
+    return this.getByUuid(uuid)
   },
 
   async delete(uuid: string): Promise<void> {
     await equipmentApi.delete(`/equipment/${uuid}`)
+  },
+
+  async generateImage(
+    uuid: string,
+    replaceExisting = false,
+  ): Promise<GeneratedEquipmentImage> {
+    const response = await equipmentApi.post<ApiResponse<GeneratedEquipmentImage>>(
+      `/equipment/${uuid}/main-image`,
+      {
+        replace_existing: replaceExisting,
+      },
+      { timeout: 120000 },
+    )
+    return unwrapApiResponse(response.data)
   },
 
   async getDuplicates(): Promise<DuplicateGroup[]> {

@@ -21,6 +21,7 @@ export interface Ingredient {
   quantity?: number | null
   season_months: Record<number, number>
   media_profile: IngredientMediaProfile
+  suggested_media_profile?: IngredientMediaProfile | null
   seasonality_profile: IngredientSeasonalityProfile
   nutrition_profile: IngredientNutritionProfile
   sustainability_profile: IngredientSustainabilityProfile
@@ -201,6 +202,8 @@ export interface IngredientEnrichmentRunResult {
   completeness_score: number
   missing_fields: string[]
   proposed_fields: string[]
+  image_generated: boolean
+  warnings: string[]
   error?: string | null
 }
 
@@ -218,7 +221,10 @@ export interface IngredientEnrichmentRun {
   error?: string | null
   started_at?: string | null
   completed_at?: string | null
-  metadata: Record<string, unknown>
+  metadata: Record<string, unknown> & {
+    current_stage?: RecipeProcessingStage
+    stage_history?: RecipeProcessingStage[]
+  }
 }
 
 export interface IngredientGroup {
@@ -277,6 +283,7 @@ export interface Equipment {
   updated_at?: string
   name: string
   description?: string | null
+  main_image?: string | null
 }
 
 export interface EquipmentPayload {

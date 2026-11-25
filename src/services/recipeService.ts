@@ -101,8 +101,9 @@ export const recipeService = {
     return unwrapApiResponse(response.data)
   },
 
-  async update(uuid: string, payload: Partial<RecipeCreatePayload>): Promise<void> {
+  async update(uuid: string, payload: Partial<RecipeCreatePayload>): Promise<Recipe> {
     await recipeApi.patch(`/recipes/${uuid}`, payload)
+    return this.getByUuid(uuid)
   },
 
   async replace(uuid: string, payload: RecipeCreatePayload): Promise<void> {
@@ -120,13 +121,11 @@ export const recipeService = {
 
   async generateImage(
     uuid: string,
-    prompt?: string | null,
     replaceExisting = false,
   ): Promise<GeneratedRecipeImage> {
     const response = await recipeApi.post<ApiResponse<GeneratedRecipeImage>>(
       `/recipes/${uuid}/main-image`,
       {
-        prompt: prompt?.trim() || null,
         replace_existing: replaceExisting,
       },
       { timeout: 120000 },

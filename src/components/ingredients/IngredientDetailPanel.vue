@@ -2,12 +2,15 @@
 import { computed, ref } from 'vue'
 import AppToast from '@/components/atoms/AppToast.vue'
 import RecipeCard from '@/components/molecules/RecipeCard.vue'
+import RecipeAIProcessingOverlay from '@/components/organisms/RecipeAIProcessingOverlay.vue'
 import IconActionButton from '@/components/resources/IconActionButton.vue'
 import {
   useGenerateIngredientImage,
   useIngredientRecipes,
   useRunIngredientEnrichment,
 } from '@/composables/useCatalogQueries'
+import { useRecipeAIProgress } from '@/composables/useRecipeAIProgress'
+import { ingredientEnrichmentAgentService } from '@/services/ingredientEnrichmentAgentService'
 import { useIngredientWishlistStore } from '@/stores/ingredientWishlistStore'
 import type { Ingredient, Recipe } from '@/types/recipe'
 import {
@@ -34,6 +37,16 @@ const { mutate: generateImage, isPending: isGeneratingImage } = useGenerateIngre
 const wishlist = useIngredientWishlistStore()
 const notificationMessage = ref<string | null>(null)
 const notificationTone = ref<'success' | 'warning' | 'error'>('success')
+const {
+  isVisible: showEnrichmentOverlay,
+  stage: enrichmentStage,
+  completedStages: completedEnrichmentStages,
+  start: startEnrichmentProgress,
+  complete: completeEnrichmentProgress,
+  fail: failEnrichmentProgress,
+} = useRecipeAIProgress(() => (
+  ingredientEnrichmentAgentService.getRunningIngredientEnrichment(props.ingredient.uuid)
+))
 
 const mediaProfile = computed(() => ingredientDisplayMediaProfile(props.ingredient))
 const hasImage = computed(() => ingredientHasDisplayImage(props.ingredient))
@@ -95,15 +108,18 @@ const substitutionsLabel = computed(() => {
 
 const enrich = (): void => {
   notificationMessage.value = null
+  startEnrichmentProgress()
   runEnrichment(props.ingredient.uuid, {
     onSuccess: (result) => {
       emit('updated', result.ingredient)
+      completeEnrichmentProgress()
       notificationTone.value = 'success'
       notificationMessage.value = result.run.proposed_fields.length
         ? 'La complétion est terminée.'
         : 'La fiche est déjà complète.'
     },
     onError: (error) => {
+      failEnrichmentProgress()
       notificationTone.value = 'error'
       notificationMessage.value = error.message
     },
@@ -132,6 +148,14 @@ const generate = (): void => {
 </script>
 
 <template>
+  <RecipeAIProcessingOverlay
+    v-if="showEnrichmentOverlay"
+    :stage="enrichmentStage"
+    :completed-stages="completedEnrichmentStages"
+    mode="ingredient"
+    :subject="ingredient.name"
+  />
+
   <AppToast :message="notificationMessage" :tone="notificationTone" @dismiss="notificationMessage = null" />
 
   <article class="ingredient-detail-panel">

@@ -37,6 +37,24 @@ export const ingredientEnrichmentAgentService = {
     return unwrapApiResponse(response.data)
   },
 
+  async getRunningIngredientEnrichment(
+    ingredientUuid: string,
+  ): Promise<IngredientEnrichmentRun | null> {
+    const response = await enrichmentAgentApi.get<PaginatedResponse<IngredientEnrichmentRun>>(
+      '/ingredient-enrichment/runs/',
+      {
+        headers: { 'Cache-Control': 'no-cache' },
+        params: {
+          page: 1,
+          per_page: 10,
+          ingredient_uuid: ingredientUuid,
+          _cache: Date.now(),
+        },
+      },
+    )
+    return response.data.data.find((run) => run.status === 'running') ?? null
+  },
+
   async enrichBatch(payload: {
     ingredient_uuids?: string[]
     limit?: number

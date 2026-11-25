@@ -219,7 +219,10 @@ export interface IngredientEnrichmentRun {
   error?: string | null
   started_at?: string | null
   completed_at?: string | null
-  metadata: Record<string, unknown>
+  metadata: Record<string, unknown> & {
+    current_stage?: RecipeProcessingStage
+    stage_history?: RecipeProcessingStage[]
+  }
 }
 
 export interface IngredientGroup {

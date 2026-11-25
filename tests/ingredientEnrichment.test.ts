@@ -2,10 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { IngredientEnrichmentRunResult } from '../src/types/recipe.ts'
-import {
-  ingredientContentSuggestionFields,
-  ingredientRunProposedImage,
-} from '../src/utils/ingredientEnrichment.ts'
+import { ingredientRunProposedImage } from '../src/utils/ingredientEnrichment.ts'
 
 const run = (proposedFields: string[]): IngredientEnrichmentRunResult => ({
   run_uuid: 'run-one',
@@ -19,16 +16,12 @@ const run = (proposedFields: string[]): IngredientEnrichmentRunResult => ({
   warnings: [],
 })
 
-test('completion applies content fields but never the image field', () => {
+test('completion reports when its applied patch contains an image', () => {
   const result = run(['media_profile', 'nutrition_profile', 'enrichment_profile'])
 
-  assert.deepEqual(
-    ingredientContentSuggestionFields(result),
-    ['nutrition_profile', 'enrichment_profile'],
-  )
   assert.equal(ingredientRunProposedImage(result), true)
 })
 
-test('completion ignores fields outside the ingredient content contract', () => {
-  assert.deepEqual(ingredientContentSuggestionFields(run(['name', 'unknown_field'])), [])
+test('completion reports when no image was generated', () => {
+  assert.equal(ingredientRunProposedImage(run(['nutrition_profile'])), false)
 })

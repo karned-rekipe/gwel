@@ -176,6 +176,15 @@ export const ingredientService = {
     return unwrapApiResponse(response.data)
   },
 
+  async completeWithAI(uuid: string): Promise<IngredientEnrichmentRunResult> {
+    const response = await ingredientApi.post<ApiResponse<IngredientEnrichmentRunResult>>(
+      `/ingredients/${uuid}/ai-enrich`,
+      {},
+      { timeout: 120000 },
+    )
+    return unwrapApiResponse(response.data)
+  },
+
   async create(payload: IngredientPayload): Promise<Ingredient> {
     const response = await ingredientApi.post<ApiResponse<Ingredient>>('/ingredients/', payload, {
       headers: { Prefer: 'return=representation' },

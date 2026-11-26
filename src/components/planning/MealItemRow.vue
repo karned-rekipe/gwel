@@ -82,6 +82,16 @@ const props = defineProps<{
   slotDate: string
   slotCode: SlotCode
   readonly?: boolean
+  openRecipeDetails?: boolean
+}>()
+
+interface RecipeOpenRequest {
+  uuid: string
+  name: string
+}
+
+const emit = defineEmits<{
+  openRecipe: [recipe: RecipeOpenRequest]
 }>()
 
 const recipeCatalog = useRecipeCatalogStore()
@@ -124,6 +134,7 @@ const effectiveHeadcount = computed(() => (
     : props.item.headcount ?? props.fallbackHeadcount ?? null
 ))
 const isRecipeItem = computed(() => props.item.item_type === 'recipe')
+const canOpenRecipe = computed(() => Boolean(props.openRecipeDetails && recipeUuid.value))
 const isNoteItem = computed(() => props.item.item_type === 'note')
 const itemUsesParticipants = computed(() => props.item.item_type === 'recipe' || props.item.item_type === 'ingredient')
 const avatarDots = computed(() => Array.from({ length: Math.min(effectiveHeadcount.value ?? 0, 4) }, (_, index) => index))
@@ -157,6 +168,16 @@ const detail = computed(() => {
   return ''
 })
 
+const openRecipe = (event: Event): void => {
+  if (!canOpenRecipe.value || !recipeUuid.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  emit('openRecipe', {
+    uuid: recipeUuid.value,
+    name: title.value,
+  })
+}
+
 watch(recipeUuid, async (uuid) => {
   recipeDetails.value = null
   if (!uuid) return
@@ -187,7 +208,16 @@ watch(ingredientUuid, async (uuid) => {
 <template>
   <article
     class="meal-item"
-    :class="{ 'meal-item--note': isNoteItem }"
+    :class="{
+      'meal-item--note': isNoteItem,
+      'meal-item--openable': canOpenRecipe,
+    }"
+    :role="canOpenRecipe ? 'button' : undefined"
+    :tabindex="canOpenRecipe ? 0 : undefined"
+    :aria-label="canOpenRecipe ? `Ouvrir la recette ${title}` : undefined"
+    @click="openRecipe"
+    @keydown.enter="openRecipe"
+    @keydown.space="openRecipe"
   >
     <div v-if="!isNoteItem" class="meal-item__thumbnail" aria-hidden="true">
       <img v-if="thumbnailUri" :src="thumbnailUri" :alt="title" />
@@ -255,6 +285,26 @@ watch(ingredientUuid, async (uuid) => {
     linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0) 34%),
     #fff2a8;
   box-shadow: 0 8px 18px rgba(117, 87, 12, 0.14);
+}
+
+.meal-item--openable {
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.meal-item--openable:hover,
+.meal-item--openable:focus-visible {
+  border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-border));
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.meal-item--openable:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 .meal-item--note::after {

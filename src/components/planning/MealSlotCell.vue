@@ -17,6 +17,7 @@ import type { Ingredient, Recipe } from '@/types/recipe'
 type AddMode = 'recipe' | 'wishlist' | 'ingredient' | 'note'
 type ItemActionMode = 'move' | 'members'
 type MoveSlotRow = { slot_code: string; label: string }
+type RecipeOpenRequest = { uuid: string; name: string }
 
 const props = defineProps<{
   slot: MealSlot
@@ -28,10 +29,12 @@ const props = defineProps<{
   householdMembers?: HouseholdMember[]
   usesNamedMembers?: boolean
   availableSlotRows?: MoveSlotRow[]
+  openRecipeDetails?: boolean
 }>()
 
 const emit = defineEmits<{
   (event: 'patch', operations: SlotPatchOperation[]): void
+  (event: 'openRecipe', recipe: RecipeOpenRequest): void
 }>()
 
 const fullDateFormatter = new Intl.DateTimeFormat('fr-FR', {
@@ -571,6 +574,8 @@ const addNote = (): void => {
         :slot-date="slot.date"
         :slot-code="slot.slot_code"
         :readonly="readonly"
+        :open-recipe-details="openRecipeDetails"
+        @open-recipe="emit('openRecipe', $event)"
       />
     </div>
 

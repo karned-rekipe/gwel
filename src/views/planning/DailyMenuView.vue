@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import MealSlotCell from '@/components/planning/MealSlotCell.vue'
 import PlanningMembersRequired from '@/components/planning/PlanningMembersRequired.vue'
 import { resolveMealSlotDefinitions } from '@/components/planning/mealSlotDefinitions'
+import RecipeLayer from '@/components/organisms/RecipeLayer.vue'
+import ResourceLayerDock from '@/components/resources/ResourceLayerDock.vue'
 import type { MealCalendarParams } from '@/services/mealPlannerService'
 import { useHouseholdMembersStore } from '@/stores/householdMembersStore'
 import { useIngredientCatalogStore } from '@/stores/ingredientCatalogStore'
@@ -12,6 +14,15 @@ import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 import { useTenantPreferencesStore } from '@/stores/tenantPreferencesStore'
 import type { MealSlot, SlotPatchOperation } from '@/types/mealPlan'
 import { addDaysToIsoDate, isIsoDate, isoDateFromDate } from '@/utils/localDate'
+import {
+  closeResourceLayer,
+  createResourceLayersState,
+  minimizeResourceLayer,
+  openResourceLayer,
+  renameResourceLayer,
+  restoreResourceLayer,
+  type ResourceLayersState,
+} from '@/utils/resourceLayers'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,6 +34,7 @@ const preferencesStore = useTenantPreferencesStore()
 const actionError = ref<string | null>(null)
 const membersLoaded = ref(false)
 const ready = ref(false)
+const layers = ref<ResourceLayersState>(createResourceLayersState())
 const today = isoDateFromDate(new Date())
 
 const dayFormatter = new Intl.DateTimeFormat('fr-FR', {
@@ -91,6 +103,30 @@ const applyPatch = async (operations: SlotPatchOperation[]): Promise<void> => {
   } catch (err) {
     actionError.value = err instanceof Error ? err.message : 'Modification impossible.'
   }
+}
+
+const openRecipe = (recipe: { uuid: string; name: string }): void => {
+  layers.value = openResourceLayer(layers.value, {
+    kind: 'recipe',
+    uuid: recipe.uuid,
+    name: recipe.name,
+  })
+}
+
+const restoreLayer = (key: string): void => {
+  layers.value = restoreResourceLayer(layers.value, key)
+}
+
+const minimizeLayer = (key: string): void => {
+  layers.value = minimizeResourceLayer(layers.value, key)
+}
+
+const closeLayer = (key: string): void => {
+  layers.value = closeResourceLayer(layers.value, key)
+}
+
+const renameLayer = (key: string, title: string): void => {
+  layers.value = renameResourceLayer(layers.value, key, title)
 }
 
 const showDate = (date: string): void => {
@@ -178,13 +214,33 @@ onMounted(async () => {
               :household-members="membersStore.members"
               :uses-named-members="true"
               :available-slot-rows="availableSlotRows"
+              open-recipe-details
               @patch="applyPatch"
+              @open-recipe="openRecipe"
             />
           </div>
         </article>
       </div>
       <p v-else class="daily-menu-page__empty">Aucun repas configuré.</p>
     </section>
+
+    <RecipeLayer
+      v-for="session in layers.sessions"
+      :key="session.key"
+      :uuid="session.uuid"
+      :fallback-title="session.title"
+      :expanded="layers.activeKey === session.key"
+      @minimize="minimizeLayer(session.key)"
+      @close="closeLayer(session.key)"
+      @title-change="renameLayer(session.key, $event)"
+    />
+    <ResourceLayerDock
+      :sessions="layers.sessions"
+      :active-key="layers.activeKey"
+      @restore="restoreLayer"
+      @close="closeLayer"
+      @minimize="minimizeLayer"
+    />
   </main>
 </template>
 

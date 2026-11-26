@@ -130,6 +130,7 @@ export const useMealPlanStore = defineStore('mealPlan', () => {
       recipe_snapshot: payload.recipe_snapshot ?? null,
       recipe_status: null,
       recipe_modified: false,
+      preparation_progress: payload.preparation_progress ?? null,
       ingredient_uuid: payload.ingredient_uuid ?? null,
       ingredient_name: payload.ingredient_name ?? null,
       ingredient_quantity: payload.ingredient_quantity ?? null,
@@ -169,6 +170,12 @@ export const useMealPlanStore = defineStore('mealPlan', () => {
         slot.items = renumber([...slot.items].sort((left, right) => (
           (operation.new_positions?.[left.uuid] ?? left.position) - (operation.new_positions?.[right.uuid] ?? right.position)
         )))
+      } else if (operation.op === 'set_preparation_progress' && operation.item_uuid && operation.preparation_progress) {
+        slot.items = slot.items.map((item) => (
+          item.uuid === operation.item_uuid
+            ? { ...item, preparation_progress: operation.preparation_progress }
+            : item
+        ))
       }
     }
     current.value = optimistic

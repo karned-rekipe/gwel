@@ -4,6 +4,24 @@ export type MealPlanStatus = 'draft' | 'confirmed' | 'done' | 'abandoned'
 export type SlotCode = string
 export type MealItemType = 'recipe' | 'ingredient' | 'note' | 'prep_task' | 'mixed'
 export type HeadcountSource = 'household_schedule' | 'manual'
+export type PreparationTimerStatus = 'running' | 'paused' | 'ringing' | 'completed'
+
+export interface RecipePreparationTimer {
+  timer_id: string
+  duration_seconds: number
+  remaining_seconds: number
+  status: PreparationTimerStatus
+  started_at?: string | null
+  ringing_since?: string | null
+}
+
+export interface RecipePreparationProgress {
+  target_servings: number
+  completed_ingredient_ids: string[]
+  completed_equipment_ids: string[]
+  completed_step_ids: string[]
+  timers: RecipePreparationTimer[]
+}
 
 export interface RecipeSnapshotIngredient {
   ingredient_uuid: string
@@ -37,12 +55,24 @@ export interface MealItem {
   recipe_snapshot?: RecipeSnapshot | null
   recipe_status?: string | null
   recipe_modified: boolean
+  preparation_progress?: RecipePreparationProgress | null
   ingredient_uuid?: string | null
   ingredient_name?: string | null
   ingredient_quantity?: number | null
   ingredient_unit?: string | null
   note?: string | null
   legacy_id?: number | null
+}
+
+export interface MealPreparationOpenRequest {
+  item: MealItem
+  uuid: string
+  recipe_uuid: string
+  name: string
+  slot_date: string
+  slot_code: SlotCode
+  fallback_member_ids: string[]
+  fallback_headcount?: number | null
 }
 
 export interface MealSlot {
@@ -111,6 +141,7 @@ export interface MealItemPayload {
   member_ids?: string[]
   recipe_uuid?: string | null
   recipe_snapshot?: RecipeSnapshot | null
+  preparation_progress?: RecipePreparationProgress | null
   ingredient_uuid?: string | null
   ingredient_name?: string | null
   ingredient_quantity?: number | null
@@ -120,7 +151,7 @@ export interface MealItemPayload {
 }
 
 export interface SlotPatchOperation {
-  op: 'set_headcount' | 'set_members' | 'add_item' | 'update_item' | 'remove_item' | 'reorder_items'
+  op: 'set_headcount' | 'set_members' | 'add_item' | 'update_item' | 'remove_item' | 'reorder_items' | 'set_preparation_progress'
   slot_date: string
   slot_code: SlotCode
   headcount?: number | null
@@ -128,6 +159,7 @@ export interface SlotPatchOperation {
   item_uuid?: string | null
   item?: MealItemPayload | null
   new_positions?: Record<string, number> | null
+  preparation_progress?: RecipePreparationProgress | null
 }
 
 export interface ShoppingProjectionLine {

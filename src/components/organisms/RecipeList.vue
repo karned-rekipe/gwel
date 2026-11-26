@@ -1,14 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import CreateAction from '@/components/atoms/CreateAction.vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import ResourceList from '@/components/resources/ResourceList.vue'
-import ResourceSearchBar from '@/components/resources/ResourceSearchBar.vue'
 import RecipeCard from '@/components/molecules/RecipeCard.vue'
+import RecipeFilterControls from '@/components/organisms/RecipeFilterControls.vue'
 import { useTags } from '@/composables/useCatalogQueries'
 import { useListNavigation } from '@/composables/useListNavigation'
 import { useInfiniteRecipes } from '@/composables/useRecipeQueries'
 import type { Recipe } from '@/types/recipe'
-import { countryFlagFrom, countryOptions } from '@/utils/countryFlags'
 
 const PER_PAGE = 50
 const navigation = useListNavigation('recipes')
@@ -17,6 +15,11 @@ const emit = defineEmits<{
 }>()
 const currentMonth = new Date().getMonth() + 1
 const searchTerm = ref(navigation.state.search)
+const isFilterModalOpen = ref(false)
+const mobileFilterTrigger = ref<HTMLButtonElement | null>(null)
+const filterDialog = ref<HTMLElement | null>(null)
+let bodyOverflowBeforeDialog = ''
+let isBodyScrollLocked = false
 const filters = reactive({
   tag_uuid: navigation.state.filters.tag_uuid ?? '',
   difficulty: navigation.state.filters.difficulty ?? '',
@@ -82,6 +85,21 @@ const filterState = computed(() => ({
   favorite: filters.favorite,
   season_mode: filters.season_mode,
 }))
+const activeFilterCount = computed(() => [
+  searchTerm.value.trim(),
+  ...Object.values(filterState.value),
+].filter(Boolean).length)
+const recipeResultLabel = computed(() => `${total.value} recette${total.value > 1 ? 's' : ''}`)
+
+const openFilterModal = (): void => {
+  isFilterModalOpen.value = true
+  void nextTick(() => filterDialog.value?.focus())
+}
+
+const closeFilterModal = (): void => {
+  isFilterModalOpen.value = false
+  void nextTick(() => mobileFilterTrigger.value?.focus())
+}
 
 const loadRemaining = async (): Promise<void> => {
   while (hasNextPage.value) {
@@ -108,8 +126,25 @@ watch(lastPagination, (pagination) => {
   navigation.save({ search: searchTerm.value, filters: { ...filterState.value }, page: pagination.page })
 })
 
+watch(isFilterModalOpen, (isOpen) => {
+  if (isOpen) {
+    bodyOverflowBeforeDialog = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    isBodyScrollLocked = true
+    return
+  }
+  if (isBodyScrollLocked) {
+    document.body.style.overflow = bodyOverflowBeforeDialog
+    isBodyScrollLocked = false
+  }
+})
+
 onMounted(() => {
   navigation.restoreScroll()
+})
+
+onBeforeUnmount(() => {
+  if (isBodyScrollLocked) document.body.style.overflow = bodyOverflowBeforeDialog
 })
 </script>
 
@@ -129,38 +164,32 @@ onMounted(() => {
       @load-remaining="loadRemaining"
     >
       <template #toolbar>
-        <div class="recipe-list__toolbar">
-          <ResourceSearchBar v-model="searchTerm" placeholder="Rechercher une recette" />
-          <select v-model="filters.tag_uuid" class="recipe-list__control" aria-label="Filtrer par tag">
-            <option value="">Tags</option>
-            <option v-for="tag in tags ?? []" :key="tag.uuid" :value="tag.uuid">{{ tag.name }}</option>
-          </select>
-          <select v-model="filters.difficulty" class="recipe-list__control recipe-list__control--compact" aria-label="Filtrer par difficulté">
-            <option value="">👨‍🍳</option>
-            <option v-for="level in 5" :key="level" :value="String(level)">👨‍🍳 {{ level }}</option>
-          </select>
-          <select v-model="filters.origin_country" class="recipe-list__control" aria-label="Filtrer par origine">
-            <option value="">⚑ Origine</option>
-            <option v-for="country in countryOptions" :key="country.code" :value="country.code">
-              {{ countryFlagFrom(country.code) }} {{ country.name }}
-            </option>
-          </select>
-          <select v-model="filters.price" class="recipe-list__control recipe-list__control--compact" aria-label="Filtrer par prix">
-            <option value="">€</option>
-            <option v-for="level in 5" :key="level" :value="String(level)">{{ '€'.repeat(level) }}</option>
-          </select>
-          <select v-model="filters.favorite" class="recipe-list__control recipe-list__control--compact" aria-label="Filtrer par favori">
-            <option value="">★</option>
-            <option value="true">★ Oui</option>
-            <option value="false">☆ Non</option>
-          </select>
-          <select v-model="filters.season_mode" class="recipe-list__control" aria-label="Filtrer par saison">
-            <option value="">Non sélectionné</option>
-            <option value="current">De saison</option>
-            <option value="year_round">Toute saison</option>
-          </select>
-          <CreateAction to="/recipes/new" label="Créer une recette" />
+        <div class="recipe-list__desktop-toolbar">
+          <RecipeFilterControls
+            v-model:search="searchTerm"
+            v-model:tag-uuid="filters.tag_uuid"
+            v-model:difficulty="filters.difficulty"
+            v-model:origin-country="filters.origin_country"
+            v-model:price="filters.price"
+            v-model:favorite="filters.favorite"
+            v-model:season-mode="filters.season_mode"
+            :tags="tags ?? []"
+          />
         </div>
+        <button
+          ref="mobileFilterTrigger"
+          type="button"
+          class="recipe-list__mobile-filter-trigger"
+          aria-haspopup="dialog"
+          :aria-expanded="isFilterModalOpen"
+          @click="openFilterModal"
+        >
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 7h16M7 12h10M10 17h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+          <span>Rechercher et filtrer</span>
+          <span v-if="activeFilterCount" class="recipe-list__filter-count">{{ activeFilterCount }}</span>
+        </button>
       </template>
 
       <div class="recipe-list__grid">
@@ -175,6 +204,49 @@ onMounted(() => {
         />
       </div>
     </ResourceList>
+
+    <Teleport to="body">
+      <div
+        v-if="isFilterModalOpen"
+        class="recipe-filter-modal"
+        @click.self="closeFilterModal"
+        @keydown.esc.stop="closeFilterModal"
+      >
+        <section
+          ref="filterDialog"
+          class="recipe-filter-modal__panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="recipe-filter-modal-title"
+          tabindex="-1"
+        >
+          <header class="recipe-filter-modal__header">
+            <div>
+              <p>Catalogue</p>
+              <h2 id="recipe-filter-modal-title">Rechercher et filtrer</h2>
+            </div>
+            <button type="button" class="recipe-filter-modal__close" aria-label="Réduire les filtres" @click="closeFilterModal">×</button>
+          </header>
+
+          <div class="recipe-filter-modal__body">
+            <RecipeFilterControls
+              v-model:search="searchTerm"
+              v-model:tag-uuid="filters.tag_uuid"
+              v-model:difficulty="filters.difficulty"
+              v-model:origin-country="filters.origin_country"
+              v-model:price="filters.price"
+              v-model:favorite="filters.favorite"
+              v-model:season-mode="filters.season_mode"
+              :tags="tags ?? []"
+            />
+          </div>
+
+          <footer class="recipe-filter-modal__footer">
+            <button type="button" @click="closeFilterModal">Afficher {{ recipeResultLabel }}</button>
+          </footer>
+        </section>
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -186,26 +258,20 @@ onMounted(() => {
   padding: 18px 24px 48px;
 }
 
-.recipe-list__toolbar {
-  display: grid;
-  grid-template-columns: minmax(220px, 1.8fr) minmax(106px, 0.8fr) 86px minmax(140px, 1fr) 78px 96px minmax(128px, 0.9fr) auto;
-  gap: 8px;
-  align-items: center;
+.recipe-list :deep(.resource-list__toolbar) {
+  position: sticky;
+  z-index: 30;
+  top: 60px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-background) 90%, transparent);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  backdrop-filter: saturate(150%) blur(18px);
 }
 
-.recipe-list__control {
-  min-height: 38px;
-  width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font: inherit;
-  padding: 8px 10px;
-}
-
-.recipe-list__control--compact {
-  padding-inline: 8px;
+.recipe-list__mobile-filter-trigger {
+  display: none;
 }
 
 .recipe-list :deep(.resource-list__body) {
@@ -234,16 +300,150 @@ onMounted(() => {
   font-weight: 650;
 }
 
-@media (max-width: 980px) {
-  .recipe-list__toolbar {
-    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+@media (max-width: 820px) {
+  .recipe-list {
+    padding: 12px 14px 36px;
   }
-}
 
-@media (max-width: 560px) {
+  .recipe-list :deep(.resource-list__toolbar) {
+    top: 60px;
+    padding: 6px;
+    border-radius: 13px;
+  }
+
+  .recipe-list__desktop-toolbar {
+    display: none;
+  }
+
+  .recipe-list__mobile-filter-trigger {
+    width: 100%;
+    min-height: 46px;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-weight: 720;
+    text-align: left;
+    box-shadow: 0 5px 16px rgba(15, 23, 42, 0.07);
+  }
+
+  .recipe-list__mobile-filter-trigger svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .recipe-list__filter-count {
+    min-width: 25px;
+    height: 25px;
+    display: grid;
+    place-items: center;
+    padding-inline: 6px;
+    border-radius: 999px;
+    background: var(--color-primary);
+    color: #fff;
+    font-size: 0.76rem;
+  }
+
   .recipe-list__grid {
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 12px;
   }
 }
+
+.recipe-filter-modal {
+  position: fixed;
+  z-index: 260;
+  inset: 0;
+  display: grid;
+  align-items: end;
+  padding: 12px;
+  background: rgba(18, 25, 21, 0.42);
+  backdrop-filter: blur(4px);
+}
+
+.recipe-filter-modal__panel {
+  width: min(100%, 560px);
+  max-height: calc(100dvh - 24px);
+  margin: 0 auto;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border: 1px solid var(--color-border);
+  border-radius: 22px;
+  background: var(--color-surface);
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.28);
+  outline: none;
+}
+
+.recipe-filter-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.recipe-filter-modal__header p,
+.recipe-filter-modal__header h2 {
+  margin: 0;
+}
+
+.recipe-filter-modal__header p {
+  color: var(--color-text-tertiary);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.recipe-filter-modal__header h2 {
+  margin-top: 3px;
+  font-size: 1.18rem;
+}
+
+.recipe-filter-modal__close {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-background);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.recipe-filter-modal__body {
+  overflow-y: auto;
+  padding: 16px 18px;
+}
+
+.recipe-filter-modal__footer {
+  padding: 12px 18px max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.recipe-filter-modal__footer button {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--color-primary);
+  border-radius: 12px;
+  background: var(--color-primary);
+  color: #fff;
+  font: inherit;
+  font-weight: 750;
+}
+
 </style>

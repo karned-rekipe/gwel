@@ -95,7 +95,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   position: fixed;
   z-index: 180;
   inset: 0;
+  min-width: 0;
+  overflow: hidden;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
   padding: 32px 32px 78px;
   background: rgba(29, 29, 31, 0.38);
@@ -104,10 +107,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 
 .resource-layer__panel {
   width: min(1600px, 100%);
+  max-width: 100%;
   height: 100%;
+  min-width: 0;
   min-height: 0;
+  box-sizing: border-box;
   overflow: hidden;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 22px;
@@ -120,10 +127,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 .resource-layer__header {
   position: relative;
   z-index: 2;
+  width: 100%;
+  min-width: 0;
   min-height: 58px;
-  display: flex;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   padding: 10px 14px 10px 18px;
   border-bottom: 1px solid rgba(87, 83, 78, 0.14);
@@ -132,14 +143,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 }
 
 .resource-layer__identity {
+  width: 100%;
   min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
+  display: block;
+  overflow: hidden;
 }
 
 .resource-layer__identity strong {
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
+  display: block;
   overflow: hidden;
   color: var(--color-text-primary);
   font-size: 1rem;
@@ -148,7 +162,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
   white-space: nowrap;
 }
 
-.resource-layer__actions { display: flex; align-items: center; gap: 7px; }
+.resource-layer__actions {
+  display: flex;
+  min-width: max-content;
+  align-items: center;
+  justify-self: end;
+  gap: 7px;
+}
 
 .resource-layer__action {
   width: 36px;
@@ -180,6 +200,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
 }
 
 .resource-layer__content {
+  width: 100%;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
@@ -198,7 +220,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
     border-top: 0;
     border-radius: 0 0 18px 18px;
   }
-  .resource-layer__header { min-height: 54px; padding-inline: 12px 10px; }
+  .resource-layer__header { min-height: 54px; gap: 10px; padding-inline: 12px 10px; }
   .resource-layer__content--edit { padding: 12px; }
 }
 </style>

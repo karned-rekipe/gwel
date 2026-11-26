@@ -8,6 +8,7 @@ import { initialsFor, membersForIds, textColorFor } from '@/components/planning/
 import { householdScheduleService } from '@/services/householdScheduleService'
 import { useHouseholdMembersStore } from '@/stores/householdMembersStore'
 import { useTenantPreferencesStore } from '@/stores/tenantPreferencesStore'
+import { applyMemberSelectionToRules } from '@/utils/attendanceRules'
 import type {
   DayOfWeek,
   HouseholdSchedule,
@@ -40,6 +41,8 @@ const error = ref<string | null>(null)
 const success = ref<string | null>(null)
 const activeCell = ref<ActiveCell | null>(null)
 const selection = ref<string[]>([])
+const selectingCopyTargets = ref(false)
+const copyTargetKeys = ref<string[]>([])
 const ruleMemberIds = reactive<Record<string, string[]>>({})
 
 const defaultMealSlots: MealSlotDefinition[] = [
@@ -70,6 +73,7 @@ const mealSlots = computed(() => {
 })
 
 const knownMemberIds = computed(() => new Set(membersStore.members.map((member) => member.uuid)))
+const copyTargetCount = computed(() => copyTargetKeys.value.length)
 
 const ruleKey = (
   template: Pick<ScheduleTemplate, 'weekParity' | 'schoolPeriodType'>,
@@ -83,30 +87,80 @@ const selectedMembersFor = (template: ScheduleTemplate, dayCode: DayOfWeek, meal
 const openCell = (template: ScheduleTemplate, day: ActiveCell['day'], mealSlot: MealSlotDefinition): void => {
   activeCell.value = { template, day, mealSlot }
   selection.value = [...(ruleMemberIds[ruleKey(template, day.code, mealSlot.code)] ?? [])]
+  selectingCopyTargets.value = false
+  copyTargetKeys.value = []
 }
 
 const closeCell = (): void => {
   activeCell.value = null
   selection.value = []
+  selectingCopyTargets.value = false
+  copyTargetKeys.value = []
 }
 
 const sanitizedSelection = (): string[] =>
   selection.value.filter((uuid, index, values) => knownMemberIds.value.has(uuid) && values.indexOf(uuid) === index)
 
+const applySelectionToKeys = (targetKeys: string[]): void => {
+  Object.assign(
+    ruleMemberIds,
+    applyMemberSelectionToRules(ruleMemberIds, targetKeys, sanitizedSelection()),
+  )
+}
+
 const applyCell = (): void => {
   if (!activeCell.value) return
-  ruleMemberIds[ruleKey(activeCell.value.template, activeCell.value.day.code, activeCell.value.mealSlot.code)] = sanitizedSelection()
+  applySelectionToKeys([
+    ruleKey(activeCell.value.template, activeCell.value.day.code, activeCell.value.mealSlot.code),
+  ])
   closeCell()
 }
 
 const applyTemplate = (): void => {
   if (!activeCell.value) return
-  const selectedIds = sanitizedSelection()
-  for (const day of days) {
-    for (const mealSlot of mealSlots.value) {
-      ruleMemberIds[ruleKey(activeCell.value.template, day.code, mealSlot.code)] = [...selectedIds]
-    }
-  }
+  applySelectionToKeys(days.flatMap((day) => mealSlots.value.map((mealSlot) =>
+    ruleKey(activeCell.value!.template, day.code, mealSlot.code),
+  )))
+  closeCell()
+}
+
+const openCopyTargets = (): void => {
+  selectingCopyTargets.value = true
+  copyTargetKeys.value = []
+}
+
+const closeCopyTargets = (): void => {
+  selectingCopyTargets.value = false
+  copyTargetKeys.value = []
+}
+
+const isSourceCell = (dayCode: DayOfWeek, mealSlotCode: string): boolean => Boolean(
+  activeCell.value
+  && activeCell.value.day.code === dayCode
+  && activeCell.value.mealSlot.code === mealSlotCode,
+)
+
+const copyTargetKey = (dayCode: DayOfWeek, mealSlotCode: string): string => (
+  activeCell.value ? ruleKey(activeCell.value.template, dayCode, mealSlotCode) : ''
+)
+
+const isCopyTargetSelected = (dayCode: DayOfWeek, mealSlotCode: string): boolean =>
+  copyTargetKeys.value.includes(copyTargetKey(dayCode, mealSlotCode))
+
+const toggleCopyTarget = (dayCode: DayOfWeek, mealSlotCode: string): void => {
+  if (isSourceCell(dayCode, mealSlotCode)) return
+  const key = copyTargetKey(dayCode, mealSlotCode)
+  copyTargetKeys.value = copyTargetKeys.value.includes(key)
+    ? copyTargetKeys.value.filter((candidate) => candidate !== key)
+    : [...copyTargetKeys.value, key]
+}
+
+const applyCopyTargets = (): void => {
+  if (!activeCell.value || !copyTargetKeys.value.length) return
+  applySelectionToKeys([
+    ruleKey(activeCell.value.template, activeCell.value.day.code, activeCell.value.mealSlot.code),
+    ...copyTargetKeys.value,
+  ])
   closeCell()
 }
 
@@ -243,13 +297,71 @@ onMounted(async () => {
             <button type="button" aria-label="Fermer" @click="closeCell">×</button>
           </header>
 
-          <MemberSelector v-model="selection" :members="membersStore.members" />
+          <template v-if="!selectingCopyTargets">
+            <MemberSelector v-model="selection" :members="membersStore.members" />
 
-          <footer>
-            <AppButton type="button" variant="secondary" @click="closeCell">Annuler</AppButton>
-            <AppButton type="button" variant="secondary" @click="applyTemplate">Appliquer à cette semaine</AppButton>
-            <AppButton type="button" @click="applyCell">Appliquer à ce repas</AppButton>
-          </footer>
+            <footer>
+              <AppButton type="button" variant="secondary" @click="closeCell">Annuler</AppButton>
+              <AppButton type="button" variant="secondary" @click="openCopyTargets">Copier vers des repas…</AppButton>
+              <AppButton type="button" variant="secondary" @click="applyTemplate">Appliquer à cette semaine</AppButton>
+              <AppButton type="button" @click="applyCell">Appliquer à ce repas</AppButton>
+            </footer>
+          </template>
+
+          <template v-else>
+            <div class="attendance-copy">
+              <div>
+                <h3>Choisir les repas à modifier</h3>
+                <p>La sélection de personnes sera copiée uniquement vers les repas cochés.</p>
+              </div>
+
+              <div class="attendance-copy__table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Repas</th>
+                      <th v-for="day in days" :key="day.code" scope="col">{{ day.label }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="mealSlot in mealSlots" :key="mealSlot.code">
+                      <th scope="row">{{ mealSlot.label }}</th>
+                      <td v-for="day in days" :key="day.code">
+                        <button
+                          type="button"
+                          class="attendance-copy__target"
+                          :class="{
+                            'attendance-copy__target--source': isSourceCell(day.code, mealSlot.code),
+                            'attendance-copy__target--selected': isCopyTargetSelected(day.code, mealSlot.code),
+                          }"
+                          :disabled="isSourceCell(day.code, mealSlot.code)"
+                          :aria-pressed="isCopyTargetSelected(day.code, mealSlot.code)"
+                          :aria-label="isSourceCell(day.code, mealSlot.code)
+                            ? `${day.label}, ${mealSlot.label}, repas source`
+                            : `${isCopyTargetSelected(day.code, mealSlot.code) ? 'Retirer' : 'Ajouter'} ${day.label}, ${mealSlot.label}`"
+                          @click="toggleCopyTarget(day.code, mealSlot.code)"
+                        >
+                          <span v-if="isSourceCell(day.code, mealSlot.code)">Source</span>
+                          <span v-else-if="isCopyTargetSelected(day.code, mealSlot.code)" aria-hidden="true">✓</span>
+                          <span v-else aria-hidden="true">+</span>
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <footer>
+              <AppButton type="button" variant="secondary" @click="closeCopyTargets">Retour</AppButton>
+              <span class="attendance-copy__count">
+                {{ copyTargetCount }} repas sélectionné{{ copyTargetCount > 1 ? 's' : '' }}
+              </span>
+              <AppButton type="button" :disabled="!copyTargetCount" @click="applyCopyTargets">
+                Appliquer aux repas sélectionnés
+              </AppButton>
+            </footer>
+          </template>
         </section>
       </div>
     </Teleport>
@@ -385,7 +497,7 @@ onMounted(async () => {
 }
 
 .attendance-modal__panel {
-  width: min(640px, 100%);
+  width: min(760px, 100%);
   display: grid;
   gap: 22px;
   padding: 22px;
@@ -428,10 +540,102 @@ onMounted(async () => {
   cursor: pointer;
 }
 
+.attendance-copy {
+  display: grid;
+  gap: 14px;
+}
+
+.attendance-copy h3,
+.attendance-copy p {
+  margin: 0;
+}
+
+.attendance-copy h3 {
+  font-size: 1rem;
+}
+
+.attendance-copy p,
+.attendance-copy__count {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+.attendance-copy__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.attendance-copy table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.attendance-copy th,
+.attendance-copy td {
+  padding: 5px;
+  border: 1px solid var(--color-border);
+  text-align: center;
+}
+
+.attendance-copy th {
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+}
+
+.attendance-copy thead th:first-child,
+.attendance-copy tbody th {
+  width: 106px;
+  text-align: left;
+}
+
+.attendance-copy__target {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.attendance-copy__target:hover:not(:disabled),
+.attendance-copy__target:focus-visible {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface));
+}
+
+.attendance-copy__target--selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+.attendance-copy__target--source {
+  background: var(--color-surface-muted);
+  color: var(--color-text-tertiary);
+  font-size: 0.68rem;
+  cursor: default;
+}
+
+.attendance-copy__count {
+  margin-left: auto;
+}
+
 @media (max-width: 680px) {
   .attendance-modal footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .attendance-copy__count {
+    margin-left: 0;
+    text-align: center;
   }
 }
 </style>

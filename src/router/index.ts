@@ -5,7 +5,11 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/recipes',
+      name: 'planning-today',
+      component: () => import('../views/planning/DailyMenuView.vue'),
+      meta: {
+        title: 'Menu du jour',
+      },
     },
     {
       path: '/recipes',
@@ -126,10 +130,27 @@ const router = createRouter({
     {
       path: '/planning/preferences',
       name: 'planning-preferences',
-      component: () => import('../views/planning/PlanningPreferencesView.vue'),
-      meta: {
-        title: 'Préférences planning',
-      },
+      redirect: { name: 'planning-list', query: { settings: 'hub' } },
+    },
+    {
+      path: '/planning/preferences/people',
+      name: 'planning-settings-people',
+      redirect: { name: 'planning-list', query: { settings: 'people' } },
+    },
+    {
+      path: '/planning/preferences/vacations',
+      name: 'planning-settings-vacations',
+      redirect: { name: 'planning-list', query: { settings: 'vacations' } },
+    },
+    {
+      path: '/planning/preferences/attendance',
+      name: 'planning-settings-attendance',
+      redirect: { name: 'planning-list', query: { settings: 'attendance' } },
+    },
+    {
+      path: '/planning/preferences/meals',
+      name: 'planning-settings-meals',
+      redirect: { name: 'planning-list', query: { settings: 'meals' } },
     },
     {
       path: '/planning/:uuid',
@@ -159,7 +180,7 @@ const router = createRouter({
     {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
-      redirect: { name: 'recipes-home' },
+      redirect: { name: 'planning-today' },
     },
   ],
 })

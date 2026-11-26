@@ -3,10 +3,11 @@ import { defineStore } from 'pinia'
 import { mealPlannerService, type MealCalendarParams } from '@/services/mealPlannerService'
 import { isNotFoundError } from '@/services/http'
 import type { MealItem, MealItemPayload, MealPlanCreate, MealPlanRead, MealPlanStatus, MealPlanSummary, MealSlot, SlotPatchOperation } from '@/types/mealPlan'
+import { createClientUuid } from '@/utils/clientUuid'
 
 const messageFrom = (err: unknown): string => (err instanceof Error ? err.message : 'Action impossible.')
 const clonePlan = (plan: MealPlanRead): MealPlanRead => JSON.parse(JSON.stringify(plan)) as MealPlanRead
-const pendingItemUuid = (): string => `pending-${crypto.randomUUID()}`
+const pendingItemUuid = (): string => `pending-${createClientUuid()}`
 const isoToday = (): string => new Date().toISOString().slice(0, 10)
 
 const emptyCalendarPlan = (params: MealCalendarParams): MealPlanRead => {
@@ -88,7 +89,7 @@ export const useMealPlanStore = defineStore('mealPlan', () => {
   }
 
   async function create(input: MealPlanCreate): Promise<MealPlanRead> {
-    const { payload, etag } = await mealPlannerService.create(input, crypto.randomUUID())
+    const { payload, etag } = await mealPlannerService.create(input, createClientUuid())
     if (!payload.data) throw new Error('Création impossible.')
     current.value = payload.data
     currentEtag.value = etag

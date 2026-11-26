@@ -6,9 +6,8 @@ const props = defineProps<{
   member: HouseholdMember
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   edit: [member: HouseholdMember]
-  delete: [member: HouseholdMember]
 }>()
 
 const initials = computed(() =>
@@ -20,7 +19,6 @@ const initials = computed(() =>
     .join('') || '?',
 )
 
-const memberTypeLabel = computed(() => props.member.member_type === 'resident' ? 'Foyer' : 'Invité')
 const ageLabel = computed(() => {
   if (!props.member.birth_year) return ''
   const age = new Date().getFullYear() - props.member.birth_year
@@ -36,15 +34,20 @@ const ageLabel = computed(() => {
     </div>
     <div class="household-member-card__body">
       <strong>{{ member.name }}</strong>
-      <span>
-        {{ memberTypeLabel }}
-        <template v-if="ageLabel"> · {{ ageLabel }}</template>
-      </span>
+      <span v-if="ageLabel">{{ ageLabel }}</span>
     </div>
-    <div class="household-member-card__actions">
-      <button type="button" @click="$emit('edit', member)">Modifier</button>
-      <button type="button" class="household-member-card__danger" @click="$emit('delete', member)">Supprimer</button>
-    </div>
+    <button
+      type="button"
+      class="household-member-card__edit"
+      :aria-label="`Modifier ${member.name}`"
+      :title="`Modifier ${member.name}`"
+      @click="emit('edit', member)"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+      </svg>
+    </button>
   </article>
 </template>
 
@@ -52,7 +55,7 @@ const ageLabel = computed(() => {
 .household-member-card {
   min-width: 0;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   padding: 12px;
@@ -97,29 +100,32 @@ const ageLabel = computed(() => {
   font-size: 0.8rem;
 }
 
-.household-member-card__actions {
-  grid-column: 1 / -1;
-  display: flex;
-  gap: 8px;
-}
-
-.household-member-card__actions button {
-  min-height: 32px;
-  padding: 6px 10px;
+.household-member-card__edit {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font: inherit;
-  font-size: 0.82rem;
+  background: transparent;
+  color: var(--color-text-secondary);
   cursor: pointer;
 }
 
-.household-member-card__actions button:hover {
+.household-member-card__edit:hover {
   border-color: var(--color-border-hover);
+  background: var(--color-surface-muted);
+  color: var(--color-text-primary);
 }
 
-.household-member-card__danger {
-  color: var(--color-danger, #b42318) !important;
+.household-member-card__edit svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 </style>

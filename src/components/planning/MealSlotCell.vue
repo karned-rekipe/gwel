@@ -4,9 +4,10 @@ import HouseholdMemberAvatarStack from '@/components/planning/HouseholdMemberAva
 import HouseholdMemberPillList from '@/components/planning/HouseholdMemberPillList.vue'
 import IngredientPicker from '@/components/planning/IngredientPicker.vue'
 import MealItemRow from '@/components/planning/MealItemRow.vue'
+import MemberSelector from '@/components/planning/MemberSelector.vue'
 import RecipePicker from '@/components/planning/RecipePicker.vue'
 import { formatMealLabel } from '@/components/planning/mealSlotLabels'
-import { firstNameFor, initialsFor, membersForIds, textColorFor } from '@/components/planning/memberDisplay'
+import { membersForIds } from '@/components/planning/memberDisplay'
 import { useIngredientWishlistStore } from '@/stores/ingredientWishlistStore'
 import { useRecipeWishlistStore } from '@/stores/recipeWishlistStore'
 import type { HouseholdMember } from '@/types/householdMember'
@@ -16,20 +17,24 @@ import type { Ingredient, Recipe } from '@/types/recipe'
 type AddMode = 'recipe' | 'wishlist' | 'ingredient' | 'note'
 type ItemActionMode = 'move' | 'members'
 type MoveSlotRow = { slot_code: string; label: string }
+type RecipeOpenRequest = { uuid: string; name: string }
 
 const props = defineProps<{
   slot: MealSlot
   mealLabel?: string
   showMealLabel?: boolean
   collapsed?: boolean
+  expanded?: boolean
   readonly?: boolean
   householdMembers?: HouseholdMember[]
   usesNamedMembers?: boolean
   availableSlotRows?: MoveSlotRow[]
+  openRecipeDetails?: boolean
 }>()
 
 const emit = defineEmits<{
   (event: 'patch', operations: SlotPatchOperation[]): void
+  (event: 'openRecipe', recipe: RecipeOpenRequest): void
 }>()
 
 const fullDateFormatter = new Intl.DateTimeFormat('fr-FR', {
@@ -56,6 +61,7 @@ const noteInput = ref('')
 const selectedIngredient = ref<Ingredient | null>(null)
 const selectedIngredientUuid = ref('')
 const slotMemberDraftIds = ref<string[]>([])
+const itemMemberDraftIds = ref<string[]>([])
 const addError = ref<string | null>(null)
 const wishlist = useRecipeWishlistStore()
 const ingredientWishlist = useIngredientWishlistStore()
@@ -283,6 +289,9 @@ const openItemActionMode = (mode: ItemActionMode, item: MealItem): void => {
   activeAddMode.value = null
   activeItemActionMode.value = mode
   activeItemUuid.value = item.uuid
+  if (mode === 'members') {
+    itemMemberDraftIds.value = memberIdsForItem(item)
+  }
   addError.value = null
 }
 
@@ -356,9 +365,6 @@ const memberIdsForItem = (item: MealItem): string[] => {
   return itemMemberIds.length ? [...itemMemberIds] : [...slotMemberIds.value]
 }
 
-const isItemMemberSelected = (item: MealItem, memberUuid: string): boolean =>
-  memberIdsForItem(item).includes(memberUuid)
-
 const updateItemMembers = (item: MealItem, memberIds: string[]): void => {
   if (!memberIds.length) {
     addError.value = 'Au moins un participant doit rester associé à ce contenu.'
@@ -378,16 +384,14 @@ const updateItemMembers = (item: MealItem, memberIds: string[]): void => {
   }])
 }
 
-const toggleItemMember = (item: MealItem, member: HouseholdMember): void => {
-  const currentIds = memberIdsForItem(item)
-  const nextIds = currentIds.includes(member.uuid)
-    ? currentIds.filter((uuid) => uuid !== member.uuid)
-    : [...currentIds, member.uuid]
-  updateItemMembers(item, nextIds)
+const setItemMembers = (item: MealItem, memberIds: string[]): void => {
+  if (!memberIds.length) {
+    addError.value = 'Au moins un participant doit rester associé à ce contenu.'
+    return
+  }
+  itemMemberDraftIds.value = memberIds
+  updateItemMembers(item, memberIds)
 }
-
-const isSlotMemberSelected = (memberUuid: string): boolean =>
-  slotMemberDraftIds.value.includes(memberUuid)
 
 const updateSlotMembers = (memberIds: string[]): void => {
   addError.value = null
@@ -399,13 +403,9 @@ const updateSlotMembers = (memberIds: string[]): void => {
   }])
 }
 
-const toggleSlotMember = (member: HouseholdMember): void => {
-  const currentIds = slotMemberDraftIds.value
-  const nextIds = currentIds.includes(member.uuid)
-    ? currentIds.filter((uuid) => uuid !== member.uuid)
-    : [...currentIds, member.uuid]
-  slotMemberDraftIds.value = nextIds
-  updateSlotMembers(nextIds)
+const setSlotMembers = (memberIds: string[]): void => {
+  slotMemberDraftIds.value = memberIds
+  updateSlotMembers(memberIds)
 }
 
 const addRecipe = (recipe: Recipe): boolean => {
@@ -501,24 +501,25 @@ const addNote = (): void => {
   <section
     class="meal-slot"
     :class="{
-      'meal-slot--empty': !slot.items.length && !collapsed,
+      'meal-slot--empty': !slot.items.length && !collapsed && (!expanded || !slotHeadcount),
       'meal-slot--collapsed': collapsed,
+      'meal-slot--expanded': expanded,
       'meal-slot--editable': !readonly,
       'meal-slot--with-indicators': hasSlotIndicators,
       'meal-slot--without-label': showMealLabel === false,
     }"
-    :role="readonly ? undefined : 'button'"
-    :tabindex="readonly ? undefined : 0"
-    :aria-label="readonly ? undefined : `Modifier ${mealLabel} du ${slot.date}`"
-    @click="openEditorModal()"
-    @keydown.enter="openEditorModal()"
-    @keydown.space.prevent="openEditorModal()"
+    :role="readonly || expanded ? undefined : 'button'"
+    :tabindex="readonly || expanded ? undefined : 0"
+    :aria-label="readonly || expanded ? undefined : `Modifier ${mealLabel} du ${slot.date}`"
+    @click="!expanded && openEditorModal()"
+    @keydown.enter="!expanded && openEditorModal()"
+    @keydown.space.prevent="!expanded && openEditorModal()"
   >
     <header v-if="showMealLabel !== false" class="meal-slot__header">
       <strong>{{ mealLabel }}</strong>
     </header>
 
-    <div v-if="hasSlotIndicators" class="meal-slot__indicators">
+    <div v-if="!expanded && hasSlotIndicators" class="meal-slot__indicators">
       <span
         class="meal-slot__planned-count"
         :aria-label="plannedItemCount ? plannedItemLabel : undefined"
@@ -549,6 +550,28 @@ const addNote = (): void => {
       </span>
     </div>
 
+    <section
+      v-if="expanded && usesNamedMembers && slotMembers.length"
+      class="meal-slot__participants"
+      aria-label="Participants du repas"
+    >
+      <strong>Participants</strong>
+      <HouseholdMemberPillList
+        :members="slotMembers"
+        flat
+        full-names
+      />
+    </section>
+
+    <div
+      v-else-if="expanded && !usesNamedMembers && slotHeadcount"
+      class="meal-slot__participants"
+      :aria-label="slotHeadcountLabel"
+    >
+      <strong>Participants</strong>
+      <span>{{ slotHeadcountLabel }}</span>
+    </div>
+
     <div v-if="!collapsed && slot.items.length" class="meal-slot__items">
       <MealItemRow
         v-for="item in slot.items"
@@ -561,6 +584,8 @@ const addNote = (): void => {
         :slot-date="slot.date"
         :slot-code="slot.slot_code"
         :readonly="readonly"
+        :open-recipe-details="openRecipeDetails"
+        @open-recipe="emit('openRecipe', $event)"
       />
     </div>
 
@@ -720,7 +745,11 @@ const addNote = (): void => {
               </div>
             </div>
 
-            <form v-else-if="activeAddMode === 'ingredient'" class="meal-slot-modal__form" @submit.prevent>
+            <form
+              v-else-if="activeAddMode === 'ingredient'"
+              class="meal-slot-modal__form meal-slot-modal__form--ingredient"
+              @submit.prevent
+            >
               <label class="meal-slot-modal__field">
                 <span>Ingrédient</span>
                 <IngredientPicker
@@ -777,40 +806,22 @@ const addNote = (): void => {
 
             <div v-else-if="activeItemActionMode === 'members' && !activeItem" class="meal-slot-modal__content">
               <p v-if="!availableItemMembers.length" class="meal-slot-modal__state">Aucun participant disponible.</p>
-              <div v-else class="meal-slot-modal__member-picker" aria-label="Choisir les participants du repas">
-                <button
-                  v-for="member in availableItemMembers"
-                  :key="member.uuid"
-                  type="button"
-                  class="meal-slot-modal__member-toggle"
-                  :class="{ 'is-selected': isSlotMemberSelected(member.uuid) }"
-                  :style="isSlotMemberSelected(member.uuid) ? { backgroundColor: member.color, color: textColorFor(member.color) } : undefined"
-                  :aria-pressed="isSlotMemberSelected(member.uuid)"
-                  @click="toggleSlotMember(member)"
-                >
-                  <span class="meal-slot-modal__member-initials">{{ initialsFor(member.name) }}</span>
-                  {{ firstNameFor(member.name) }}
-                </button>
-              </div>
+              <MemberSelector
+                v-else
+                :model-value="slotMemberDraftIds"
+                :members="availableItemMembers"
+                @update:model-value="setSlotMembers"
+              />
             </div>
 
             <div v-else-if="activeItemActionMode === 'members' && activeItem" class="meal-slot-modal__content">
               <p v-if="!availableItemMembers.length" class="meal-slot-modal__state">Aucun participant disponible.</p>
-              <div v-else class="meal-slot-modal__member-picker" aria-label="Choisir les participants">
-                <button
-                  v-for="member in availableItemMembers"
-                  :key="member.uuid"
-                  type="button"
-                  class="meal-slot-modal__member-toggle"
-                  :class="{ 'is-selected': isItemMemberSelected(activeItem, member.uuid) }"
-                  :style="isItemMemberSelected(activeItem, member.uuid) ? { backgroundColor: member.color, color: textColorFor(member.color) } : undefined"
-                  :aria-pressed="isItemMemberSelected(activeItem, member.uuid)"
-                  @click="toggleItemMember(activeItem, member)"
-                >
-                  <span class="meal-slot-modal__member-initials">{{ initialsFor(member.name) }}</span>
-                  {{ firstNameFor(member.name) }}
-                </button>
-              </div>
+              <MemberSelector
+                v-else
+                :model-value="itemMemberDraftIds"
+                :members="availableItemMembers"
+                @update:model-value="setItemMembers(activeItem, $event)"
+              />
             </div>
           </div>
 
@@ -855,10 +866,21 @@ const addNote = (): void => {
   cursor: pointer;
 }
 
+.meal-slot--expanded {
+  height: auto;
+  display: block;
+  cursor: default;
+}
+
 .meal-slot--editable:hover,
 .meal-slot--editable:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--color-primary) 52%, transparent);
   outline-offset: -2px;
+}
+
+.meal-slot--expanded:hover,
+.meal-slot--expanded:focus-visible {
+  outline: 0;
 }
 
 .meal-slot--empty {
@@ -905,6 +927,29 @@ const addNote = (): void => {
   scrollbar-gutter: stable;
 }
 
+.meal-slot--expanded .meal-slot__items {
+  max-height: none;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 220px));
+  grid-auto-rows: minmax(210px, auto);
+  justify-content: start;
+  overflow: visible;
+  overscroll-behavior: auto;
+  scrollbar-gutter: auto;
+}
+
+.meal-slot--expanded .meal-slot__items :deep(.meal-item__body) {
+  max-height: none;
+  overflow: visible;
+}
+
+.meal-slot--expanded .meal-slot__items :deep(.meal-item__body strong),
+.meal-slot--expanded .meal-slot__items :deep(.meal-item__body span) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  -webkit-line-clamp: unset;
+}
+
 .meal-slot__items :deep(.meal-item) {
   min-width: var(--meal-card-min-width);
   min-height: var(--meal-card-min-height);
@@ -918,6 +963,42 @@ const addNote = (): void => {
   min-height: 22px;
   min-width: 0;
   pointer-events: none;
+}
+
+@media (max-width: 520px) {
+  .meal-slot--expanded .meal-slot__items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.meal-slot__participants {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.meal-slot__participants > strong {
+  color: var(--color-text-secondary);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.meal-slot__participants > span {
+  color: var(--color-text-primary);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+@media (max-width: 520px) {
+  .meal-slot__participants {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
 }
 
 .meal-slot__planned-count,
@@ -997,9 +1078,10 @@ const addNote = (): void => {
   width: min(1120px, calc(100vw - 36px));
   height: min(860px, calc(100vh - 88px));
   max-height: calc(100vh - 88px);
-  overflow: auto;
+  overflow: hidden;
   display: grid;
-  align-content: start;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
   gap: 8px;
   padding: 14px;
   border: 1px solid var(--color-border);
@@ -1049,8 +1131,9 @@ const addNote = (): void => {
 
 .meal-slot-modal__members {
   min-width: 0;
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 8px;
   padding: 0;
 }
@@ -1074,6 +1157,17 @@ const addNote = (): void => {
   min-height: 0;
   display: grid;
   gap: 10px;
+}
+
+.meal-slot-modal__overview {
+  align-content: start;
+  grid-auto-rows: max-content;
+  overflow-y: auto;
+}
+
+.meal-slot-modal__subview {
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .meal-slot-modal__subview-header {
@@ -1201,8 +1295,20 @@ const addNote = (): void => {
 
 .meal-slot-modal__content,
 .meal-slot-modal__form {
+  min-height: 0;
+  overflow-y: auto;
   display: grid;
   gap: 10px;
+}
+
+.meal-slot-modal__form--ingredient {
+  height: 100%;
+  overflow: hidden;
+}
+
+.meal-slot-modal__form--ingredient .meal-slot-modal__field {
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .meal-slot-modal__content--recipe {
@@ -1412,39 +1518,6 @@ const addNote = (): void => {
   z-index: 3;
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
-}
-
-.meal-slot-modal__member-picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-content: start;
-}
-
-.meal-slot-modal__member-toggle {
-  min-height: 34px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 10px 5px 5px;
-  border-radius: var(--radius-full) !important;
-  background: var(--color-surface);
-}
-
-.meal-slot-modal__member-toggle.is-selected {
-  border-color: transparent;
-}
-
-.meal-slot-modal__member-initials {
-  width: 23px;
-  height: 23px;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--color-surface) 76%, transparent);
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, currentColor 12%, transparent);
-  font-size: 0.62rem;
-  font-weight: 800;
 }
 
 .meal-slot-modal__wishlist-grid {

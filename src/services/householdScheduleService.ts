@@ -4,6 +4,8 @@ import type { ApiResponse } from '@/types/api'
 import type {
   HouseholdSchedule,
   HouseholdScheduleUpdate,
+  SchoolVacationCalendarSyncPayload,
+  SchoolVacationCalendarSyncResult,
   SchoolVacationPeriod,
   SchoolVacationPeriodPayload,
 } from '@/types/householdSchedule'
@@ -25,14 +27,38 @@ export const householdScheduleService = {
     return { payload: unwrapApiResponse(response.data), etag: readEtag(response.headers) }
   },
 
+  async updateSchoolZone(
+    etag: string,
+    schoolZone: HouseholdSchedule['school_zone'],
+  ): Promise<{ payload: HouseholdSchedule; etag: string }> {
+    const response = await householdScheduleApi.put<ApiResponse<HouseholdSchedule>>(
+      '/household-schedule/school-zone',
+      { school_zone: schoolZone ?? null },
+      { headers: { 'If-Match': etag } },
+    )
+    return { payload: unwrapApiResponse(response.data), etag: readEtag(response.headers) }
+  },
+
   async listVacationPeriods(): Promise<SchoolVacationPeriod[]> {
-    const response = await householdScheduleApi.get<ApiResponse<SchoolVacationPeriod[]>>('/school-vacation-periods/')
+    const response = await householdScheduleApi.get<ApiResponse<SchoolVacationPeriod[]>>('/school-vacation-periods/', {
+      params: { refresh: Date.now() },
+    })
     return unwrapApiResponse(response.data)
   },
 
   async createVacationPeriod(payload: SchoolVacationPeriodPayload): Promise<{ payload: SchoolVacationPeriod; etag: string }> {
     const response = await householdScheduleApi.post<ApiResponse<SchoolVacationPeriod>>('/school-vacation-periods/', payload)
     return { payload: unwrapApiResponse(response.data), etag: readEtag(response.headers) }
+  },
+
+  async syncOfficialVacationPeriods(
+    payload: SchoolVacationCalendarSyncPayload,
+  ): Promise<SchoolVacationCalendarSyncResult> {
+    const response = await householdScheduleApi.post<ApiResponse<SchoolVacationCalendarSyncResult>>(
+      '/school-vacation-periods/sync-official',
+      payload,
+    )
+    return unwrapApiResponse(response.data)
   },
 
   async updateVacationPeriod(

@@ -1,7 +1,5 @@
 export type Gender = 'male' | 'female'
 export type MemberType = 'resident' | 'recurring_guest'
-export type ScheduleMode = 'headcount' | 'members'
-
 export interface HouseholdMember {
   uuid: string
   version: number

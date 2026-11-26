@@ -2,17 +2,21 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import MealPlanWeekGrid from '@/components/planning/MealPlanWeekGrid.vue'
+import PlanningMembersRequired from '@/components/planning/PlanningMembersRequired.vue'
 import PlanStatusBadge from '@/components/planning/PlanStatusBadge.vue'
 import PlanTransitionMenu from '@/components/planning/PlanTransitionMenu.vue'
 import ShoppingProjectionPanel from '@/components/planning/ShoppingProjectionPanel.vue'
 import { mealPlannerService } from '@/services/mealPlannerService'
 import { useMealPlanStore } from '@/stores/mealPlanStore'
+import { useHouseholdMembersStore } from '@/stores/householdMembersStore'
 import type { MealPlanStatus, ShoppingProjection, SlotPatchOperation } from '@/types/mealPlan'
 
 const props = defineProps<{ uuid: string }>()
 
 const router = useRouter()
 const store = useMealPlanStore()
+const membersStore = useHouseholdMembersStore()
+const membersLoaded = ref(false)
 const projection = ref<ShoppingProjection | null>(null)
 const projectionLoading = ref(false)
 const actionError = ref<string | null>(null)
@@ -68,11 +72,19 @@ const removePlan = async (): Promise<void> => {
 }
 
 watch(() => props.uuid, () => {
-  void loadPlan()
+  if (membersLoaded.value && membersStore.members.length && !membersStore.error) {
+    void loadPlan()
+  }
 })
 
 onMounted(() => {
-  void loadPlan()
+  void (async () => {
+    await membersStore.fetchMembers()
+    membersLoaded.value = true
+    if (membersStore.members.length && !membersStore.error) {
+      await loadPlan()
+    }
+  })()
 })
 </script>
 
@@ -80,7 +92,11 @@ onMounted(() => {
   <main class="planning-detail">
     <RouterLink :to="{ name: 'planning-list' }" class="planning-detail__back">Retour aux plans</RouterLink>
 
-    <p v-if="store.loading" class="planning-detail__muted">Chargement…</p>
+    <p v-if="membersStore.error" class="planning-detail__error">{{ membersStore.error }}</p>
+    <p v-if="store.loading || !membersLoaded" class="planning-detail__muted">Chargement…</p>
+    <PlanningMembersRequired
+      v-else-if="!membersStore.error && !membersStore.members.length"
+    />
     <p v-else-if="store.error" class="planning-detail__error">{{ store.error }}</p>
     <template v-else-if="plan">
       <header class="planning-detail__header">
@@ -105,6 +121,8 @@ onMounted(() => {
         <MealPlanWeekGrid
           :plan="plan"
           :readonly="store.isReadonly"
+          :household-members="membersStore.members"
+          :uses-named-members="true"
           @patch="applyPatch"
         />
         <ShoppingProjectionPanel :projection="projection" :loading="projectionLoading" />

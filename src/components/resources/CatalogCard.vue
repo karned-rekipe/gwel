@@ -6,6 +6,7 @@ const props = defineProps<{
   name: string
   imageUrl?: string | null
   kind: 'ingredient' | 'equipment'
+  actionLabel?: string
 }>()
 
 defineEmits<{
@@ -21,7 +22,7 @@ const initial = computed(() => props.name.trim().charAt(0).toLocaleUpperCase('fr
     class="catalog-card"
     role="button"
     tabindex="0"
-    :aria-label="`Voir ${name}`"
+    :aria-label="`${actionLabel ?? 'Voir'} ${name}`"
     @click="$emit('click')"
     @keydown.enter="$emit('click')"
     @keydown.space.prevent="$emit('click')"

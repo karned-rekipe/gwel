@@ -10,11 +10,12 @@ const DEFAULT_COLORS = [DEFAULT_COLOR, '#2f855a', '#d97706', '#7c3aed', '#dc2626
 
 const props = defineProps<{
   member?: HouseholdMember | null
+  defaultMemberType?: MemberType
 }>()
 
 const emit = defineEmits<{
   close: []
-  saved: []
+  saved: [member: HouseholdMember]
 }>()
 
 const store = useHouseholdMembersStore()
@@ -35,7 +36,7 @@ const title = computed(() => props.member ? 'Modifier une personne' : 'Ajouter u
 
 const resetForm = (): void => {
   form.name = props.member?.name ?? ''
-  form.member_type = props.member?.member_type ?? 'resident'
+  form.member_type = props.member?.member_type ?? props.defaultMemberType ?? 'resident'
   form.gender = props.member?.gender ?? null
   form.birth_year = props.member?.birth_year ?? null
   form.color = props.member?.color ?? DEFAULT_COLORS[Math.floor(Math.random() * DEFAULT_COLORS.length)] ?? DEFAULT_COLOR
@@ -44,7 +45,7 @@ const resetForm = (): void => {
   error.value = null
 }
 
-watch(() => props.member, resetForm, { immediate: true })
+watch(() => [props.member, props.defaultMemberType], resetForm, { immediate: true })
 
 const toBase64 = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -78,16 +79,29 @@ const submit = async (): Promise<void> => {
       birth_year: form.birth_year || null,
       color: form.color,
     }
-    const saved = props.member
+    let saved = props.member
       ? await store.updateMember(props.member.uuid, payload)
       : await store.createMember(payload)
     if (avatarFileData.value) {
-      await store.updateAvatar(saved.uuid, avatarFileData.value)
+      saved = await store.updateAvatar(saved.uuid, avatarFileData.value)
     }
-    emit('saved')
-    emit('close')
+    emit('saved', saved)
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Enregistrement impossible.'
+  } finally {
+    saving.value = false
+  }
+}
+
+const deleteMember = async (): Promise<void> => {
+  if (!props.member || !window.confirm(`Supprimer ${props.member.name} ?`)) return
+  saving.value = true
+  error.value = null
+  try {
+    await store.removeMember(props.member.uuid)
+    emit('close')
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Suppression impossible.'
   } finally {
     saving.value = false
   }
@@ -96,7 +110,14 @@ const submit = async (): Promise<void> => {
 
 <template>
   <Teleport to="body">
-    <div class="member-modal" role="dialog" aria-modal="true" :aria-label="title" @click.self="$emit('close')">
+    <div
+      class="member-modal"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="title"
+      @click.self="$emit('close')"
+      @keydown.esc.stop="$emit('close')"
+    >
       <form class="member-modal__panel" @submit.prevent="submit">
         <header class="member-modal__header">
           <h2>{{ title }}</h2>
@@ -105,16 +126,22 @@ const submit = async (): Promise<void> => {
 
         <p v-if="error" class="member-modal__error">{{ error }}</p>
 
-        <div class="member-modal__avatar-row">
-          <div class="member-modal__avatar" :style="{ backgroundColor: form.color }" aria-hidden="true">
+        <label class="member-modal__avatar-picker">
+          <span class="member-modal__avatar" :style="{ backgroundColor: form.color }" aria-hidden="true">
             <img v-if="avatarPreview" :src="avatarPreview" alt="" />
             <span v-else>{{ form.name.trim().charAt(0).toLocaleUpperCase('fr-FR') || '?' }}</span>
-          </div>
-          <label>
-            Avatar
-            <input type="file" accept="image/jpeg,image/png,image/webp" @change="onAvatarChange" />
-          </label>
-        </div>
+          </span>
+          <span>
+            <strong>{{ avatarPreview ? 'Modifier l’image' : 'Ajouter une image' }}</strong>
+            <small>JPEG, PNG ou WebP · 2 Mo maximum</small>
+          </span>
+          <input
+            class="member-modal__avatar-input"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            @change="onAvatarChange"
+          />
+        </label>
 
         <label>
           Nom
@@ -151,8 +178,20 @@ const submit = async (): Promise<void> => {
         </div>
 
         <footer class="member-modal__actions">
-          <AppButton type="button" variant="secondary" @click="$emit('close')">Annuler</AppButton>
-          <AppButton type="submit" :disabled="saving">{{ saving ? 'Enregistrement…' : 'Enregistrer' }}</AppButton>
+          <AppButton
+            v-if="member"
+            type="button"
+            variant="danger"
+            :disabled="saving"
+            @click="deleteMember"
+          >
+            Supprimer
+          </AppButton>
+          <span v-else></span>
+          <div class="member-modal__actions-main">
+            <AppButton type="button" variant="secondary" @click="$emit('close')">Annuler</AppButton>
+            <AppButton type="submit" :disabled="saving">{{ saving ? 'Enregistrement…' : 'Enregistrer' }}</AppButton>
+          </div>
         </footer>
       </form>
     </div>
@@ -163,7 +202,7 @@ const submit = async (): Promise<void> => {
 .member-modal {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 240;
   overflow: auto;
   display: grid;
   place-items: center;
@@ -183,7 +222,7 @@ const submit = async (): Promise<void> => {
 
 .member-modal__header,
 .member-modal__actions,
-.member-modal__avatar-row,
+.member-modal__actions-main,
 .member-modal__grid {
   display: flex;
   gap: 12px;
@@ -211,8 +250,43 @@ const submit = async (): Promise<void> => {
   cursor: pointer;
 }
 
-.member-modal__avatar-row {
+.member-modal label.member-modal__avatar-picker {
+  position: relative;
   align-items: center;
+  display: flex;
+  gap: 14px;
+  padding: 12px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.member-modal__avatar-picker:hover {
+  border-color: var(--color-primary);
+  background: var(--color-surface-muted);
+}
+
+.member-modal__avatar-picker > span:last-of-type {
+  display: grid;
+  gap: 3px;
+}
+
+.member-modal__avatar-picker strong {
+  color: var(--color-text-primary);
+  font-size: 0.9rem;
+}
+
+.member-modal__avatar-picker small {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.member-modal__avatar-input {
+  position: absolute;
+  width: 1px !important;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .member-modal__avatar {
@@ -271,9 +345,17 @@ const submit = async (): Promise<void> => {
 }
 
 @media (max-width: 560px) {
-  .member-modal__grid,
-  .member-modal__avatar-row {
+  .member-modal__grid {
     flex-direction: column;
+  }
+
+  .member-modal__actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .member-modal__actions-main {
+    justify-content: flex-end;
   }
 }
 </style>

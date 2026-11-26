@@ -1027,8 +1027,9 @@ const addNote = (): void => {
 
 .meal-slot-modal__members {
   min-width: 0;
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 8px;
   padding: 0;
 }

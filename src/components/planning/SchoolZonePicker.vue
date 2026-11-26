@@ -42,12 +42,12 @@ const selectedLabel = computed(() => SCHOOL_ZONE_OPTIONS.find((option) => option
         </span>
       </span>
 
-      <svg class="school-zone-card__map" viewBox="0 0 100 108" role="img" :aria-label="`Carte ${option.label}`">
+      <svg class="school-zone-card__map" viewBox="0 0 100 112" role="img" :aria-label="`Carte ${option.label}`">
         <path
           class="school-zone-card__france"
-          d="M52 5 68 10 80 20 88 35 84 49 91 60 80 72 75 91 61 102 48 96 34 101 24 89 15 75 18 62 9 50 14 35 25 26 31 13Z"
+          d="M63 11.8 68 16.5 71.6 15.8 77.8 20.4 79.4 21.2 81.4 21 84.8 23.7 95 25.5 91.4 32.5 90.5 39.7 88.6 41.4 85.3 40.5 85.6 43 80.4 48.7 80.3 53.3 83.7 51.7 86.1 56.1 85.8 59 87.9 62.8 85.4 65.9 87.3 73.7 91.1 75 90.3 79.3 83.9 85.1 69.9 82.3 59.6 85.6 58.7 91.7 50.5 93 42.5 88.4 40 90.6 26.9 86 24.1 82.1 27.7 76 29.1 55.9 21.8 45.3 16.6 40.2 5.7 36.3 5 28.9 14.2 26.7 26.1 29.3 23.9 17.9 30.5 22.2 47.1 14.3 49.2 6 55.4 4 56.4 7.6 59.7 7.7Z"
         />
-        <path class="school-zone-card__corsica" d="m88 87 5 4-2 12-5-6Z" />
+        <path class="school-zone-card__corsica" d="M91 102.3 87.4 108 82.5 106.5 80 101.5 82.2 98.8 89.2 96Z" />
         <circle
           v-for="academy in SCHOOL_ACADEMY_MARKERS"
           :key="academy.name"
@@ -162,8 +162,7 @@ const selectedLabel = computed(() => SCHOOL_ZONE_OPTIONS.find((option) => option
   stroke-width: 1.3;
 }
 
-.school-zone-card--selected .school-zone-card__france,
-.school-zone-card--selected .school-zone-card__corsica {
+.school-zone-card--selected .school-zone-card__france {
   fill: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface));
   stroke: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
 }

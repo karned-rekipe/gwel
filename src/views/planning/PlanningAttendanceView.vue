@@ -172,11 +172,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <PlanningSettingsShell
-    eyebrow="Configuration"
-    title="Présences aux repas"
-    description="Sélectionnez les personnes présentes pour chaque repas. Le nombre de convives est calculé automatiquement à partir de ces choix."
-  >
+  <PlanningSettingsShell title="Présences aux repas">
     <p v-if="loading" class="attendance-page__muted">Chargement…</p>
     <p v-if="error || membersStore.error || preferencesStore.error" class="attendance-page__error">
       {{ error || membersStore.error || preferencesStore.error }}
@@ -186,10 +182,6 @@ onMounted(async () => {
     <PlanningMembersRequired v-if="!loading && !membersStore.members.length" />
 
     <template v-else-if="!loading">
-      <div class="attendance-page__hint">
-        Cliquez sur une cellule pour choisir les personnes présentes. Une cellule vide signifie qu’aucune présence habituelle n’est définie.
-      </div>
-
       <section class="attendance-page__templates">
         <article v-for="template in templates" :key="template.id" class="attendance-page__template">
           <h2>{{ template.label }}</h2>
@@ -265,15 +257,6 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.attendance-page__hint {
-  margin-bottom: 20px;
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
-  color: var(--color-text-secondary);
-  font-size: 0.9rem;
-}
-
 .attendance-page__templates {
   display: grid;
   gap: 24px;

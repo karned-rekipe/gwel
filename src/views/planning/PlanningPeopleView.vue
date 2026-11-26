@@ -48,11 +48,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <PlanningSettingsShell
-    eyebrow="Configuration obligatoire"
-    title="Personnes"
-    description="Le planning repose sur des personnes nommées. Ajoutez les membres du foyer et les invités réguliers qui peuvent participer aux repas."
-  >
+  <PlanningSettingsShell title="Personnes">
     <div class="people-page__toolbar">
       <p v-if="membersStore.loading">Chargement…</p>
       <p v-else>{{ membersStore.members.length }} personne{{ membersStore.members.length > 1 ? 's' : '' }}</p>

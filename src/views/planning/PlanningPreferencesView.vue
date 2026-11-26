@@ -6,6 +6,12 @@ import { useHouseholdMembersStore } from '@/stores/householdMembersStore'
 import { useTenantPreferencesStore } from '@/stores/tenantPreferencesStore'
 import type { HouseholdSchedule, SchoolVacationPeriod } from '@/types/householdSchedule'
 
+type SettingsSection = 'people' | 'vacations' | 'attendance' | 'meals'
+
+const emit = defineEmits<{
+  navigate: [section: SettingsSection]
+}>()
+
 const membersStore = useHouseholdMembersStore()
 const preferencesStore = useTenantPreferencesStore()
 const schedule = ref<HouseholdSchedule | null>(null)
@@ -19,7 +25,7 @@ const activeOfficialPeriods = computed(() =>
 
 const cards = computed(() => [
   {
-    route: 'planning-settings-people',
+    section: 'people' as const,
     icon: 'P',
     title: 'Personnes',
     description: 'Définir les membres du foyer et les invités réguliers.',
@@ -29,7 +35,7 @@ const cards = computed(() => [
     required: !membersStore.members.length,
   },
   {
-    route: 'planning-settings-vacations',
+    section: 'vacations' as const,
     icon: 'A·B·C',
     title: 'Vacances scolaires',
     description: 'Choisir la zone et synchroniser le calendrier officiel.',
@@ -39,7 +45,7 @@ const cards = computed(() => [
     required: !schedule.value?.school_zone,
   },
   {
-    route: 'planning-settings-attendance',
+    section: 'attendance' as const,
     icon: '✓',
     title: 'Présences aux repas',
     description: 'Indiquer qui est présent selon les semaines, les jours et les vacances.',
@@ -49,7 +55,7 @@ const cards = computed(() => [
     required: false,
   },
   {
-    route: 'planning-settings-meals',
+    section: 'meals' as const,
     icon: 'R',
     title: 'Repas et préférences',
     description: 'Configurer les repas, exclusions et recettes favorites.',
@@ -79,23 +85,19 @@ onMounted(async () => {
 </script>
 
 <template>
-  <PlanningSettingsShell
-    eyebrow="Planification"
-    title="Configuration"
-    description="Chaque sujet dispose de sa propre page. Commencez par les personnes : elles sont obligatoires pour utiliser le planning."
-    back-to="planning"
-  >
+  <PlanningSettingsShell title="Configuration">
     <p v-if="loading" class="settings-hub__message">Chargement…</p>
     <p v-if="error || membersStore.error || preferencesStore.error" class="settings-hub__error">
       {{ error || membersStore.error || preferencesStore.error }}
     </p>
 
     <section class="settings-hub" aria-label="Rubriques de configuration">
-      <RouterLink
+      <button
         v-for="card in cards"
-        :key="card.route"
-        :to="{ name: card.route }"
+        :key="card.section"
+        type="button"
         class="settings-hub__card"
+        @click="emit('navigate', card.section)"
       >
         <span class="settings-hub__icon" aria-hidden="true">{{ card.icon }}</span>
         <div class="settings-hub__content">
@@ -107,7 +109,7 @@ onMounted(async () => {
           <strong>{{ card.status }}</strong>
         </div>
         <span class="settings-hub__arrow" aria-hidden="true">→</span>
-      </RouterLink>
+      </button>
     </section>
   </PlanningSettingsShell>
 </template>
@@ -130,14 +132,15 @@ onMounted(async () => {
   border-radius: var(--radius-lg);
   background: var(--color-surface);
   color: inherit;
-  text-decoration: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   transition: border-color var(--transition-base), transform var(--transition-base), box-shadow var(--transition-base);
 }
 
 .settings-hub__card:hover {
   border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
   color: inherit;
-  text-decoration: none;
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }

@@ -8,7 +8,7 @@
         La planification fonctionne uniquement avec des personnes nommées. Ajoutez au moins une
         personne avant de définir les présences et de remplir le calendrier.
       </p>
-      <RouterLink :to="{ name: 'planning-settings-people' }" class="planning-members-required__action">
+      <RouterLink :to="{ query: { settings: 'people' } }" class="planning-members-required__action">
         Configurer les personnes
       </RouterLink>
     </div>

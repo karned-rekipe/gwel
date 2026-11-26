@@ -140,11 +140,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <PlanningSettingsShell
-    eyebrow="Configuration"
-    title="Vacances scolaires"
-    description="Choisissez votre zone puis récupérez le calendrier officiel. Les périodes manuelles restent disponibles pour les congés propres au foyer."
-  >
+  <PlanningSettingsShell title="Vacances scolaires">
     <p v-if="loading" class="vacations-page__muted">Chargement…</p>
     <p v-if="error" class="vacations-page__error">{{ error }}</p>
     <p v-if="success" class="vacations-page__success">{{ success }}</p>

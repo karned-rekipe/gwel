@@ -87,11 +87,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <PlanningSettingsShell
-    eyebrow="Configuration"
-    title="Repas et préférences"
-    description="Définissez les créneaux visibles dans le planning ainsi que les exclusions et recettes favorites utilisées pour les suggestions."
-  >
+  <PlanningSettingsShell title="Repas et préférences">
     <p v-if="store.loading" class="meal-preferences__muted">Chargement…</p>
     <p v-if="store.error" class="meal-preferences__error">{{ store.error }}</p>
     <p v-if="success" class="meal-preferences__success">{{ success }}</p>

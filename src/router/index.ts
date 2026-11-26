@@ -126,42 +126,27 @@ const router = createRouter({
     {
       path: '/planning/preferences',
       name: 'planning-preferences',
-      component: () => import('../views/planning/PlanningPreferencesView.vue'),
-      meta: {
-        title: 'Configuration planning',
-      },
+      redirect: { name: 'planning-list', query: { settings: 'hub' } },
     },
     {
       path: '/planning/preferences/people',
       name: 'planning-settings-people',
-      component: () => import('../views/planning/PlanningPeopleView.vue'),
-      meta: {
-        title: 'Personnes du foyer',
-      },
+      redirect: { name: 'planning-list', query: { settings: 'people' } },
     },
     {
       path: '/planning/preferences/vacations',
       name: 'planning-settings-vacations',
-      component: () => import('../views/planning/PlanningVacationsView.vue'),
-      meta: {
-        title: 'Vacances scolaires',
-      },
+      redirect: { name: 'planning-list', query: { settings: 'vacations' } },
     },
     {
       path: '/planning/preferences/attendance',
       name: 'planning-settings-attendance',
-      component: () => import('../views/planning/PlanningAttendanceView.vue'),
-      meta: {
-        title: 'Présences aux repas',
-      },
+      redirect: { name: 'planning-list', query: { settings: 'attendance' } },
     },
     {
       path: '/planning/preferences/meals',
       name: 'planning-settings-meals',
-      component: () => import('../views/planning/PlanningMealPreferencesView.vue'),
-      meta: {
-        title: 'Repas et préférences',
-      },
+      redirect: { name: 'planning-list', query: { settings: 'meals' } },
     },
     {
       path: '/planning/:uuid',

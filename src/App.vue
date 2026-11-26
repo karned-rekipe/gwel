@@ -1,20 +1,37 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
+import PlanningSettingsModal, {
+  type PlanningSettingsSection,
+} from '@/components/planning/PlanningSettingsModal.vue'
 import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 
 const route = useRoute()
+const router = useRouter()
 const recipeCatalog = useRecipeCatalogStore()
 const isMenuOpen = ref(false)
+const planningSettingsSections: PlanningSettingsSection[] = ['hub', 'people', 'vacations', 'attendance', 'meals']
 
 const isPlanningRoute = computed(() => String(route.name).startsWith('planning-'))
-const settingsRoute = computed(() => (isPlanningRoute.value ? { name: 'planning-preferences' } : { name: 'ingredient-settings' }))
 const settingsLabel = computed(() => (isPlanningRoute.value ? 'Configuration planning' : 'Réglages'))
+const planningSettingsSection = computed<PlanningSettingsSection | null>(() => {
+  const value = String(route.query.settings ?? '')
+  return isPlanningRoute.value && planningSettingsSections.includes(value as PlanningSettingsSection)
+    ? value as PlanningSettingsSection
+    : null
+})
 const isSettingsRoute = computed(() => (
   isPlanningRoute.value
-    ? ['planning-preferences', 'planning-settings-people', 'planning-settings-vacations', 'planning-settings-attendance', 'planning-settings-meals'].includes(String(route.name))
+    ? planningSettingsSection.value !== null
     : ['ingredient-settings', 'tags-home', 'tags-detail'].includes(String(route.name))
 ))
+
+const setPlanningSettingsSection = (section: PlanningSettingsSection | null): void => {
+  const query = { ...route.query }
+  if (section) query.settings = section
+  else delete query.settings
+  void router.push({ query })
+}
 
 const closeMenu = (): void => {
   isMenuOpen.value = false
@@ -110,8 +127,19 @@ onMounted(() => {
         </div>
 
         <div class="app-shell__actions">
+          <button
+            v-if="isPlanningRoute"
+            type="button"
+            :class="['app-shell__icon-link', { 'app-shell__icon-link--active': isSettingsRoute }]"
+            :aria-label="settingsLabel"
+            :title="settingsLabel"
+            @click="setPlanningSettingsSection('hub')"
+          >
+            <span aria-hidden="true">⚙</span>
+          </button>
           <RouterLink
-            :to="settingsRoute"
+            v-else
+            :to="{ name: 'ingredient-settings' }"
             :class="['app-shell__icon-link', { 'app-shell__icon-link--active': isSettingsRoute }]"
             :aria-label="settingsLabel"
             :title="settingsLabel"
@@ -130,6 +158,12 @@ onMounted(() => {
     </header>
 
     <RouterView />
+    <PlanningSettingsModal
+      v-if="planningSettingsSection"
+      :section="planningSettingsSection"
+      @close="setPlanningSettingsSection(null)"
+      @navigate="setPlanningSettingsSection"
+    />
   </div>
 </template>
 

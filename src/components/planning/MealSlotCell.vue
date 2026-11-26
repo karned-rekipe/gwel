@@ -716,7 +716,11 @@ const addNote = (): void => {
               </div>
             </div>
 
-            <form v-else-if="activeAddMode === 'ingredient'" class="meal-slot-modal__form" @submit.prevent>
+            <form
+              v-else-if="activeAddMode === 'ingredient'"
+              class="meal-slot-modal__form meal-slot-modal__form--ingredient"
+              @submit.prevent
+            >
               <label class="meal-slot-modal__field">
                 <span>Ingrédient</span>
                 <IngredientPicker
@@ -975,9 +979,10 @@ const addNote = (): void => {
   width: min(1120px, calc(100vw - 36px));
   height: min(860px, calc(100vh - 88px));
   max-height: calc(100vh - 88px);
-  overflow: auto;
+  overflow: hidden;
   display: grid;
-  align-content: start;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
   gap: 8px;
   padding: 14px;
   border: 1px solid var(--color-border);
@@ -1053,6 +1058,15 @@ const addNote = (): void => {
   min-height: 0;
   display: grid;
   gap: 10px;
+}
+
+.meal-slot-modal__overview {
+  overflow-y: auto;
+}
+
+.meal-slot-modal__subview {
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .meal-slot-modal__subview-header {
@@ -1180,8 +1194,20 @@ const addNote = (): void => {
 
 .meal-slot-modal__content,
 .meal-slot-modal__form {
+  min-height: 0;
+  overflow-y: auto;
   display: grid;
   gap: 10px;
+}
+
+.meal-slot-modal__form--ingredient {
+  height: 100%;
+  overflow: hidden;
+}
+
+.meal-slot-modal__form--ingredient .meal-slot-modal__field {
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .meal-slot-modal__content--recipe {

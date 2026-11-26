@@ -2,15 +2,21 @@
 import { computed, ref, watch } from 'vue'
 import HouseholdMemberAvatarStack from '@/components/planning/HouseholdMemberAvatarStack.vue'
 import { membersForIds } from '@/components/planning/memberDisplay'
+import { ingredientService } from '@/services/ingredientService'
 import { recipeService } from '@/services/recipeService'
+import { useIngredientCatalogStore } from '@/stores/ingredientCatalogStore'
 import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 import type { HouseholdMember } from '@/types/householdMember'
 import type { MealItem, SlotCode } from '@/types/mealPlan'
-import type { Recipe } from '@/types/recipe'
+import type { Ingredient, Recipe } from '@/types/recipe'
 import { countryFlagFrom } from '@/utils/countryFlags'
+import { ingredientDisplayMediaProfile, ingredientHasDisplayImage } from '@/utils/ingredientImagePreview'
+import { mediaCardImageUrl } from '@/utils/mediaUrls'
 
 const recipeCache = new Map<string, Recipe | null>()
 const recipeRequests = new Map<string, Promise<Recipe | null>>()
+const ingredientCache = new Map<string, Ingredient | null>()
+const ingredientRequests = new Map<string, Promise<Ingredient | null>>()
 
 const loadRecipe = async (uuid: string, options: { refreshIfMissingImage?: boolean } = {}): Promise<Recipe | null> => {
   if (recipeCache.has(uuid)) {
@@ -37,6 +43,36 @@ const loadRecipe = async (uuid: string, options: { refreshIfMissingImage?: boole
   return request
 }
 
+const loadIngredient = async (
+  uuid: string,
+  options: { refreshIfMissingImage?: boolean } = {},
+): Promise<Ingredient | null> => {
+  if (ingredientCache.has(uuid)) {
+    const cachedIngredient = ingredientCache.get(uuid) ?? null
+    if (!options.refreshIfMissingImage || (cachedIngredient && ingredientHasDisplayImage(cachedIngredient))) {
+      return cachedIngredient
+    }
+  }
+  const existingRequest = ingredientRequests.get(uuid)
+  if (existingRequest) return existingRequest
+
+  const request = ingredientService.getByUuid(uuid)
+    .then((ingredient) => {
+      ingredientCache.set(uuid, ingredient)
+      return ingredient
+    })
+    .catch(() => {
+      ingredientCache.set(uuid, null)
+      return null
+    })
+    .finally(() => {
+      ingredientRequests.delete(uuid)
+    })
+
+  ingredientRequests.set(uuid, request)
+  return request
+}
+
 const props = defineProps<{
   item: MealItem
   fallbackHeadcount?: number | null
@@ -49,14 +85,33 @@ const props = defineProps<{
 }>()
 
 const recipeCatalog = useRecipeCatalogStore()
+const ingredientCatalog = useIngredientCatalogStore()
 const recipeDetails = ref<Recipe | null>(null)
+const ingredientDetails = ref<Ingredient | null>(null)
 
 const recipeUuid = computed(() => props.item.recipe_uuid ?? props.item.recipe_snapshot?.recipe_uuid ?? null)
+const ingredientUuid = computed(() => props.item.ingredient_uuid ?? null)
 const catalogRecipe = computed(() => (
   recipeUuid.value ? recipeCatalog.recipesByUuid.get(recipeUuid.value) ?? null : null
 ))
-const resolvedRecipe = computed(() => catalogRecipe.value ?? recipeDetails.value)
-const thumbnailUri = computed(() => resolvedRecipe.value?.main_image ?? null)
+const catalogIngredient = computed(() => (
+  ingredientUuid.value
+    ? ingredientCatalog.ingredients.find((ingredient) => ingredient.uuid === ingredientUuid.value) ?? null
+    : null
+))
+const resolvedRecipe = computed(() => recipeDetails.value ?? catalogRecipe.value)
+const resolvedIngredient = computed(() => ingredientDetails.value ?? catalogIngredient.value)
+const thumbnailUri = computed(() => {
+  if (props.item.item_type === 'recipe') {
+    return mediaCardImageUrl(resolvedRecipe.value?.main_image)
+  }
+  if (props.item.item_type === 'ingredient' && resolvedIngredient.value) {
+    return mediaCardImageUrl(
+      ingredientDisplayMediaProfile(resolvedIngredient.value).main_image_uri,
+    )
+  }
+  return null
+})
 const namedMemberIds = computed(() => {
   if (!props.usesNamedMembers) return []
   const itemMemberIds = props.item.member_ids ?? []
@@ -112,6 +167,19 @@ watch(recipeUuid, async (uuid) => {
   const recipe = await loadRecipe(uuid, { refreshIfMissingImage: true })
   if (recipeUuid.value === uuid) {
     recipeDetails.value = recipe
+  }
+}, { immediate: true })
+
+watch(ingredientUuid, async (uuid) => {
+  ingredientDetails.value = null
+  if (!uuid) return
+  ingredientCatalog.hydrateFromStorage()
+  ingredientCatalog.warmup()
+  if (catalogIngredient.value && ingredientHasDisplayImage(catalogIngredient.value)) return
+
+  const ingredient = await loadIngredient(uuid, { refreshIfMissingImage: true })
+  if (ingredientUuid.value === uuid) {
+    ingredientDetails.value = ingredient
   }
 }, { immediate: true })
 </script>

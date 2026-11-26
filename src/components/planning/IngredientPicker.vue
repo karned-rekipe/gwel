@@ -89,6 +89,7 @@ onMounted(() => {
         :key="ingredient.uuid"
         :name="ingredient.name"
         :image-url="ingredientDisplayMediaProfile(ingredient).main_image_uri"
+        action-label="Sélectionner"
         :class="{ 'ingredient-picker__card--selected': selectedUuid === ingredient.uuid }"
         @click="selectIngredient(ingredient)"
       />
@@ -98,7 +99,10 @@ onMounted(() => {
 
 <style scoped>
 .ingredient-picker {
+  min-height: 0;
+  height: 100%;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   width: 100%;
 }
@@ -135,35 +139,39 @@ onMounted(() => {
 }
 
 .ingredient-picker__grid {
-  max-height: min(42vh, 420px);
+  min-height: 0;
+  height: 100%;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
   overflow-y: auto;
   padding: 2px 4px 4px 2px;
 }
 
-.ingredient-picker__grid :deep(.ingredient-card) {
-  min-height: 176px;
-  grid-template-rows: minmax(104px, 1fr) 72px;
+.ingredient-picker__grid :deep(.catalog-card) {
+  min-height: 96px;
+  grid-template-columns: 96px minmax(0, 1fr);
+  grid-template-rows: 96px;
+  border-radius: var(--radius-sm);
 }
 
-.ingredient-picker__grid :deep(.ingredient-card__visual) {
-  min-height: 104px;
+.ingredient-picker__grid :deep(.catalog-card__visual) {
+  min-height: 96px;
   aspect-ratio: auto;
 }
 
-.ingredient-picker__grid :deep(.ingredient-card__body) {
-  min-height: 72px;
-  align-content: start;
+.ingredient-picker__grid :deep(.catalog-card__body) {
+  min-height: 0;
+  align-content: center;
+  padding: 8px 10px;
 }
 
-.ingredient-picker__grid :deep(.ingredient-card__body h2) {
+.ingredient-picker__grid :deep(.catalog-card__body h2) {
   display: -webkit-box;
   overflow: hidden;
   font-size: 0.92rem;
-  line-height: 1.14;
-  text-overflow: clip;
+  line-height: 1.2;
+  text-overflow: ellipsis;
   white-space: normal;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -187,6 +195,10 @@ onMounted(() => {
 
 @media (max-width: 520px) {
   .ingredient-picker__toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .ingredient-picker__grid {
     grid-template-columns: 1fr;
   }
 }

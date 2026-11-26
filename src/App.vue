@@ -9,10 +9,10 @@ const isMenuOpen = ref(false)
 
 const isPlanningRoute = computed(() => String(route.name).startsWith('planning-'))
 const settingsRoute = computed(() => (isPlanningRoute.value ? { name: 'planning-preferences' } : { name: 'ingredient-settings' }))
-const settingsLabel = computed(() => (isPlanningRoute.value ? 'Préférences planning' : 'Réglages'))
+const settingsLabel = computed(() => (isPlanningRoute.value ? 'Configuration planning' : 'Réglages'))
 const isSettingsRoute = computed(() => (
   isPlanningRoute.value
-    ? route.name === 'planning-preferences'
+    ? ['planning-preferences', 'planning-settings-people', 'planning-settings-vacations', 'planning-settings-attendance', 'planning-settings-meals'].includes(String(route.name))
     : ['ingredient-settings', 'tags-home', 'tags-detail'].includes(String(route.name))
 ))
 

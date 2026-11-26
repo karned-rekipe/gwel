@@ -10,7 +10,7 @@ export type DayOfWeek =
   | 'sunday'
 export type SchoolZone = 'A' | 'B' | 'C'
 export type VacationPeriodSource = 'official' | 'manual'
-export type ScheduleMode = 'headcount' | 'members'
+export type ScheduleMode = 'members'
 
 export interface HouseholdScheduleRule {
   uuid: string
@@ -37,7 +37,6 @@ export interface HouseholdScheduleRulePayload {
   school_period_type: SchoolPeriodType
   day_of_week: DayOfWeek
   meal_slot_code: string
-  headcount: number
   member_ids: string[]
 }
 
@@ -63,4 +62,20 @@ export interface SchoolVacationPeriodPayload {
   name: string
   start_date: string
   end_date: string
+}
+
+export interface SchoolVacationCalendarSyncPayload {
+  school_zone?: SchoolZone | null
+  date_start?: string | null
+  date_end?: string | null
+}
+
+export interface SchoolVacationCalendarSyncResult {
+  school_zone: SchoolZone
+  date_start: string
+  date_end: string
+  created: number
+  updated: number
+  deleted: number
+  periods: SchoolVacationPeriod[]
 }

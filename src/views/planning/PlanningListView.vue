@@ -1,15 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import MealPlanWeekGrid from '@/components/planning/MealPlanWeekGrid.vue'
-import { householdScheduleService } from '@/services/householdScheduleService'
-import { isNotFoundError } from '@/services/http'
+import PlanningMembersRequired from '@/components/planning/PlanningMembersRequired.vue'
 import type { MealCalendarParams } from '@/services/mealPlannerService'
 import { useHouseholdMembersStore } from '@/stores/householdMembersStore'
 import { useIngredientCatalogStore } from '@/stores/ingredientCatalogStore'
 import { useMealPlanStore } from '@/stores/mealPlanStore'
 import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 import { useTenantPreferencesStore } from '@/stores/tenantPreferencesStore'
-import type { HouseholdSchedule } from '@/types/householdSchedule'
 import type { SlotPatchOperation } from '@/types/mealPlan'
 import type { MealSlotDefinition } from '@/types/tenantPreferences'
 
@@ -19,8 +17,7 @@ const ingredientCatalog = useIngredientCatalogStore()
 const recipeCatalog = useRecipeCatalogStore()
 const preferencesStore = useTenantPreferencesStore()
 const actionError = ref<string | null>(null)
-const scheduleError = ref<string | null>(null)
-const householdSchedule = ref<HouseholdSchedule | null>(null)
+const membersLoaded = ref(false)
 const defaultMealSlots: MealSlotDefinition[] = [
   { code: 'lunch', label: 'Déjeuner', position: 0 },
   { code: 'dinner', label: 'Dîner', position: 1 },
@@ -81,25 +78,9 @@ const activeMealSlotCodes = computed(() =>
     .map((slot) => slot.code),
 )
 
-const usesNamedMembers = computed(() => householdSchedule.value?.schedule_mode === 'members')
-
 const loadCalendar = async (): Promise<void> => {
   actionError.value = null
   await store.fetchCalendar(calendarParams.value)
-}
-
-const loadHouseholdSchedule = async (): Promise<void> => {
-  scheduleError.value = null
-  try {
-    const response = await householdScheduleService.get()
-    householdSchedule.value = response.payload
-  } catch (err) {
-    if (isNotFoundError(err)) {
-      householdSchedule.value = null
-      return
-    }
-    scheduleError.value = err instanceof Error ? err.message : 'Chargement du mode de répartition impossible.'
-  }
 }
 
 const applyPatch = async (operations: SlotPatchOperation[]): Promise<void> => {
@@ -120,13 +101,13 @@ const extendPeriod = async (side: 'before' | 'after'): Promise<void> => {
   await loadCalendar()
 }
 
-onMounted(() => {
-  void loadCalendar()
-  void preferencesStore.fetchPreferences()
-  void membersStore.fetchMembers()
+onMounted(async () => {
+  await membersStore.fetchMembers()
+  membersLoaded.value = true
+  if (!membersStore.members.length || membersStore.error) return
+  await Promise.all([loadCalendar(), preferencesStore.fetchPreferences()])
   ingredientCatalog.warmup()
   recipeCatalog.warmup()
-  void loadHouseholdSchedule()
 })
 </script>
 
@@ -134,16 +115,20 @@ onMounted(() => {
   <main class="planning-page">
     <p v-if="store.error" class="planning-page__error">{{ store.error }}</p>
     <p v-if="actionError" class="planning-page__error">{{ actionError }}</p>
-    <p v-if="scheduleError || membersStore.error" class="planning-page__error">{{ scheduleError || membersStore.error }}</p>
-    <p v-if="store.loading" class="planning-page__muted">Chargement…</p>
+    <p v-if="membersStore.error" class="planning-page__error">{{ membersStore.error }}</p>
+    <p v-if="store.loading || !membersLoaded" class="planning-page__muted">Chargement…</p>
 
-    <section v-if="store.current" class="planning-page__layout">
+    <PlanningMembersRequired
+      v-if="membersLoaded && !membersStore.error && !membersStore.members.length"
+    />
+
+    <section v-else-if="store.current" class="planning-page__layout">
       <MealPlanWeekGrid
         :plan="store.current"
         :meal-labels="mealLabels"
         :visible-slot-codes="activeMealSlotCodes"
         :household-members="membersStore.members"
-        :uses-named-members="usesNamedMembers"
+        :uses-named-members="true"
         :loading="store.loading"
         @patch="applyPatch"
         @extend-period="extendPeriod"

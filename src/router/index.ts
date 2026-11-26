@@ -128,7 +128,39 @@ const router = createRouter({
       name: 'planning-preferences',
       component: () => import('../views/planning/PlanningPreferencesView.vue'),
       meta: {
-        title: 'Préférences planning',
+        title: 'Configuration planning',
+      },
+    },
+    {
+      path: '/planning/preferences/people',
+      name: 'planning-settings-people',
+      component: () => import('../views/planning/PlanningPeopleView.vue'),
+      meta: {
+        title: 'Personnes du foyer',
+      },
+    },
+    {
+      path: '/planning/preferences/vacations',
+      name: 'planning-settings-vacations',
+      component: () => import('../views/planning/PlanningVacationsView.vue'),
+      meta: {
+        title: 'Vacances scolaires',
+      },
+    },
+    {
+      path: '/planning/preferences/attendance',
+      name: 'planning-settings-attendance',
+      component: () => import('../views/planning/PlanningAttendanceView.vue'),
+      meta: {
+        title: 'Présences aux repas',
+      },
+    },
+    {
+      path: '/planning/preferences/meals',
+      name: 'planning-settings-meals',
+      component: () => import('../views/planning/PlanningMealPreferencesView.vue'),
+      meta: {
+        title: 'Repas et préférences',
       },
     },
     {

@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import MealSlotCell from '@/components/planning/MealSlotCell.vue'
 import PlanningMembersRequired from '@/components/planning/PlanningMembersRequired.vue'
+import { hasDailyMealContent } from '@/components/planning/dailyMealVisibility'
 import { resolveMealSlotDefinitions } from '@/components/planning/mealSlotDefinitions'
 import RecipeLayer from '@/components/organisms/RecipeLayer.vue'
 import ResourceLayerDock from '@/components/resources/ResourceLayerDock.vue'
@@ -81,6 +82,10 @@ const slotByCode = computed(() => new Map(
     .filter((slot) => slot.date === selectedDate.value)
     .map((slot) => [slot.slot_code, slot] as const),
 ))
+
+const visibleMealSlots = computed(() => availableMealSlots.value.filter((meal) => {
+  return hasDailyMealContent(slotByCode.value.get(meal.code))
+}))
 
 const mealSlotFor = (slotCode: string): MealSlot => slotByCode.value.get(slotCode) ?? {
   date: selectedDate.value,
@@ -198,9 +203,9 @@ onMounted(async () => {
         </button>
       </header>
 
-      <div v-if="availableMealSlots.length" class="daily-menu-page__meals">
+      <div v-if="visibleMealSlots.length" class="daily-menu-page__meals">
         <article
-          v-for="meal in availableMealSlots"
+          v-for="meal in visibleMealSlots"
           :key="meal.code"
           class="daily-menu-page__meal"
         >
@@ -221,7 +226,7 @@ onMounted(async () => {
           </div>
         </article>
       </div>
-      <p v-else class="daily-menu-page__empty">Aucun repas configuré.</p>
+      <p v-else class="daily-menu-page__empty">Aucun repas prévu pour cette journée.</p>
     </section>
 
     <RecipeLayer

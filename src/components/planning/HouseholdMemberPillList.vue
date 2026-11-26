@@ -4,16 +4,39 @@ import { firstNameFor, initialsFor, textColorFor } from '@/components/planning/m
 import type { HouseholdMember } from '@/types/householdMember'
 import { groupHouseholdMembers } from '@/utils/householdMemberGroups'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   members: HouseholdMember[]
   emptyLabel?: string
-}>()
+  flat?: boolean
+  fullNames?: boolean
+}>(), {
+  flat: false,
+  fullNames: false,
+})
 
 const groups = computed(() => groupHouseholdMembers(props.members))
+const memberLabel = (member: HouseholdMember): string => (
+  props.fullNames ? member.name : firstNameFor(member.name)
+)
 </script>
 
 <template>
-  <div v-if="groups.length" class="member-pill-list">
+  <div v-if="members.length && flat" class="member-pill-list member-pill-list--flat">
+    <span
+      v-for="member in members"
+      :key="member.uuid"
+      class="member-pill-list__pill"
+      :style="{ backgroundColor: member.color, color: textColorFor(member.color) }"
+      :title="member.name"
+    >
+      <span class="member-pill-list__avatar" :style="{ backgroundColor: member.color }">
+        <img v-if="member.avatar_data" :src="member.avatar_data" :alt="member.name" />
+        <span v-else>{{ initialsFor(member.name) }}</span>
+      </span>
+      <span>{{ memberLabel(member) }}</span>
+    </span>
+  </div>
+  <div v-else-if="groups.length" class="member-pill-list">
     <section v-for="group in groups" :key="group.id" class="member-pill-list__type">
       <header>
         <strong>{{ group.label }}</strong>
@@ -34,7 +57,7 @@ const groups = computed(() => groupHouseholdMembers(props.members))
                 <img v-if="member.avatar_data" :src="member.avatar_data" :alt="member.name" />
                 <span v-else>{{ initialsFor(member.name) }}</span>
               </span>
-              <span>{{ firstNameFor(member.name) }}</span>
+              <span>{{ memberLabel(member) }}</span>
             </span>
           </div>
         </div>
@@ -49,6 +72,12 @@ const groups = computed(() => groupHouseholdMembers(props.members))
   min-width: 0;
   display: grid;
   gap: 12px;
+}
+
+.member-pill-list--flat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
 .member-pill-list__type {

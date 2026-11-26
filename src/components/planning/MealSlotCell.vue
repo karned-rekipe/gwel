@@ -1061,6 +1061,8 @@ const addNote = (): void => {
 }
 
 .meal-slot-modal__overview {
+  align-content: start;
+  grid-auto-rows: max-content;
   overflow-y: auto;
 }
 

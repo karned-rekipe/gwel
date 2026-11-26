@@ -16,9 +16,6 @@ const defaultMealSlots: MealSlotDefinition[] = [
 
 const form = reactive({
   mealSlots: 'Déjeuner\nDîner',
-  excludedIngredients: '',
-  excludedGroups: '',
-  favoriteRecipes: '',
 })
 
 const joinValues = (values: string[]): string => values.join('\n')
@@ -56,26 +53,19 @@ watch(() => store.current, (preferences) => {
   if (!preferences) return
   const configuredSlots = preferences.meal_slots.length ? preferences.meal_slots : defaultMealSlots
   form.mealSlots = joinValues([...configuredSlots].sort((a, b) => a.position - b.position).map((slot) => slot.label))
-  form.excludedIngredients = joinValues(preferences.exclusions.ingredients)
-  form.excludedGroups = joinValues(preferences.exclusions.groups)
-  form.favoriteRecipes = joinValues(preferences.favorites.recipes)
 }, { immediate: true })
 
 const save = async (): Promise<void> => {
   saving.value = true
   success.value = null
   try {
+    if (!store.current) throw new Error('Préférences non chargées.')
     await store.updatePreferences({
-      exclusions: {
-        ingredients: splitValues(form.excludedIngredients),
-        groups: splitValues(form.excludedGroups),
-      },
-      favorites: {
-        recipes: splitValues(form.favoriteRecipes),
-      },
+      exclusions: store.current.exclusions,
+      favorites: store.current.favorites,
       meal_slots: mealSlots.value,
     })
-    success.value = 'Repas et préférences enregistrés.'
+    success.value = 'Repas enregistrés.'
   } finally {
     saving.value = false
   }
@@ -87,7 +77,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <PlanningSettingsShell title="Repas et préférences">
+  <PlanningSettingsShell title="Repas">
     <p v-if="store.loading" class="meal-preferences__muted">Chargement…</p>
     <p v-if="store.error" class="meal-preferences__error">{{ store.error }}</p>
     <p v-if="success" class="meal-preferences__success">{{ success }}</p>
@@ -102,27 +92,6 @@ onMounted(() => {
           Repas
           <textarea v-model="form.mealSlots" rows="5" />
         </label>
-      </section>
-
-      <section class="meal-preferences__section">
-        <div>
-          <h2>Préférences du foyer</h2>
-          <p>Une valeur par ligne. Ces informations seront accessibles à l’agent de planification.</p>
-        </div>
-        <div class="meal-preferences__grid">
-          <label>
-            Ingrédients exclus
-            <textarea v-model="form.excludedIngredients" rows="8" />
-          </label>
-          <label>
-            Groupes exclus
-            <textarea v-model="form.excludedGroups" rows="8" />
-          </label>
-          <label>
-            Recettes favorites
-            <textarea v-model="form.favoriteRecipes" rows="8" />
-          </label>
-        </div>
       </section>
 
       <AppButton type="submit" :disabled="store.loading || saving">
@@ -157,12 +126,6 @@ onMounted(() => {
 .meal-preferences__section p {
   margin-top: 5px;
   color: var(--color-text-secondary);
-}
-
-.meal-preferences__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
 }
 
 .meal-preferences label {
@@ -203,9 +166,4 @@ onMounted(() => {
   color: var(--color-success);
 }
 
-@media (max-width: 800px) {
-  .meal-preferences__grid {
-    grid-template-columns: 1fr;
-  }
-}
 </style>

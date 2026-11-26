@@ -57,8 +57,8 @@ const cards = computed(() => [
   {
     section: 'meals' as const,
     icon: 'R',
-    title: 'Repas et préférences',
-    description: 'Configurer les repas, exclusions et recettes favorites.',
+    title: 'Repas',
+    description: 'Configurer les créneaux visibles dans le planning.',
     status: `${preferencesStore.current?.meal_slots.length ?? 0} type${(preferencesStore.current?.meal_slots.length ?? 0) > 1 ? 's' : ''} de repas`,
     required: false,
   },

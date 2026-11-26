@@ -23,6 +23,7 @@ const props = defineProps<{
   mealLabel?: string
   showMealLabel?: boolean
   collapsed?: boolean
+  expanded?: boolean
   readonly?: boolean
   householdMembers?: HouseholdMember[]
   usesNamedMembers?: boolean
@@ -499,50 +500,63 @@ const addNote = (): void => {
     :class="{
       'meal-slot--empty': !slot.items.length && !collapsed,
       'meal-slot--collapsed': collapsed,
+      'meal-slot--expanded': expanded,
       'meal-slot--editable': !readonly,
       'meal-slot--with-indicators': hasSlotIndicators,
       'meal-slot--without-label': showMealLabel === false,
     }"
-    :role="readonly ? undefined : 'button'"
-    :tabindex="readonly ? undefined : 0"
-    :aria-label="readonly ? undefined : `Modifier ${mealLabel} du ${slot.date}`"
-    @click="openEditorModal()"
-    @keydown.enter="openEditorModal()"
-    @keydown.space.prevent="openEditorModal()"
+    :role="readonly || expanded ? undefined : 'button'"
+    :tabindex="readonly || expanded ? undefined : 0"
+    :aria-label="readonly || expanded ? undefined : `Modifier ${mealLabel} du ${slot.date}`"
+    @click="!expanded && openEditorModal()"
+    @keydown.enter="!expanded && openEditorModal()"
+    @keydown.space.prevent="!expanded && openEditorModal()"
   >
     <header v-if="showMealLabel !== false" class="meal-slot__header">
       <strong>{{ mealLabel }}</strong>
     </header>
 
-    <div v-if="hasSlotIndicators" class="meal-slot__indicators">
-      <span
-        class="meal-slot__planned-count"
-        :aria-label="plannedItemCount ? plannedItemLabel : undefined"
-        :aria-hidden="plannedItemCount ? undefined : true"
+    <div v-if="hasSlotIndicators || (expanded && !readonly)" class="meal-slot__topbar">
+      <div v-if="hasSlotIndicators" class="meal-slot__indicators">
+        <span
+          class="meal-slot__planned-count"
+          :aria-label="plannedItemCount ? plannedItemLabel : undefined"
+          :aria-hidden="plannedItemCount ? undefined : true"
+        >
+          <template v-if="plannedItemCount">
+            <span aria-hidden="true">🍽</span>
+            {{ plannedItemCount }}
+          </template>
+        </span>
+        <HouseholdMemberAvatarStack
+          v-if="usesNamedMembers"
+          :members="slotMembers"
+        />
+        <span v-else class="meal-slot__headcount-avatars" aria-hidden="true">
+          <span v-for="dot in slotAvatarDots" :key="dot"></span>
+          <strong v-if="slotRemainingAvatars">+{{ slotRemainingAvatars }}</strong>
+        </span>
+        <span
+          class="meal-slot__headcount-people"
+          :aria-label="slotHeadcount ? slotHeadcountLabel : undefined"
+          :aria-hidden="slotHeadcount ? undefined : true"
+        >
+          <template v-if="slotHeadcount">
+            <span aria-hidden="true">👤</span>
+            {{ slotHeadcount }}
+          </template>
+        </span>
+      </div>
+      <span v-else></span>
+      <button
+        v-if="expanded && !readonly"
+        type="button"
+        class="meal-slot__edit"
+        :aria-label="`Configurer ${mealLabel}`"
+        @click.stop="openEditorModal()"
       >
-        <template v-if="plannedItemCount">
-          <span aria-hidden="true">🍽</span>
-          {{ plannedItemCount }}
-        </template>
-      </span>
-      <HouseholdMemberAvatarStack
-        v-if="usesNamedMembers"
-        :members="slotMembers"
-      />
-      <span v-else class="meal-slot__headcount-avatars" aria-hidden="true">
-        <span v-for="dot in slotAvatarDots" :key="dot"></span>
-        <strong v-if="slotRemainingAvatars">+{{ slotRemainingAvatars }}</strong>
-      </span>
-      <span
-        class="meal-slot__headcount-people"
-        :aria-label="slotHeadcount ? slotHeadcountLabel : undefined"
-        :aria-hidden="slotHeadcount ? undefined : true"
-      >
-        <template v-if="slotHeadcount">
-          <span aria-hidden="true">👤</span>
-          {{ slotHeadcount }}
-        </template>
-      </span>
+        Configurer
+      </button>
     </div>
 
     <div v-if="!collapsed && slot.items.length" class="meal-slot__items">
@@ -837,10 +851,21 @@ const addNote = (): void => {
   cursor: pointer;
 }
 
+.meal-slot--expanded {
+  height: auto;
+  display: block;
+  cursor: default;
+}
+
 .meal-slot--editable:hover,
 .meal-slot--editable:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--color-primary) 52%, transparent);
   outline-offset: -2px;
+}
+
+.meal-slot--expanded:hover,
+.meal-slot--expanded:focus-visible {
+  outline: 0;
 }
 
 .meal-slot--empty {
@@ -887,6 +912,61 @@ const addNote = (): void => {
   scrollbar-gutter: stable;
 }
 
+.meal-slot--expanded .meal-slot__items {
+  max-height: none;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 220px));
+  grid-auto-rows: minmax(210px, auto);
+  justify-content: start;
+  overflow: visible;
+  overscroll-behavior: auto;
+  scrollbar-gutter: auto;
+}
+
+.meal-slot--expanded .meal-slot__items :deep(.meal-item__body) {
+  max-height: none;
+  overflow: visible;
+}
+
+.meal-slot--expanded .meal-slot__items :deep(.meal-item__body strong),
+.meal-slot--expanded .meal-slot__items :deep(.meal-item__body span) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  -webkit-line-clamp: unset;
+}
+
+.meal-slot__topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.meal-slot__edit {
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.meal-slot__edit:hover,
+.meal-slot__edit:focus-visible {
+  border-color: var(--color-border-hover);
+  color: var(--color-primary);
+}
+
+.meal-slot__edit:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
 .meal-slot__items :deep(.meal-item) {
   min-width: var(--meal-card-min-width);
   min-height: var(--meal-card-min-height);
@@ -900,6 +980,16 @@ const addNote = (): void => {
   min-height: 22px;
   min-width: 0;
   pointer-events: none;
+}
+
+.meal-slot__topbar .meal-slot__indicators {
+  min-width: 0;
+}
+
+@media (max-width: 520px) {
+  .meal-slot--expanded .meal-slot__items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .meal-slot__planned-count,

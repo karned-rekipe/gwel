@@ -174,6 +174,7 @@ onMounted(async () => {
               :slot="mealSlotFor(meal.code)"
               :meal-label="meal.label"
               :show-meal-label="false"
+              expanded
               :household-members="membersStore.members"
               :uses-named-members="true"
               :available-slot-rows="availableSlotRows"
@@ -270,16 +271,14 @@ onMounted(async () => {
 
 .daily-menu-page__meals {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
 }
 
 .daily-menu-page__meal {
-  height: min(620px, calc(100vh - 142px));
-  min-height: 340px;
   min-width: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
   gap: 8px;
   padding: 10px;
   border: 1px solid var(--color-border);
@@ -328,9 +327,5 @@ onMounted(async () => {
     padding-inline: 9px;
   }
 
-  .daily-menu-page__meal {
-    height: min(520px, calc(100vh - 132px));
-    min-height: 320px;
-  }
 }
 </style>

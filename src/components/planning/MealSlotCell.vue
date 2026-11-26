@@ -4,9 +4,10 @@ import HouseholdMemberAvatarStack from '@/components/planning/HouseholdMemberAva
 import HouseholdMemberPillList from '@/components/planning/HouseholdMemberPillList.vue'
 import IngredientPicker from '@/components/planning/IngredientPicker.vue'
 import MealItemRow from '@/components/planning/MealItemRow.vue'
+import MemberSelector from '@/components/planning/MemberSelector.vue'
 import RecipePicker from '@/components/planning/RecipePicker.vue'
 import { formatMealLabel } from '@/components/planning/mealSlotLabels'
-import { firstNameFor, initialsFor, membersForIds, textColorFor } from '@/components/planning/memberDisplay'
+import { membersForIds } from '@/components/planning/memberDisplay'
 import { useIngredientWishlistStore } from '@/stores/ingredientWishlistStore'
 import { useRecipeWishlistStore } from '@/stores/recipeWishlistStore'
 import type { HouseholdMember } from '@/types/householdMember'
@@ -56,6 +57,7 @@ const noteInput = ref('')
 const selectedIngredient = ref<Ingredient | null>(null)
 const selectedIngredientUuid = ref('')
 const slotMemberDraftIds = ref<string[]>([])
+const itemMemberDraftIds = ref<string[]>([])
 const addError = ref<string | null>(null)
 const wishlist = useRecipeWishlistStore()
 const ingredientWishlist = useIngredientWishlistStore()
@@ -283,6 +285,9 @@ const openItemActionMode = (mode: ItemActionMode, item: MealItem): void => {
   activeAddMode.value = null
   activeItemActionMode.value = mode
   activeItemUuid.value = item.uuid
+  if (mode === 'members') {
+    itemMemberDraftIds.value = memberIdsForItem(item)
+  }
   addError.value = null
 }
 
@@ -356,9 +361,6 @@ const memberIdsForItem = (item: MealItem): string[] => {
   return itemMemberIds.length ? [...itemMemberIds] : [...slotMemberIds.value]
 }
 
-const isItemMemberSelected = (item: MealItem, memberUuid: string): boolean =>
-  memberIdsForItem(item).includes(memberUuid)
-
 const updateItemMembers = (item: MealItem, memberIds: string[]): void => {
   if (!memberIds.length) {
     addError.value = 'Au moins un participant doit rester associé à ce contenu.'
@@ -378,16 +380,14 @@ const updateItemMembers = (item: MealItem, memberIds: string[]): void => {
   }])
 }
 
-const toggleItemMember = (item: MealItem, member: HouseholdMember): void => {
-  const currentIds = memberIdsForItem(item)
-  const nextIds = currentIds.includes(member.uuid)
-    ? currentIds.filter((uuid) => uuid !== member.uuid)
-    : [...currentIds, member.uuid]
-  updateItemMembers(item, nextIds)
+const setItemMembers = (item: MealItem, memberIds: string[]): void => {
+  if (!memberIds.length) {
+    addError.value = 'Au moins un participant doit rester associé à ce contenu.'
+    return
+  }
+  itemMemberDraftIds.value = memberIds
+  updateItemMembers(item, memberIds)
 }
-
-const isSlotMemberSelected = (memberUuid: string): boolean =>
-  slotMemberDraftIds.value.includes(memberUuid)
 
 const updateSlotMembers = (memberIds: string[]): void => {
   addError.value = null
@@ -399,13 +399,9 @@ const updateSlotMembers = (memberIds: string[]): void => {
   }])
 }
 
-const toggleSlotMember = (member: HouseholdMember): void => {
-  const currentIds = slotMemberDraftIds.value
-  const nextIds = currentIds.includes(member.uuid)
-    ? currentIds.filter((uuid) => uuid !== member.uuid)
-    : [...currentIds, member.uuid]
-  slotMemberDraftIds.value = nextIds
-  updateSlotMembers(nextIds)
+const setSlotMembers = (memberIds: string[]): void => {
+  slotMemberDraftIds.value = memberIds
+  updateSlotMembers(memberIds)
 }
 
 const addRecipe = (recipe: Recipe): boolean => {
@@ -777,40 +773,22 @@ const addNote = (): void => {
 
             <div v-else-if="activeItemActionMode === 'members' && !activeItem" class="meal-slot-modal__content">
               <p v-if="!availableItemMembers.length" class="meal-slot-modal__state">Aucun participant disponible.</p>
-              <div v-else class="meal-slot-modal__member-picker" aria-label="Choisir les participants du repas">
-                <button
-                  v-for="member in availableItemMembers"
-                  :key="member.uuid"
-                  type="button"
-                  class="meal-slot-modal__member-toggle"
-                  :class="{ 'is-selected': isSlotMemberSelected(member.uuid) }"
-                  :style="isSlotMemberSelected(member.uuid) ? { backgroundColor: member.color, color: textColorFor(member.color) } : undefined"
-                  :aria-pressed="isSlotMemberSelected(member.uuid)"
-                  @click="toggleSlotMember(member)"
-                >
-                  <span class="meal-slot-modal__member-initials">{{ initialsFor(member.name) }}</span>
-                  {{ firstNameFor(member.name) }}
-                </button>
-              </div>
+              <MemberSelector
+                v-else
+                :model-value="slotMemberDraftIds"
+                :members="availableItemMembers"
+                @update:model-value="setSlotMembers"
+              />
             </div>
 
             <div v-else-if="activeItemActionMode === 'members' && activeItem" class="meal-slot-modal__content">
               <p v-if="!availableItemMembers.length" class="meal-slot-modal__state">Aucun participant disponible.</p>
-              <div v-else class="meal-slot-modal__member-picker" aria-label="Choisir les participants">
-                <button
-                  v-for="member in availableItemMembers"
-                  :key="member.uuid"
-                  type="button"
-                  class="meal-slot-modal__member-toggle"
-                  :class="{ 'is-selected': isItemMemberSelected(activeItem, member.uuid) }"
-                  :style="isItemMemberSelected(activeItem, member.uuid) ? { backgroundColor: member.color, color: textColorFor(member.color) } : undefined"
-                  :aria-pressed="isItemMemberSelected(activeItem, member.uuid)"
-                  @click="toggleItemMember(activeItem, member)"
-                >
-                  <span class="meal-slot-modal__member-initials">{{ initialsFor(member.name) }}</span>
-                  {{ firstNameFor(member.name) }}
-                </button>
-              </div>
+              <MemberSelector
+                v-else
+                :model-value="itemMemberDraftIds"
+                :members="availableItemMembers"
+                @update:model-value="setItemMembers(activeItem, $event)"
+              />
             </div>
           </div>
 
@@ -1412,39 +1390,6 @@ const addNote = (): void => {
   z-index: 3;
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
-}
-
-.meal-slot-modal__member-picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-content: start;
-}
-
-.meal-slot-modal__member-toggle {
-  min-height: 34px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 10px 5px 5px;
-  border-radius: var(--radius-full) !important;
-  background: var(--color-surface);
-}
-
-.meal-slot-modal__member-toggle.is-selected {
-  border-color: transparent;
-}
-
-.meal-slot-modal__member-initials {
-  width: 23px;
-  height: 23px;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--color-surface) 76%, transparent);
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, currentColor 12%, transparent);
-  font-size: 0.62rem;
-  font-weight: 800;
 }
 
 .meal-slot-modal__wishlist-grid {

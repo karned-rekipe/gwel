@@ -12,6 +12,8 @@ const emit = defineEmits<{
 }>()
 
 const selected = computed(() => new Set(props.modelValue))
+const residents = computed(() => props.members.filter((member) => member.member_type === 'resident'))
+const recurringGuests = computed(() => props.members.filter((member) => member.member_type === 'recurring_guest'))
 
 const initialsFor = (name: string): string =>
   name
@@ -42,29 +44,78 @@ const toggle = (uuid: string): void => {
 </script>
 
 <template>
-  <div class="member-selector">
-    <button
-      v-for="member in members"
-      :key="member.uuid"
-      type="button"
-      class="member-selector__pill"
-      :class="{ 'member-selector__pill--selected': selected.has(member.uuid) }"
-      :style="selected.has(member.uuid) ? { backgroundColor: member.color, color: textColorFor(member.color) } : undefined"
-      @click="toggle(member.uuid)"
-    >
-      <span class="member-selector__avatar" :style="{ backgroundColor: member.color }">
-        <img v-if="member.avatar_data" :src="member.avatar_data" :alt="member.name" />
-        <span v-else>{{ initialsFor(member.name) }}</span>
-      </span>
-      <span>{{ member.name.split(' ')[0] }}</span>
-    </button>
-    <span v-if="!members.length" class="member-selector__empty">Aucune personne</span>
+  <div v-if="members.length" class="member-selector">
+    <section class="member-selector__group" aria-label="Membres du foyer">
+      <h3>Membres du foyer</h3>
+      <div v-if="residents.length" class="member-selector__pills">
+        <button
+          v-for="member in residents"
+          :key="member.uuid"
+          type="button"
+          class="member-selector__pill"
+          :class="{ 'member-selector__pill--selected': selected.has(member.uuid) }"
+          :style="selected.has(member.uuid) ? { backgroundColor: member.color, color: textColorFor(member.color) } : undefined"
+          :aria-pressed="selected.has(member.uuid)"
+          @click="toggle(member.uuid)"
+        >
+          <span class="member-selector__avatar" :style="{ backgroundColor: member.color }">
+            <img v-if="member.avatar_data" :src="member.avatar_data" :alt="member.name" />
+            <span v-else>{{ initialsFor(member.name) }}</span>
+          </span>
+          <span>{{ member.name.split(' ')[0] }}</span>
+        </button>
+      </div>
+      <span v-else class="member-selector__empty">Aucun membre du foyer</span>
+    </section>
+
+    <section class="member-selector__group" aria-label="Invités réguliers">
+      <h3>Invités réguliers</h3>
+      <div v-if="recurringGuests.length" class="member-selector__pills">
+        <button
+          v-for="member in recurringGuests"
+          :key="member.uuid"
+          type="button"
+          class="member-selector__pill"
+          :class="{ 'member-selector__pill--selected': selected.has(member.uuid) }"
+          :style="selected.has(member.uuid) ? { backgroundColor: member.color, color: textColorFor(member.color) } : undefined"
+          :aria-pressed="selected.has(member.uuid)"
+          @click="toggle(member.uuid)"
+        >
+          <span class="member-selector__avatar" :style="{ backgroundColor: member.color }">
+            <img v-if="member.avatar_data" :src="member.avatar_data" :alt="member.name" />
+            <span v-else>{{ initialsFor(member.name) }}</span>
+          </span>
+          <span>{{ member.name.split(' ')[0] }}</span>
+        </button>
+      </div>
+      <span v-else class="member-selector__empty">Aucun invité régulier</span>
+    </section>
   </div>
+  <span v-else class="member-selector__empty">Aucune personne</span>
 </template>
 
 <style scoped>
 .member-selector {
   min-width: 150px;
+  display: grid;
+  gap: 16px;
+}
+
+.member-selector__group {
+  display: grid;
+  gap: 8px;
+}
+
+.member-selector__group h3 {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 780;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.member-selector__pills {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;

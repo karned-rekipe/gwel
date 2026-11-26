@@ -233,7 +233,7 @@ onMounted(async () => {
     </template>
 
     <Teleport to="body">
-      <div v-if="activeCell" class="attendance-modal" @click.self="closeCell" @keydown.esc="closeCell">
+      <div v-if="activeCell" class="attendance-modal" @click.self="closeCell" @keydown.esc.stop="closeCell">
         <section class="attendance-modal__panel" role="dialog" aria-modal="true" aria-labelledby="attendance-modal-title">
           <header>
             <div>
@@ -377,7 +377,7 @@ onMounted(async () => {
 .attendance-modal {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 240;
   display: grid;
   place-items: center;
   padding: 20px;

@@ -5,7 +5,11 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/recipes',
+      name: 'planning-today',
+      component: () => import('../views/planning/DailyMenuView.vue'),
+      meta: {
+        title: 'Menu du jour',
+      },
     },
     {
       path: '/recipes',
@@ -176,7 +180,7 @@ const router = createRouter({
     {
       path: '/:pathMatch(.*)*',
       name: 'not-found',
-      redirect: { name: 'recipes-home' },
+      redirect: { name: 'planning-today' },
     },
   ],
 })

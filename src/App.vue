@@ -72,7 +72,7 @@ onMounted(() => {
         </button>
 
         <div class="app-shell__brand">
-          <RouterLink to="/recipes" class="app-shell__logo">
+          <RouterLink to="/" class="app-shell__logo">
             <span class="app-shell__logo-mark">R</span>
             <span>
               <span class="app-shell__logo-title">Rekipe</span>
@@ -84,6 +84,14 @@ onMounted(() => {
           id="app-navigation"
           :class="['app-shell__links', { 'app-shell__links--open': isMenuOpen }]"
         >
+          <RouterLink
+            to="/"
+            class="app-shell__link"
+            active-class="app-shell__link--active"
+            @click="closeMenu"
+          >
+            Aujourd’hui
+          </RouterLink>
           <RouterLink
             to="/recipes"
             class="app-shell__link"

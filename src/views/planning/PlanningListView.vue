@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import MealPlanWeekGrid from '@/components/planning/MealPlanWeekGrid.vue'
 import PlanningMembersRequired from '@/components/planning/PlanningMembersRequired.vue'
+import { resolveMealSlotDefinitions } from '@/components/planning/mealSlotDefinitions'
 import type { MealCalendarParams } from '@/services/mealPlannerService'
 import { useHouseholdMembersStore } from '@/stores/householdMembersStore'
 import { useIngredientCatalogStore } from '@/stores/ingredientCatalogStore'
@@ -9,7 +10,6 @@ import { useMealPlanStore } from '@/stores/mealPlanStore'
 import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 import { useTenantPreferencesStore } from '@/stores/tenantPreferencesStore'
 import type { SlotPatchOperation } from '@/types/mealPlan'
-import type { MealSlotDefinition } from '@/types/tenantPreferences'
 
 const store = useMealPlanStore()
 const membersStore = useHouseholdMembersStore()
@@ -18,11 +18,6 @@ const recipeCatalog = useRecipeCatalogStore()
 const preferencesStore = useTenantPreferencesStore()
 const actionError = ref<string | null>(null)
 const membersLoaded = ref(false)
-const defaultMealSlots: MealSlotDefinition[] = [
-  { code: 'lunch', label: 'Déjeuner', position: 0 },
-  { code: 'dinner', label: 'Dîner', position: 1 },
-]
-
 const addDays = (value: Date, daysToAdd: number): Date => {
   const result = new Date(value)
   result.setDate(result.getDate() + daysToAdd)
@@ -54,24 +49,11 @@ const mealLabels = computed<Record<string, string>>(() => Object.fromEntries(
   (preferencesStore.current?.meal_slots ?? []).map((slot) => [slot.code, slot.label]),
 ))
 
-const fallbackMealSlots = computed<MealSlotDefinition[]>(() => {
-  const seen = new Set<string>()
-  return (store.current?.slots ?? []).flatMap((slot) => {
-    if (seen.has(slot.slot_code)) return []
-    seen.add(slot.slot_code)
-    return [{
-      code: slot.slot_code,
-      label: mealLabels.value[slot.slot_code] ?? slot.slot_code,
-      position: seen.size - 1,
-    }]
-  })
-})
-
-const availableMealSlots = computed<MealSlotDefinition[]>(() => {
-  const configured = preferencesStore.current?.meal_slots ?? []
-  const source = configured.length ? configured : fallbackMealSlots.value.length ? fallbackMealSlots.value : defaultMealSlots
-  return [...source].sort((left, right) => left.position - right.position)
-})
+const availableMealSlots = computed(() => resolveMealSlotDefinitions(
+  preferencesStore.current?.meal_slots ?? [],
+  store.current?.slots ?? [],
+  mealLabels.value,
+))
 
 const activeMealSlotCodes = computed(() =>
   availableMealSlots.value

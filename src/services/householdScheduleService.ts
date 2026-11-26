@@ -40,7 +40,9 @@ export const householdScheduleService = {
   },
 
   async listVacationPeriods(): Promise<SchoolVacationPeriod[]> {
-    const response = await householdScheduleApi.get<ApiResponse<SchoolVacationPeriod[]>>('/school-vacation-periods/')
+    const response = await householdScheduleApi.get<ApiResponse<SchoolVacationPeriod[]>>('/school-vacation-periods/', {
+      params: { refresh: Date.now() },
+    })
     return unwrapApiResponse(response.data)
   },
 

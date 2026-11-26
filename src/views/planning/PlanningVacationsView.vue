@@ -2,8 +2,10 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import AppButton from '@/components/atoms/AppButton.vue'
 import PlanningSettingsShell from '@/components/planning/PlanningSettingsShell.vue'
+import SchoolZonePicker from '@/components/planning/SchoolZonePicker.vue'
 import { householdScheduleService } from '@/services/householdScheduleService'
 import type { HouseholdSchedule, SchoolVacationPeriod, SchoolZone } from '@/types/householdSchedule'
+import { reconcileSynchronizedVacationPeriods } from '@/utils/vacationPeriods'
 
 const schedule = ref<HouseholdSchedule | null>(null)
 const scheduleEtag = ref('')
@@ -52,17 +54,18 @@ const load = async (): Promise<void> => {
   }
 }
 
-const saveZone = async (): Promise<void> => {
+const saveZone = async (selectedZone: SchoolZone | ''): Promise<void> => {
   if (!scheduleEtag.value) return
-  const selectedZone = schoolZone.value || null
+  if (selectedZone === schoolZone.value) return
   const previousZone = schedule.value?.school_zone ?? null
+  schoolZone.value = selectedZone
   savingZone.value = true
   error.value = null
   success.value = null
   try {
     const response = await householdScheduleService.updateSchoolZone(
       scheduleEtag.value,
-      selectedZone,
+      selectedZone || null,
     )
     schedule.value = response.payload
     scheduleEtag.value = response.etag
@@ -87,7 +90,11 @@ const syncOfficialCalendar = async (): Promise<void> => {
     const result = await householdScheduleService.syncOfficialVacationPeriods({
       school_zone: schoolZone.value,
     })
-    vacationPeriods.value = await householdScheduleService.listVacationPeriods()
+    vacationPeriods.value = reconcileSynchronizedVacationPeriods(
+      vacationPeriods.value,
+      result.periods,
+      result.school_zone,
+    )
     success.value = `Calendrier zone ${result.school_zone} synchronisé : ${result.created} ajoutée(s), ${result.updated} mise(s) à jour, ${result.deleted} retirée(s).`
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Synchronisation du calendrier impossible.'
@@ -151,15 +158,11 @@ onMounted(() => {
         <p>La zone détermine quelles périodes officielles activent les règles « vacances ».</p>
       </div>
       <div class="vacations-page__zone-form">
-        <label>
-          Zone
-          <select v-model="schoolZone" :disabled="savingZone || syncing || loading" @change="saveZone">
-            <option value="">Non renseignée</option>
-            <option value="A">Zone A</option>
-            <option value="B">Zone B</option>
-            <option value="C">Zone C</option>
-          </select>
-        </label>
+        <SchoolZonePicker
+          :model-value="schoolZone"
+          :disabled="savingZone || syncing || loading"
+          @update:model-value="saveZone"
+        />
         <span v-if="savingZone" class="vacations-page__saving">Enregistrement…</span>
       </div>
     </section>
@@ -274,7 +277,8 @@ onMounted(() => {
 }
 
 .vacations-page__zone-form {
-  justify-content: flex-start;
+  align-items: stretch;
+  flex-direction: column;
 }
 
 .vacations-page__saving {
@@ -286,7 +290,6 @@ onMounted(() => {
   font-size: 0.86rem;
 }
 
-.vacations-page__zone-form label,
 .vacations-page__manual-form label {
   display: grid;
   gap: 6px;
@@ -295,9 +298,7 @@ onMounted(() => {
   font-weight: 700;
 }
 
-.vacations-page select,
 .vacations-page input,
-.vacations-page__zone-form select,
 .vacations-page__manual-form input {
   min-height: 42px;
   border: 1px solid var(--color-border);
@@ -306,10 +307,6 @@ onMounted(() => {
   background: var(--color-surface);
   color: var(--color-text-primary);
   font: inherit;
-}
-
-.vacations-page__zone-form select {
-  min-width: 180px;
 }
 
 .vacations-page__manual-form {

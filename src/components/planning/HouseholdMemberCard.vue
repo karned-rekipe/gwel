@@ -19,7 +19,6 @@ const initials = computed(() =>
     .join('') || '?',
 )
 
-const memberTypeLabel = computed(() => props.member.member_type === 'resident' ? 'Foyer' : 'Invité')
 const ageLabel = computed(() => {
   if (!props.member.birth_year) return ''
   const age = new Date().getFullYear() - props.member.birth_year
@@ -35,10 +34,7 @@ const ageLabel = computed(() => {
     </div>
     <div class="household-member-card__body">
       <strong>{{ member.name }}</strong>
-      <span>
-        {{ memberTypeLabel }}
-        <template v-if="ageLabel"> · {{ ageLabel }}</template>
-      </span>
+      <span v-if="ageLabel">{{ ageLabel }}</span>
     </div>
     <button
       type="button"

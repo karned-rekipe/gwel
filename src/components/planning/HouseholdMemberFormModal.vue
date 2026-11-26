@@ -10,6 +10,7 @@ const DEFAULT_COLORS = [DEFAULT_COLOR, '#2f855a', '#d97706', '#7c3aed', '#dc2626
 
 const props = defineProps<{
   member?: HouseholdMember | null
+  defaultMemberType?: MemberType
 }>()
 
 const emit = defineEmits<{
@@ -35,7 +36,7 @@ const title = computed(() => props.member ? 'Modifier une personne' : 'Ajouter u
 
 const resetForm = (): void => {
   form.name = props.member?.name ?? ''
-  form.member_type = props.member?.member_type ?? 'resident'
+  form.member_type = props.member?.member_type ?? props.defaultMemberType ?? 'resident'
   form.gender = props.member?.gender ?? null
   form.birth_year = props.member?.birth_year ?? null
   form.color = props.member?.color ?? DEFAULT_COLORS[Math.floor(Math.random() * DEFAULT_COLORS.length)] ?? DEFAULT_COLOR
@@ -44,7 +45,7 @@ const resetForm = (): void => {
   error.value = null
 }
 
-watch(() => props.member, resetForm, { immediate: true })
+watch(() => [props.member, props.defaultMemberType], resetForm, { immediate: true })
 
 const toBase64 = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {

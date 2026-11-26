@@ -5,16 +5,18 @@ import HouseholdMemberCard from '@/components/planning/HouseholdMemberCard.vue'
 import HouseholdMemberFormModal from '@/components/planning/HouseholdMemberFormModal.vue'
 import PlanningSettingsShell from '@/components/planning/PlanningSettingsShell.vue'
 import { useHouseholdMembersStore } from '@/stores/householdMembersStore'
-import type { HouseholdMember } from '@/types/householdMember'
+import type { HouseholdMember, MemberType } from '@/types/householdMember'
 
 const membersStore = useHouseholdMembersStore()
 const showMemberModal = ref(false)
 const editingMember = ref<HouseholdMember | null>(null)
+const creatingMemberType = ref<MemberType>('resident')
 const residents = computed(() => membersStore.members.filter((member) => member.member_type === 'resident'))
 const recurringGuests = computed(() => membersStore.members.filter((member) => member.member_type === 'recurring_guest'))
 
-const openCreateMemberModal = (): void => {
+const openCreateMemberModal = (memberType: MemberType): void => {
   editingMember.value = null
+  creatingMemberType.value = memberType
   showMemberModal.value = true
 }
 
@@ -39,16 +41,13 @@ onMounted(() => {
 
 <template>
   <PlanningSettingsShell title="Personnes">
-    <div class="people-page__toolbar">
-      <p v-if="membersStore.loading">Chargement…</p>
-      <AppButton type="button" @click="openCreateMemberModal">Ajouter une personne</AppButton>
-    </div>
+    <p v-if="membersStore.loading" class="people-page__loading">Chargement…</p>
 
     <p v-if="membersStore.error" class="people-page__error">
       {{ membersStore.error }}
     </p>
 
-    <div v-if="membersStore.members.length" class="people-page__groups">
+    <div v-if="!membersStore.loading" class="people-page__groups">
       <section class="people-page__group" aria-labelledby="residents-title">
         <header class="people-page__group-header">
           <h2 id="residents-title">Membres du foyer</h2>
@@ -63,6 +62,11 @@ onMounted(() => {
           />
         </div>
         <p v-else class="people-page__group-empty">Aucun membre du foyer.</p>
+        <div class="people-page__group-action">
+          <AppButton type="button" variant="secondary" @click="openCreateMemberModal('resident')">
+            Ajouter une personne au foyer
+          </AppButton>
+        </div>
       </section>
 
       <section class="people-page__group" aria-labelledby="guests-title">
@@ -79,19 +83,18 @@ onMounted(() => {
           />
         </div>
         <p v-else class="people-page__group-empty">Aucun invité régulier.</p>
+        <div class="people-page__group-action">
+          <AppButton type="button" variant="secondary" @click="openCreateMemberModal('recurring_guest')">
+            Ajouter un invité régulier
+          </AppButton>
+        </div>
       </section>
     </div>
-
-    <section v-else-if="!membersStore.loading" class="people-page__empty">
-      <span aria-hidden="true">P</span>
-      <h2>Aucune personne n’est encore définie</h2>
-      <p>Ajoutez une première personne pour déverrouiller le calendrier de planification.</p>
-      <AppButton type="button" @click="openCreateMemberModal">Ajouter la première personne</AppButton>
-    </section>
 
     <HouseholdMemberFormModal
       v-if="showMemberModal"
       :member="editingMember"
+      :default-member-type="creatingMemberType"
       @close="closeMemberModal"
       @saved="memberSaved"
     />
@@ -99,17 +102,8 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.people-page__toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.people-page__toolbar p {
+.people-page__loading {
   margin: 0;
-  margin-right: auto;
   color: var(--color-text-secondary);
 }
 
@@ -155,33 +149,13 @@ onMounted(() => {
 
 .people-page__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 12px;
 }
 
-.people-page__empty {
-  display: grid;
-  justify-items: start;
-  gap: 10px;
-  padding: 28px;
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
-}
-
-.people-page__empty > span {
-  color: var(--color-primary);
-  font-size: 1.1rem;
-  font-weight: 850;
-}
-
-.people-page__empty h2,
-.people-page__empty p {
-  margin: 0;
-}
-
-.people-page__empty p {
-  color: var(--color-text-secondary);
+.people-page__group-action {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .people-page__error {
@@ -189,10 +163,13 @@ onMounted(() => {
   color: var(--color-danger);
 }
 
-@media (max-width: 620px) {
-  .people-page__toolbar {
-    align-items: stretch;
-    flex-direction: column;
+@media (max-width: 520px) {
+  .people-page__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .people-page__group-action :deep(button) {
+    width: 100%;
   }
 }
 </style>

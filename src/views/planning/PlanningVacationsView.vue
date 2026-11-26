@@ -54,20 +54,22 @@ const load = async (): Promise<void> => {
 
 const saveZone = async (): Promise<void> => {
   if (!scheduleEtag.value) return
+  const selectedZone = schoolZone.value || null
+  const previousZone = schedule.value?.school_zone ?? null
   savingZone.value = true
   error.value = null
   success.value = null
   try {
     const response = await householdScheduleService.updateSchoolZone(
       scheduleEtag.value,
-      schoolZone.value || null,
+      selectedZone,
     )
     schedule.value = response.payload
     scheduleEtag.value = response.etag
-    success.value = schoolZone.value ? `Zone ${schoolZone.value} enregistrée.` : 'Zone scolaire retirée.'
+    success.value = selectedZone ? `Zone ${selectedZone} enregistrée.` : 'Zone scolaire retirée.'
   } catch (err) {
+    schoolZone.value = previousZone ?? ''
     error.value = err instanceof Error ? err.message : 'Enregistrement de la zone impossible.'
-    throw err
   } finally {
     savingZone.value = false
   }
@@ -82,9 +84,6 @@ const syncOfficialCalendar = async (): Promise<void> => {
   error.value = null
   success.value = null
   try {
-    if (schedule.value?.school_zone !== schoolZone.value) {
-      await saveZone()
-    }
     const result = await householdScheduleService.syncOfficialVacationPeriods({
       school_zone: schoolZone.value,
     })
@@ -154,16 +153,14 @@ onMounted(() => {
       <div class="vacations-page__zone-form">
         <label>
           Zone
-          <select v-model="schoolZone">
+          <select v-model="schoolZone" :disabled="savingZone || syncing || loading" @change="saveZone">
             <option value="">Non renseignée</option>
             <option value="A">Zone A</option>
             <option value="B">Zone B</option>
             <option value="C">Zone C</option>
           </select>
         </label>
-        <AppButton type="button" variant="secondary" :disabled="savingZone || loading" @click="saveZone">
-          {{ savingZone ? 'Enregistrement…' : 'Enregistrer la zone' }}
-        </AppButton>
+        <span v-if="savingZone" class="vacations-page__saving">Enregistrement…</span>
       </div>
     </section>
 
@@ -174,8 +171,12 @@ onMounted(() => {
           <h2>Calendrier officiel</h2>
           <p>Les dates sont importées depuis le jeu de données officiel de l’Éducation nationale.</p>
         </div>
-        <AppButton type="button" :disabled="syncing || !schoolZone" @click="syncOfficialCalendar">
-          {{ syncing ? 'Synchronisation…' : 'Récupérer le calendrier' }}
+        <AppButton
+          type="button"
+          :disabled="syncing || savingZone || !schoolZone || schedule?.school_zone !== schoolZone"
+          @click="syncOfficialCalendar"
+        >
+          {{ syncing ? 'Mise à jour…' : 'Ajuster avec le calendrier officiel' }}
         </AppButton>
       </div>
 
@@ -274,6 +275,15 @@ onMounted(() => {
 
 .vacations-page__zone-form {
   justify-content: flex-start;
+}
+
+.vacations-page__saving {
+  align-self: end;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
 }
 
 .vacations-page__zone-form label,

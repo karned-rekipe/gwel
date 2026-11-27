@@ -6,6 +6,7 @@ import { VueQueryPlugin, type VueQueryPluginOptions } from '@tanstack/vue-query'
 
 import App from './App.vue'
 import router from './router'
+import { scheduleServiceWorkerRegistration } from './pwa'
 import { initializeAuth } from './services/auth'
 
 // Configuration de Vue Query
@@ -33,6 +34,8 @@ const bootstrap = async (): Promise<void> => {
   app.use(VueQueryPlugin, vueQueryOptions)
   app.use(router)
   app.mount('#app')
+
+  if (import.meta.env.PROD) scheduleServiceWorkerRegistration()
 }
 
 void bootstrap().catch((error: unknown) => {

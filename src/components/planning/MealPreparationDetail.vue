@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { membersForIds, initialsFor, textColorFor } from '@/components/planning/memberDisplay'
+import { useScreenWakeLock } from '@/composables/useScreenWakeLock'
 import type { HouseholdMember } from '@/types/householdMember'
 import type {
   MealItem,
@@ -42,6 +43,27 @@ const props = defineProps<{
 const emit = defineEmits<{
   progressChange: [progress: RecipePreparationProgress]
 }>()
+
+const {
+  errorMessage: wakeLockError,
+  isActive: isWakeLockActive,
+  isSupported: isWakeLockSupported,
+  secureContext,
+  status: wakeLockStatus,
+  toggle: toggleWakeLock,
+} = useScreenWakeLock(true)
+const wakeLockLabel = computed(() => {
+  if (isWakeLockActive.value) return 'Écran maintenu allumé'
+  if (!isWakeLockSupported.value) return 'Maintien de l’écran indisponible'
+  if (wakeLockStatus.value === 'error') return 'Réessayer le maintien de l’écran'
+  if (wakeLockStatus.value === 'activating') return 'Activation du maintien de l’écran…'
+  return 'Garder l’écran allumé'
+})
+const wakeLockHint = computed(() => {
+  if (!secureContext) return 'Disponible lorsque Rekipe est ouvert en HTTPS.'
+  if (!isWakeLockSupported.value) return 'Ce navigateur ne prend pas en charge cette fonction.'
+  return wakeLockError.value ?? undefined
+})
 
 const nowMs = ref(Date.now())
 const resolvedMemberIds = computed(() => (
@@ -336,7 +358,21 @@ onBeforeUnmount(() => {
   <article class="meal-preparation">
     <section class="meal-preparation__hero">
       <div class="meal-preparation__intro">
-        <span class="meal-preparation__eyebrow">Mode réalisation</span>
+        <div class="meal-preparation__mode-row">
+          <button
+            type="button"
+            class="meal-preparation__wake-lock"
+            :class="{ 'is-active': isWakeLockActive }"
+            :aria-pressed="isWakeLockActive"
+            :aria-label="wakeLockLabel"
+            :disabled="!isWakeLockSupported"
+            :title="wakeLockHint"
+            @click="toggleWakeLock"
+          >
+            <span aria-hidden="true">☀</span>
+            <span>{{ wakeLockLabel }}</span>
+          </button>
+        </div>
         <h1>{{ recipe.name }}</h1>
         <p v-if="recipe.description">{{ recipe.description }}</p>
       </div>
@@ -396,7 +432,6 @@ onBeforeUnmount(() => {
       <section class="meal-preparation__section" aria-labelledby="meal-preparation-ingredients-title">
         <header class="meal-preparation__section-header">
           <div>
-            <span class="meal-preparation__section-kicker">Mise en place</span>
             <h2 id="meal-preparation-ingredients-title">Ingrédients</h2>
           </div>
           <button
@@ -438,7 +473,6 @@ onBeforeUnmount(() => {
       <section class="meal-preparation__section" aria-labelledby="meal-preparation-equipment-title">
         <header class="meal-preparation__section-header">
           <div>
-            <span class="meal-preparation__section-kicker">Mise en place</span>
             <h2 id="meal-preparation-equipment-title">Ustensiles</h2>
           </div>
           <button
@@ -477,7 +511,6 @@ onBeforeUnmount(() => {
       <section class="meal-preparation__section meal-preparation__section--steps" aria-labelledby="meal-preparation-steps-title">
         <header class="meal-preparation__section-header">
           <div>
-            <span class="meal-preparation__section-kicker">Pas à pas</span>
             <h2 id="meal-preparation-steps-title">Préparation</h2>
           </div>
           <button
@@ -619,13 +652,42 @@ onBeforeUnmount(() => {
 }
 
 .meal-preparation__intro { min-width: 0; }
-.meal-preparation__eyebrow,
-.meal-preparation__section-kicker {
-  color: var(--preparation-green);
+.meal-preparation__mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+}
+
+.meal-preparation__wake-lock {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid #d2c8bb;
+  border-radius: 999px;
+  background: #fffdfa;
+  color: var(--preparation-accent);
+  cursor: pointer;
+  font: inherit;
   font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
+  font-weight: 750;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.meal-preparation__wake-lock > span:first-child { font-size: 0.88rem; }
+.meal-preparation__wake-lock:hover:not(:disabled) { background: var(--preparation-accent-soft); }
+.meal-preparation__wake-lock:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+.meal-preparation__wake-lock.is-active {
+  border-color: var(--preparation-green);
+  background: #edf4ef;
+  color: #365342;
+}
+.meal-preparation__wake-lock:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .meal-preparation__intro h1 {
@@ -1046,6 +1108,7 @@ input:checked + .meal-preparation__check {
 
 @media (max-width: 600px) {
   .meal-preparation { padding-inline: 12px; }
+  .meal-preparation__wake-lock { max-width: 172px; }
   .meal-preparation__media { min-height: 190px; border-radius: 20px; }
   .meal-preparation__assignment,
   .meal-preparation__section { border-radius: 18px; }

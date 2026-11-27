@@ -229,12 +229,14 @@ watch(ingredientUuid, async (uuid) => {
 <template>
   <article
     class="meal-item"
-    :class="{
-      'meal-item--note': isNoteItem,
-      'meal-item--openable': canOpenRecipe,
-      'meal-item--compact': compact,
-      [`meal-item--${item.item_type}`]: compact,
-    }"
+    :class="[
+      {
+        'meal-item--note': isNoteItem,
+        'meal-item--openable': canOpenRecipe,
+        'meal-item--compact': compact,
+      },
+      compact ? `meal-item--${item.item_type}` : null,
+    ]"
     :role="canOpenRecipe ? 'button' : undefined"
     :tabindex="canOpenRecipe ? 0 : undefined"
     :aria-label="canOpenRecipe ? `Ouvrir la recette ${title}` : undefined"
@@ -262,9 +264,9 @@ watch(ingredientUuid, async (uuid) => {
     </div>
 
     <div class="meal-item__body">
-      <span v-if="compact" class="meal-item__eyebrow">{{ itemTypeLabel }}</span>
-      <strong :title="title">{{ title }}</strong>
-      <span v-if="detail">{{ detail }}</span>
+      <span v-if="compact && !isNoteItem" class="meal-item__eyebrow">{{ itemTypeLabel }}</span>
+      <strong v-if="!isNoteItem" :title="title">{{ title }}</strong>
+      <span v-if="detail" :class="{ 'meal-item__note-copy': isNoteItem }">{{ detail }}</span>
     </div>
 
     <div v-if="itemUsesParticipants" class="meal-item__participants" :aria-label="participantsLabel">
@@ -301,14 +303,30 @@ watch(ingredientUuid, async (uuid) => {
 }
 
 .meal-item--note {
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 8px;
-  padding: 12px 12px 14px;
-  border-color: #e3c85d;
+  isolation: isolate;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 18px 18px 22px;
+  border: 0;
+  border-radius: 2px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0) 34%),
-    #fff2a8;
-  box-shadow: 0 8px 18px rgba(117, 87, 12, 0.14);
+    linear-gradient(165deg, rgba(255, 255, 255, 0.42), transparent 34%),
+    repeating-linear-gradient(0deg, rgba(101, 75, 8, 0.018) 0 1px, transparent 1px 4px),
+    #ffed78;
+  box-shadow:
+    0 2px 3px rgba(79, 61, 10, 0.2),
+    0 14px 24px rgba(79, 61, 10, 0.18);
+  transform: rotate(-0.65deg);
+  transform-origin: 50% 48%;
+}
+
+.meal-item--note::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(111, 83, 9, 0.045), transparent 12%, transparent 88%, rgba(111, 83, 9, 0.025));
+  pointer-events: none;
 }
 
 .meal-item--openable {
@@ -336,11 +354,13 @@ watch(ingredientUuid, async (uuid) => {
   position: absolute;
   right: 0;
   bottom: 0;
-  width: 24px;
-  height: 24px;
-  border-top: 1px solid rgba(117, 87, 12, 0.2);
-  border-left: 1px solid rgba(117, 87, 12, 0.12);
-  background: linear-gradient(135deg, #f3d96c 0%, #f9e58a 54%, rgba(255, 242, 168, 0) 55%);
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+  border-top: 1px solid rgba(93, 68, 6, 0.18);
+  border-left: 1px solid rgba(93, 68, 6, 0.12);
+  background: linear-gradient(135deg, #e3c84f 0%, #f8de6f 52%, rgba(255, 237, 120, 0) 54%);
+  filter: drop-shadow(-2px -2px 2px rgba(88, 67, 10, 0.08));
   pointer-events: none;
 }
 
@@ -428,29 +448,27 @@ watch(ingredientUuid, async (uuid) => {
 }
 
 .meal-item--note .meal-item__body {
+  position: relative;
+  z-index: 1;
   min-height: 0;
   max-height: none;
-  gap: 6px;
+  gap: 0;
   overflow: hidden;
 }
 
-.meal-item--note .meal-item__body strong {
-  color: #4f3e06;
-  font-size: 0.84rem;
-  letter-spacing: 0;
-  -webkit-line-clamp: 1;
-}
-
-.meal-item--note .meal-item__body span {
+.meal-item--note .meal-item__note-copy {
   display: -webkit-box;
   overflow: hidden;
-  color: #5e4a09;
-  font-size: 0.78rem;
-  line-height: 1.25;
+  color: #17130b;
+  font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", "URW Chancery L", "Apple Chancery", cursive;
+  font-size: clamp(1.05rem, 1.9vw, 1.32rem);
+  font-weight: 800;
+  letter-spacing: 0.018em;
+  line-height: 1.38;
   text-overflow: ellipsis;
   white-space: normal;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 6;
+  -webkit-line-clamp: 8;
 }
 
 .meal-item__participants {
@@ -526,9 +544,13 @@ watch(ingredientUuid, async (uuid) => {
 }
 
 .meal-item--compact.meal-item--note {
-  border-color: var(--meal-page-border, var(--color-border));
-  background: #fffefb;
-  box-shadow: 0 1px 0 rgba(43, 52, 45, 0.02);
+  border: 1px solid #ddc657;
+  border-radius: 6px;
+  background:
+    linear-gradient(165deg, rgba(255, 255, 255, 0.34), transparent 36%),
+    #fff0a0;
+  box-shadow: 0 3px 8px rgba(79, 61, 10, 0.12);
+  transform: none;
 }
 
 .meal-item--compact.meal-item--note::after {
@@ -555,6 +577,11 @@ watch(ingredientUuid, async (uuid) => {
 .meal-item--compact.meal-item--prep_task .meal-item__thumbnail {
   background: #eaf2f5;
   color: #668795;
+}
+
+.meal-item--compact.meal-item--note .meal-item__thumbnail {
+  background: #efd765;
+  color: #3f330d;
 }
 
 .meal-item--compact .meal-item__badge {
@@ -596,6 +623,15 @@ watch(ingredientUuid, async (uuid) => {
 
 .meal-item--compact .meal-item__body > span:not(.meal-item__eyebrow) {
   display: none;
+}
+
+.meal-item--compact.meal-item--note .meal-item__body > .meal-item__note-copy {
+  display: -webkit-box;
+  color: #17130b;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.25;
+  -webkit-line-clamp: 2;
 }
 
 .meal-item--compact .meal-item__participants {

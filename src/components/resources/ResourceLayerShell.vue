@@ -62,6 +62,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown))
             <strong :title="title">{{ title }}</strong>
           </div>
           <div class="resource-layer__actions">
+            <slot name="header-actions" />
             <button
               type="button"
               class="resource-layer__action"

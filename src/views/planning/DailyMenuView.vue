@@ -5,7 +5,7 @@ import MealSlotCell from '@/components/planning/MealSlotCell.vue'
 import PlanningMembersRequired from '@/components/planning/PlanningMembersRequired.vue'
 import { hasDailyMealContent } from '@/components/planning/dailyMealVisibility'
 import { resolveMealSlotDefinitions } from '@/components/planning/mealSlotDefinitions'
-import RecipeLayer from '@/components/organisms/RecipeLayer.vue'
+import MealPreparationLayer from '@/components/planning/MealPreparationLayer.vue'
 import ResourceLayerDock from '@/components/resources/ResourceLayerDock.vue'
 import type { MealCalendarParams } from '@/services/mealPlannerService'
 import { useHouseholdMembersStore } from '@/stores/householdMembersStore'
@@ -13,7 +13,12 @@ import { useIngredientCatalogStore } from '@/stores/ingredientCatalogStore'
 import { useMealPlanStore } from '@/stores/mealPlanStore'
 import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 import { useTenantPreferencesStore } from '@/stores/tenantPreferencesStore'
-import type { MealSlot, SlotPatchOperation } from '@/types/mealPlan'
+import type {
+  MealPreparationOpenRequest,
+  MealSlot,
+  RecipePreparationProgress,
+  SlotPatchOperation,
+} from '@/types/mealPlan'
 import { addDaysToIsoDate, isIsoDate, isoDateFromDate } from '@/utils/localDate'
 import {
   closeResourceLayer,
@@ -36,6 +41,7 @@ const actionError = ref<string | null>(null)
 const membersLoaded = ref(false)
 const ready = ref(false)
 const layers = ref<ResourceLayersState>(createResourceLayersState())
+const preparationContexts = ref<Record<string, MealPreparationOpenRequest>>({})
 const today = isoDateFromDate(new Date())
 
 const dayFormatter = new Intl.DateTimeFormat('fr-FR', {
@@ -110,11 +116,24 @@ const applyPatch = async (operations: SlotPatchOperation[]): Promise<void> => {
   }
 }
 
-const openRecipe = (recipe: { uuid: string; name: string }): void => {
+const preparationLayers = computed(() => layers.value.sessions.flatMap((session) => {
+  const context = preparationContexts.value[session.uuid]
+  if (!context) return []
+  const liveItem = store.current?.slots
+    .find((slot) => slot.date === context.slot_date && slot.slot_code === context.slot_code)
+    ?.items.find((item) => item.uuid === context.item.uuid)
+  return [{ session, context: { ...context, item: liveItem ?? context.item } }]
+}))
+
+const openRecipe = (request: MealPreparationOpenRequest): void => {
+  preparationContexts.value = {
+    ...preparationContexts.value,
+    [request.item.uuid]: request,
+  }
   layers.value = openResourceLayer(layers.value, {
     kind: 'recipe',
-    uuid: recipe.uuid,
-    name: recipe.name,
+    uuid: request.item.uuid,
+    name: request.name,
   })
 }
 
@@ -127,11 +146,30 @@ const minimizeLayer = (key: string): void => {
 }
 
 const closeLayer = (key: string): void => {
+  const session = layers.value.sessions.find((candidate) => candidate.key === key)
   layers.value = closeResourceLayer(layers.value, key)
+  if (session) {
+    const remaining = { ...preparationContexts.value }
+    delete remaining[session.uuid]
+    preparationContexts.value = remaining
+  }
 }
 
 const renameLayer = (key: string, title: string): void => {
   layers.value = renameResourceLayer(layers.value, key, title)
+}
+
+const persistPreparation = (
+  context: MealPreparationOpenRequest,
+  progress: RecipePreparationProgress,
+): void => {
+  void applyPatch([{
+    op: 'set_preparation_progress',
+    slot_date: context.slot_date,
+    slot_code: context.slot_code,
+    item_uuid: context.item.uuid,
+    preparation_progress: progress,
+  }])
 }
 
 const showDate = (date: string): void => {
@@ -229,15 +267,20 @@ onMounted(async () => {
       <p v-else class="daily-menu-page__empty">Aucun repas prévu pour cette journée.</p>
     </section>
 
-    <RecipeLayer
-      v-for="session in layers.sessions"
-      :key="session.key"
-      :uuid="session.uuid"
-      :fallback-title="session.title"
-      :expanded="layers.activeKey === session.key"
-      @minimize="minimizeLayer(session.key)"
-      @close="closeLayer(session.key)"
-      @title-change="renameLayer(session.key, $event)"
+    <MealPreparationLayer
+      v-for="layer in preparationLayers"
+      :key="layer.session.key"
+      :recipe-uuid="layer.context.recipe_uuid"
+      :item="layer.context.item"
+      :fallback-title="layer.session.title"
+      :fallback-member-ids="layer.context.fallback_member_ids"
+      :fallback-headcount="layer.context.fallback_headcount"
+      :household-members="membersStore.members"
+      :expanded="layers.activeKey === layer.session.key"
+      @minimize="minimizeLayer(layer.session.key)"
+      @close="closeLayer(layer.session.key)"
+      @title-change="renameLayer(layer.session.key, $event)"
+      @progress-change="persistPreparation(layer.context, $event)"
     />
     <ResourceLayerDock
       :sessions="layers.sessions"

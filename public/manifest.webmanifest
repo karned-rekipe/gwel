@@ -1,0 +1,52 @@
+{
+  "id": "/",
+  "name": "Rekipe",
+  "short_name": "Rekipe",
+  "description": "Recettes, menus du jour, préparation et listes de courses pour la maison.",
+  "lang": "fr-FR",
+  "dir": "ltr",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f5f7",
+  "theme_color": "#6f4a2b",
+  "orientation": "any",
+  "categories": ["food", "lifestyle", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/rekipe-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/rekipe-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/rekipe-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Aujourd’hui",
+      "short_name": "Aujourd’hui",
+      "url": "/"
+    },
+    {
+      "name": "Recettes",
+      "short_name": "Recettes",
+      "url": "/recipes"
+    },
+    {
+      "name": "Courses",
+      "short_name": "Courses",
+      "url": "/shopping"
+    }
+  ]
+}

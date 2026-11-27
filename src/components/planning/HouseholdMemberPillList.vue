@@ -2,22 +2,42 @@
 import { computed } from 'vue'
 import { firstNameFor, initialsFor, textColorFor } from '@/components/planning/memberDisplay'
 import type { HouseholdMember } from '@/types/householdMember'
-import { groupHouseholdMembers } from '@/utils/householdMemberGroups'
+import {
+  groupHouseholdMembers,
+  type MemberAgeBand,
+  type MemberTypeGroup,
+} from '@/utils/householdMemberGroups'
 
 const props = withDefaults(defineProps<{
   members: HouseholdMember[]
   emptyLabel?: string
   flat?: boolean
   fullNames?: boolean
+  showAgeLabels?: boolean
 }>(), {
   flat: false,
   fullNames: false,
+  showAgeLabels: true,
 })
 
 const groups = computed(() => groupHouseholdMembers(props.members))
 const memberLabel = (member: HouseholdMember): string => (
   props.fullNames ? member.name : firstNameFor(member.name)
 )
+const membersForAgeBand = (group: MemberTypeGroup, ageBand: MemberAgeBand): HouseholdMember[] => (
+  group.ageGroups.find((ageGroup) => ageGroup.id === ageBand)?.members ?? []
+)
+const unlabeledAgeRowsForGroup = (group: MemberTypeGroup): HouseholdMember[][] => {
+  const adultsAndUnknown = [
+    ...membersForAgeBand(group, 'adult'),
+    ...membersForAgeBand(group, 'unknown'),
+  ]
+  return [
+    membersForAgeBand(group, 'child'),
+    membersForAgeBand(group, 'teen'),
+    adultsAndUnknown,
+  ].filter((members) => members.length > 0)
+}
 </script>
 
 <template>
@@ -42,7 +62,7 @@ const memberLabel = (member: HouseholdMember): string => (
         <strong>{{ group.label }}</strong>
         <span>{{ group.count }}</span>
       </header>
-      <div class="member-pill-list__ages">
+      <div v-if="showAgeLabels" class="member-pill-list__ages">
         <div v-for="ageGroup in group.ageGroups" :key="ageGroup.id" class="member-pill-list__age">
           <span class="member-pill-list__age-label">{{ ageGroup.label }}</span>
           <div class="member-pill-list__pills">
@@ -60,6 +80,27 @@ const memberLabel = (member: HouseholdMember): string => (
               <span>{{ memberLabel(member) }}</span>
             </span>
           </div>
+        </div>
+      </div>
+      <div v-else class="member-pill-list__unlabeled-ages">
+        <div
+          v-for="(ageMembers, index) in unlabeledAgeRowsForGroup(group)"
+          :key="`${group.id}-${index}`"
+          class="member-pill-list__pills"
+        >
+          <span
+            v-for="member in ageMembers"
+            :key="member.uuid"
+            class="member-pill-list__pill"
+            :style="{ backgroundColor: member.color, color: textColorFor(member.color) }"
+            :title="member.name"
+          >
+            <span class="member-pill-list__avatar" :style="{ backgroundColor: member.color }">
+              <img v-if="member.avatar_data" :src="member.avatar_data" :alt="member.name" />
+              <span v-else>{{ initialsFor(member.name) }}</span>
+            </span>
+            <span>{{ memberLabel(member) }}</span>
+          </span>
         </div>
       </div>
     </section>
@@ -132,6 +173,12 @@ const memberLabel = (member: HouseholdMember): string => (
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
+}
+
+.member-pill-list__unlabeled-ages {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
 }
 
 .member-pill-list__pill {

@@ -7,7 +7,7 @@ import { recipeService } from '@/services/recipeService'
 import { useIngredientCatalogStore } from '@/stores/ingredientCatalogStore'
 import { useRecipeCatalogStore } from '@/stores/recipeCatalogStore'
 import type { HouseholdMember } from '@/types/householdMember'
-import type { MealItem, SlotCode } from '@/types/mealPlan'
+import type { MealItem, MealPreparationOpenRequest, SlotCode } from '@/types/mealPlan'
 import type { Ingredient, Recipe } from '@/types/recipe'
 import { countryFlagFrom } from '@/utils/countryFlags'
 import { ingredientDisplayMediaProfile, ingredientHasDisplayImage } from '@/utils/ingredientImagePreview'
@@ -73,7 +73,7 @@ const loadIngredient = async (
   return request
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   item: MealItem
   fallbackHeadcount?: number | null
   fallbackMemberIds?: string[]
@@ -83,15 +83,13 @@ const props = defineProps<{
   slotCode: SlotCode
   readonly?: boolean
   openRecipeDetails?: boolean
-}>()
-
-interface RecipeOpenRequest {
-  uuid: string
-  name: string
-}
+  compact?: boolean
+}>(), {
+  compact: false,
+})
 
 const emit = defineEmits<{
-  openRecipe: [recipe: RecipeOpenRequest]
+  openRecipe: [request: MealPreparationOpenRequest]
 }>()
 
 const recipeCatalog = useRecipeCatalogStore()
@@ -158,7 +156,24 @@ const title = computed(() => {
   return 'Note'
 })
 
+const itemTypeLabel = computed(() => {
+  if (props.item.item_type === 'recipe') return 'Recette'
+  if (props.item.item_type === 'ingredient') return 'Ingrédient'
+  if (props.item.item_type === 'prep_task') return 'Préparation'
+  if (props.item.item_type === 'mixed') return 'Ancien système'
+  return 'Note'
+})
+
 const thumbnailInitial = computed(() => title.value.trim().charAt(0).toLocaleUpperCase('fr-FR') || 'R')
+const thumbnailFallback = computed(() => {
+  if (!props.compact) return thumbnailInitial.value
+  if (props.item.item_type === 'recipe') return '▤'
+  if (props.item.item_type === 'ingredient') return '⌁'
+  if (props.item.item_type === 'prep_task') return '↗'
+  if (props.item.item_type === 'note') return '▧'
+  return '+'
+})
+const showThumbnail = computed(() => !isNoteItem.value || props.compact)
 const durationLabel = computed(() =>
   props.item.recipe_snapshot?.total_duration_min ? `${props.item.recipe_snapshot.total_duration_min} min` : '',
 )
@@ -173,8 +188,14 @@ const openRecipe = (event: Event): void => {
   event.preventDefault()
   event.stopPropagation()
   emit('openRecipe', {
+    item: props.item,
     uuid: recipeUuid.value,
+    recipe_uuid: recipeUuid.value,
     name: title.value,
+    slot_date: props.slotDate,
+    slot_code: props.slotCode,
+    fallback_member_ids: props.fallbackMemberIds ?? [],
+    fallback_headcount: props.fallbackHeadcount ?? null,
   })
 }
 
@@ -208,10 +229,14 @@ watch(ingredientUuid, async (uuid) => {
 <template>
   <article
     class="meal-item"
-    :class="{
-      'meal-item--note': isNoteItem,
-      'meal-item--openable': canOpenRecipe,
-    }"
+    :class="[
+      {
+        'meal-item--note': isNoteItem,
+        'meal-item--openable': canOpenRecipe,
+        'meal-item--compact': compact,
+      },
+      compact ? `meal-item--${item.item_type}` : null,
+    ]"
     :role="canOpenRecipe ? 'button' : undefined"
     :tabindex="canOpenRecipe ? 0 : undefined"
     :aria-label="canOpenRecipe ? `Ouvrir la recette ${title}` : undefined"
@@ -219,9 +244,9 @@ watch(ingredientUuid, async (uuid) => {
     @keydown.enter="openRecipe"
     @keydown.space="openRecipe"
   >
-    <div v-if="!isNoteItem" class="meal-item__thumbnail" aria-hidden="true">
+    <div v-if="showThumbnail" class="meal-item__thumbnail" aria-hidden="true">
       <img v-if="thumbnailUri" :src="thumbnailUri" :alt="title" />
-      <span v-else>{{ thumbnailInitial }}</span>
+      <span v-else>{{ thumbnailFallback }}</span>
       <span
         v-if="isRecipeItem && recipeOriginFlag"
         class="meal-item__badge meal-item__badge--origin"
@@ -239,8 +264,9 @@ watch(ingredientUuid, async (uuid) => {
     </div>
 
     <div class="meal-item__body">
-      <strong :title="title">{{ title }}</strong>
-      <span v-if="detail">{{ detail }}</span>
+      <span v-if="compact && !isNoteItem" class="meal-item__eyebrow">{{ itemTypeLabel }}</span>
+      <strong v-if="!isNoteItem" :title="title">{{ title }}</strong>
+      <span v-if="detail" :class="{ 'meal-item__note-copy': isNoteItem }">{{ detail }}</span>
     </div>
 
     <div v-if="itemUsesParticipants" class="meal-item__participants" :aria-label="participantsLabel">
@@ -277,14 +303,30 @@ watch(ingredientUuid, async (uuid) => {
 }
 
 .meal-item--note {
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 8px;
-  padding: 12px 12px 14px;
-  border-color: #e3c85d;
+  isolation: isolate;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 18px 18px 22px;
+  border: 0;
+  border-radius: 2px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0) 34%),
-    #fff2a8;
-  box-shadow: 0 8px 18px rgba(117, 87, 12, 0.14);
+    linear-gradient(165deg, rgba(255, 255, 255, 0.42), transparent 34%),
+    repeating-linear-gradient(0deg, rgba(101, 75, 8, 0.018) 0 1px, transparent 1px 4px),
+    #ffed78;
+  box-shadow:
+    0 2px 3px rgba(79, 61, 10, 0.2),
+    0 14px 24px rgba(79, 61, 10, 0.18);
+  transform: rotate(-0.65deg);
+  transform-origin: 50% 48%;
+}
+
+.meal-item--note::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(111, 83, 9, 0.045), transparent 12%, transparent 88%, rgba(111, 83, 9, 0.025));
+  pointer-events: none;
 }
 
 .meal-item--openable {
@@ -312,11 +354,13 @@ watch(ingredientUuid, async (uuid) => {
   position: absolute;
   right: 0;
   bottom: 0;
-  width: 24px;
-  height: 24px;
-  border-top: 1px solid rgba(117, 87, 12, 0.2);
-  border-left: 1px solid rgba(117, 87, 12, 0.12);
-  background: linear-gradient(135deg, #f3d96c 0%, #f9e58a 54%, rgba(255, 242, 168, 0) 55%);
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+  border-top: 1px solid rgba(93, 68, 6, 0.18);
+  border-left: 1px solid rgba(93, 68, 6, 0.12);
+  background: linear-gradient(135deg, #e3c84f 0%, #f8de6f 52%, rgba(255, 237, 120, 0) 54%);
+  filter: drop-shadow(-2px -2px 2px rgba(88, 67, 10, 0.08));
   pointer-events: none;
 }
 
@@ -404,29 +448,27 @@ watch(ingredientUuid, async (uuid) => {
 }
 
 .meal-item--note .meal-item__body {
+  position: relative;
+  z-index: 1;
   min-height: 0;
   max-height: none;
-  gap: 6px;
+  gap: 0;
   overflow: hidden;
 }
 
-.meal-item--note .meal-item__body strong {
-  color: #4f3e06;
-  font-size: 0.84rem;
-  letter-spacing: 0;
-  -webkit-line-clamp: 1;
-}
-
-.meal-item--note .meal-item__body span {
+.meal-item--note .meal-item__note-copy {
   display: -webkit-box;
   overflow: hidden;
-  color: #5e4a09;
-  font-size: 0.78rem;
-  line-height: 1.25;
+  color: #17130b;
+  font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", "URW Chancery L", "Apple Chancery", cursive;
+  font-size: clamp(1.05rem, 1.9vw, 1.32rem);
+  font-weight: 800;
+  letter-spacing: 0.018em;
+  line-height: 1.38;
   text-overflow: ellipsis;
   white-space: normal;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 6;
+  -webkit-line-clamp: 8;
 }
 
 .meal-item__participants {
@@ -483,5 +525,132 @@ watch(ingredientUuid, async (uuid) => {
   color: var(--color-primary);
   font-size: 0.58rem;
   line-height: 1;
+}
+
+.meal-item--compact {
+  --meal-card-min-width: 0;
+  --meal-card-min-height: 72px;
+
+  min-width: 0;
+  min-height: 72px;
+  grid-template-columns: 68px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  row-gap: 4px;
+  padding: 7px;
+  border-radius: 10px;
+  background: #fffefb;
+  box-shadow: 0 1px 0 rgba(43, 52, 45, 0.02);
+}
+
+.meal-item--compact.meal-item--note {
+  border: 1px solid #ddc657;
+  border-radius: 6px;
+  background:
+    linear-gradient(165deg, rgba(255, 255, 255, 0.34), transparent 36%),
+    #fff0a0;
+  box-shadow: 0 3px 8px rgba(79, 61, 10, 0.12);
+  transform: none;
+}
+
+.meal-item--compact.meal-item--note::after {
+  display: none;
+}
+
+.meal-item--compact .meal-item__thumbnail {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 68px;
+  min-height: 58px;
+  border-radius: 8px;
+  background: #edf4ef;
+  color: #638170;
+  font-size: 1.15rem;
+}
+
+.meal-item--compact.meal-item--ingredient .meal-item__thumbnail {
+  background: #f8eddd;
+  color: #b9813f;
+}
+
+.meal-item--compact.meal-item--note .meal-item__thumbnail,
+.meal-item--compact.meal-item--prep_task .meal-item__thumbnail {
+  background: #eaf2f5;
+  color: #668795;
+}
+
+.meal-item--compact.meal-item--note .meal-item__thumbnail {
+  background: #efd765;
+  color: #3f330d;
+}
+
+.meal-item--compact .meal-item__badge {
+  display: none;
+}
+
+.meal-item--compact .meal-item__body {
+  grid-column: 2;
+  grid-row: 1;
+  min-height: 0;
+  max-height: none;
+  align-content: center;
+  gap: 3px;
+  padding-right: 30px;
+}
+
+.meal-item--compact .meal-item__eyebrow,
+.meal-item--compact.meal-item--note .meal-item__eyebrow {
+  display: block;
+  overflow: hidden;
+  color: #8c948e;
+  font-size: 0.55rem;
+  font-weight: 760;
+  letter-spacing: 0.11em;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.meal-item--compact .meal-item__body strong,
+.meal-item--compact.meal-item--note .meal-item__body strong {
+  color: #252b27;
+  font-size: 0.82rem;
+  font-weight: 720;
+  line-height: 1.2;
+  -webkit-line-clamp: 1;
+}
+
+.meal-item--compact .meal-item__body > span:not(.meal-item__eyebrow) {
+  display: none;
+}
+
+.meal-item--compact.meal-item--note .meal-item__body > .meal-item__note-copy {
+  display: -webkit-box;
+  color: #17130b;
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.25;
+  -webkit-line-clamp: 2;
+}
+
+.meal-item--compact .meal-item__participants {
+  grid-column: 2;
+  grid-row: 2;
+  min-height: 19px;
+  justify-content: flex-start;
+}
+
+.meal-item--compact .meal-item__participants :deep(.member-avatar-stack) {
+  padding-left: 6px;
+}
+
+.meal-item--compact .meal-item__people {
+  color: #6b756e;
+  font-size: 0.68rem;
+}
+
+.meal-item--compact .meal-item__duration {
+  display: none;
 }
 </style>

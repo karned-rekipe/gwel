@@ -5,19 +5,22 @@ import HouseholdMemberPillList from '@/components/planning/HouseholdMemberPillLi
 import IngredientPicker from '@/components/planning/IngredientPicker.vue'
 import MealItemRow from '@/components/planning/MealItemRow.vue'
 import MemberSelector from '@/components/planning/MemberSelector.vue'
+import PlanningRecipePreviewModal from '@/components/planning/PlanningRecipePreviewModal.vue'
 import RecipePicker from '@/components/planning/RecipePicker.vue'
+import {
+  mealSlotActions,
+  type MealSlotAddMode,
+} from '@/components/planning/mealSlotActions'
 import { formatMealLabel } from '@/components/planning/mealSlotLabels'
 import { membersForIds } from '@/components/planning/memberDisplay'
 import { useIngredientWishlistStore } from '@/stores/ingredientWishlistStore'
 import { useRecipeWishlistStore } from '@/stores/recipeWishlistStore'
 import type { HouseholdMember } from '@/types/householdMember'
-import type { MealItem, MealItemPayload, MealSlot, SlotPatchOperation } from '@/types/mealPlan'
+import type { MealItem, MealItemPayload, MealPreparationOpenRequest, MealSlot, SlotPatchOperation } from '@/types/mealPlan'
 import type { Ingredient, Recipe } from '@/types/recipe'
 
-type AddMode = 'recipe' | 'wishlist' | 'ingredient' | 'note'
 type ItemActionMode = 'move' | 'members'
 type MoveSlotRow = { slot_code: string; label: string }
-type RecipeOpenRequest = { uuid: string; name: string }
 
 const props = defineProps<{
   slot: MealSlot
@@ -34,7 +37,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'patch', operations: SlotPatchOperation[]): void
-  (event: 'openRecipe', recipe: RecipeOpenRequest): void
+  (event: 'openRecipe', request: MealPreparationOpenRequest): void
 }>()
 
 const fullDateFormatter = new Intl.DateTimeFormat('fr-FR', {
@@ -52,7 +55,7 @@ const moveFullDateFormatter = new Intl.DateTimeFormat('fr-FR', {
 })
 
 const isModalOpen = ref(false)
-const activeAddMode = ref<AddMode | null>(null)
+const activeAddMode = ref<MealSlotAddMode | null>(null)
 const activeItemActionMode = ref<ItemActionMode | null>(null)
 const activeItemUuid = ref<string | null>(null)
 const itemHeadcountInput = ref('')
@@ -63,6 +66,7 @@ const selectedIngredientUuid = ref('')
 const slotMemberDraftIds = ref<string[]>([])
 const itemMemberDraftIds = ref<string[]>([])
 const addError = ref<string | null>(null)
+const previewRecipe = ref<{ uuid: string; name: string } | null>(null)
 const wishlist = useRecipeWishlistStore()
 const ingredientWishlist = useIngredientWishlistStore()
 
@@ -86,6 +90,15 @@ const slotHeadcountLabel = computed(() => {
 const plannedItemLabel = computed(() => {
   const count = plannedItemCount.value
   return `${count} élément${count > 1 ? 's' : ''} prévu${count > 1 ? 's' : ''}`
+})
+const menuItemCountLabel = computed(() => {
+  const count = plannedItemCount.value
+  return `${count} élément${count > 1 ? 's' : ''}`
+})
+const attendanceLabel = computed(() => {
+  const count = slotHeadcount.value
+  if (!count) return 'Aucun convive'
+  return `${count} convive${count > 1 ? 's' : ''}`
 })
 const hasSlotIndicators = computed(() => plannedItemCount.value > 0 || Boolean(slotHeadcount.value))
 const slotFullDateLabel = computed(() => fullDateFormatter.format(new Date(`${props.slot.date}T12:00:00`)))
@@ -144,7 +157,7 @@ const resetItemForm = (): void => {
   addError.value = null
 }
 
-const openEditorModal = (mode: AddMode | null = null): void => {
+const openEditorModal = (mode: MealSlotAddMode | null = null): void => {
   if (props.readonly) return
   activeAddMode.value = mode
   activeItemActionMode.value = null
@@ -154,7 +167,7 @@ const openEditorModal = (mode: AddMode | null = null): void => {
   isModalOpen.value = true
 }
 
-const switchMode = (mode: AddMode): void => {
+const switchMode = (mode: MealSlotAddMode): void => {
   activeAddMode.value = mode
   activeItemActionMode.value = null
   activeItemUuid.value = null
@@ -164,8 +177,32 @@ const switchMode = (mode: AddMode): void => {
   }
 }
 
+const selectAddAction = (mode: MealSlotAddMode | null): void => {
+  if (mode) switchMode(mode)
+}
+
 const closeModal = (): void => {
+  previewRecipe.value = null
   isModalOpen.value = false
+}
+
+const recipeUuidForItem = (item: MealItem): string | null => (
+  item.item_type === 'recipe'
+    ? item.recipe_uuid ?? item.recipe_snapshot?.recipe_uuid ?? null
+    : null
+)
+
+const openRecipePreview = (item: MealItem): void => {
+  const uuid = recipeUuidForItem(item)
+  if (!uuid) return
+  previewRecipe.value = {
+    uuid,
+    name: item.recipe_snapshot?.title?.trim() || 'Recette',
+  }
+}
+
+const closeRecipePreview = (): void => {
+  previewRecipe.value = null
 }
 
 const returnToOverview = (): void => {
@@ -269,6 +306,7 @@ const payloadFromItem = (item: MealItem): MealItemPayload => ({
   member_ids: item.member_ids ?? [],
   recipe_uuid: item.recipe_uuid ?? null,
   recipe_snapshot: item.recipe_snapshot ?? null,
+  preparation_progress: item.preparation_progress ?? null,
   ingredient_uuid: item.ingredient_uuid ?? null,
   ingredient_name: item.ingredient_name ?? null,
   ingredient_quantity: item.ingredient_quantity ?? null,
@@ -555,7 +593,6 @@ const addNote = (): void => {
       class="meal-slot__participants"
       aria-label="Participants du repas"
     >
-      <strong>Participants</strong>
       <HouseholdMemberPillList
         :members="slotMembers"
         flat
@@ -568,7 +605,6 @@ const addNote = (): void => {
       class="meal-slot__participants"
       :aria-label="slotHeadcountLabel"
     >
-      <strong>Participants</strong>
       <span>{{ slotHeadcountLabel }}</span>
     </div>
 
@@ -600,57 +636,140 @@ const addNote = (): void => {
           aria-labelledby="meal-slot-modal-title"
         >
           <header class="meal-slot-modal__header">
-            <h3 id="meal-slot-modal-title">{{ mealLabel }} · {{ slotFullDateLabel }}</h3>
-            <div class="meal-slot-modal__header-actions">
-              <span class="meal-slot-modal__headcount" :aria-label="slotHeadcountLabel || undefined">
-                <template v-if="slotHeadcount">
-                  <span aria-hidden="true">👤</span>
-                  {{ slotHeadcount }}
-                </template>
+            <div class="meal-slot-modal__title-block">
+              <span class="meal-slot-modal__date">
+                {{ slotFullDateLabel }}
               </span>
-              <button type="button" title="Fermer" @click="closeModal">×</button>
+              <h3 id="meal-slot-modal-title">{{ mealLabel }}</h3>
+            </div>
+
+            <div class="meal-slot-modal__header-actions">
+              <span class="meal-slot-modal__attendance">
+                <span aria-hidden="true">♙</span>
+                {{ attendanceLabel }}
+              </span>
+              <button
+                type="button"
+                class="meal-slot-modal__close"
+                title="Fermer"
+                aria-label="Fermer"
+                @click="closeModal"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
             </div>
           </header>
 
           <div v-if="!isModalSubviewOpen" class="meal-slot-modal__overview">
-            <section v-if="hasNamedMemberSection" class="meal-slot-modal__members" aria-label="Participants">
+            <section class="meal-slot-modal__card meal-slot-modal__people-card" aria-label="À table">
+              <header class="meal-slot-modal__card-header">
+                <h4>À table</h4>
+                <button
+                  v-if="hasNamedMemberSection && !readonly"
+                  type="button"
+                  class="meal-slot-modal__member-edit"
+                  @click="openSlotMemberPicker"
+                >
+                  <span aria-hidden="true">✎</span>
+                  Modifier
+                </button>
+              </header>
+
               <HouseholdMemberPillList
+                v-if="hasNamedMemberSection"
                 :members="slotMembers"
                 empty-label="Aucun participant"
+                :show-age-labels="false"
               />
-              <button
-                v-if="!readonly"
-                type="button"
-                class="meal-slot-modal__member-edit"
-                @click="openSlotMemberPicker"
+
+              <form
+                v-else
+                class="meal-slot-modal__headcount-row"
+                @submit.prevent="saveDefaultHeadcount"
               >
-                <span aria-hidden="true">👤</span>
-                Modifier
-              </button>
+                <label class="meal-slot-modal__field">
+                  <span>Nombre de convives</span>
+                  <input v-model="headcountInput" type="number" min="1" max="99" inputmode="numeric" />
+                </label>
+                <button type="submit">Appliquer</button>
+              </form>
             </section>
 
-            <section class="meal-slot-modal__existing" aria-label="Contenu du repas">
-              <div v-if="slot.items.length" class="meal-slot-modal__planned-list">
-                <article
-                  v-for="item in slot.items"
-                  :key="item.uuid"
-                  class="meal-slot-modal__planned-item"
-                  :class="{ 'meal-slot-modal__planned-item--active': activeItemUuid === item.uuid }"
-                  @click.stop="openItemActions(item)"
+            <section class="meal-slot-modal__card meal-slot-modal__menu-card" aria-label="Menu du repas">
+              <header class="meal-slot-modal__card-header">
+                <h4>Menu du repas</h4>
+                <span class="meal-slot-modal__item-count">
+                  <span aria-hidden="true"></span>
+                  {{ menuItemCountLabel }}
+                </span>
+              </header>
+
+              <div class="meal-slot-modal__actions" aria-label="Ajouter un contenu au repas">
+                <button
+                  v-for="action in mealSlotActions"
+                  :key="action.id"
+                  type="button"
+                  :class="`meal-slot-modal__action--${action.tone}`"
+                  :disabled="action.disabled"
+                  :aria-label="action.unavailableLabel ?? action.label"
+                  :title="action.unavailableLabel"
+                  @click="selectAddAction(action.mode)"
                 >
-                  <MealItemRow
-                    :item="item"
-                    :fallback-headcount="slotHeadcount"
-                    :fallback-member-ids="slotResolvedMemberIds"
-                    :household-members="householdMembers"
-                    :uses-named-members="usesNamedMembers"
-                    :slot-date="slot.date"
-                    :slot-code="slot.slot_code"
-                    :readonly="readonly"
-                  />
-                </article>
+                  <span class="meal-slot-modal__action-icon" aria-hidden="true">{{ action.icon }}</span>
+                  <span>{{ action.label }}</span>
+                </button>
               </div>
-              <p v-else>Aucun contenu prévu.</p>
+
+              <section class="meal-slot-modal__existing" aria-label="Contenu du repas">
+                <div v-if="slot.items.length" class="meal-slot-modal__planned-list">
+                  <article
+                    v-for="item in slot.items"
+                    :key="item.uuid"
+                    class="meal-slot-modal__planned-item"
+                    :class="{ 'meal-slot-modal__planned-item--active': activeItemUuid === item.uuid }"
+                    @click.stop="openItemActions(item)"
+                  >
+                    <MealItemRow
+                      :item="item"
+                      :fallback-headcount="slotHeadcount"
+                      :fallback-member-ids="slotResolvedMemberIds"
+                      :household-members="householdMembers"
+                      :uses-named-members="usesNamedMembers"
+                      :slot-date="slot.date"
+                      :slot-code="slot.slot_code"
+                      :readonly="readonly"
+                      compact
+                    />
+                    <div v-if="!readonly" class="meal-slot-modal__item-controls">
+                      <button
+                        type="button"
+                        class="meal-slot-modal__item-menu"
+                        :class="{ 'is-active': activeItemUuid === item.uuid }"
+                        :aria-label="`Modifier l’élément ${item.position + 1}`"
+                        :aria-expanded="activeItemUuid === item.uuid"
+                        title="Modifier"
+                        @click.stop="openItemActions(item)"
+                      >
+                        <span aria-hidden="true">✎</span>
+                      </button>
+                      <button
+                        v-if="recipeUuidForItem(item)"
+                        type="button"
+                        class="meal-slot-modal__item-preview"
+                        :aria-label="`Visualiser la recette ${item.recipe_snapshot?.title || ''}`.trim()"
+                        title="Visualiser la recette"
+                        @click.stop="openRecipePreview(item)"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+                          <circle cx="12" cy="12" r="2.7" stroke="currentColor" stroke-width="1.7" />
+                        </svg>
+                      </button>
+                    </div>
+                  </article>
+                </div>
+                <p v-else class="meal-slot-modal__empty-menu">Aucun contenu prévu pour ce repas.</p>
+              </section>
 
               <div v-if="activeItem && !readonly" class="meal-slot-modal__item-actions" @click.stop>
                 <button type="button" @click="openItemActionMode('move', activeItem)">
@@ -683,33 +802,6 @@ const addNote = (): void => {
                 </button>
               </div>
             </section>
-
-            <div v-if="!usesNamedMembers" class="meal-slot-modal__headcount-row">
-              <label class="meal-slot-modal__field">
-                <span>Personnes par défaut</span>
-                <input v-model="headcountInput" type="number" min="1" max="99" inputmode="numeric" />
-              </label>
-              <button type="button" @click="saveDefaultHeadcount">Appliquer</button>
-            </div>
-
-            <div class="meal-slot-modal__actions" aria-label="Ajouter un contenu au repas">
-              <button type="button" @click="switchMode('recipe')">
-                <span aria-hidden="true">🍽</span>
-                Recette
-              </button>
-              <button type="button" @click="switchMode('wishlist')">
-                <span aria-hidden="true">☆</span>
-                Envies
-              </button>
-              <button type="button" @click="switchMode('ingredient')">
-                <span aria-hidden="true">🥕</span>
-                Ingrédient
-              </button>
-              <button type="button" @click="switchMode('note')">
-                <span aria-hidden="true">✎</span>
-                Note
-              </button>
-            </div>
           </div>
 
           <div v-else class="meal-slot-modal__subview">
@@ -829,6 +921,14 @@ const addNote = (): void => {
         </section>
       </div>
     </Teleport>
+
+    <PlanningRecipePreviewModal
+      v-if="previewRecipe"
+      :key="previewRecipe.uuid"
+      :uuid="previewRecipe.uuid"
+      :fallback-title="previewRecipe.name"
+      @close="closeRecipePreview"
+    />
   </section>
 </template>
 
@@ -973,32 +1073,15 @@ const addNote = (): void => {
 
 .meal-slot__participants {
   min-width: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  gap: 12px;
   margin-bottom: 12px;
-}
-
-.meal-slot__participants > strong {
-  color: var(--color-text-secondary);
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .meal-slot__participants > span {
   color: var(--color-text-primary);
   font-size: 0.82rem;
   font-weight: 700;
-}
-
-@media (max-width: 520px) {
-  .meal-slot__participants {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 7px;
-  }
 }
 
 .meal-slot__planned-count,
@@ -1065,109 +1148,251 @@ const addNote = (): void => {
 }
 
 .meal-slot-modal {
+  --meal-page-accent: #668873;
+  --meal-page-accent-soft: #edf3ef;
+  --meal-page-background: #f4f3ee;
+  --meal-page-panel: #fbfbf7;
+  --meal-page-border: #dfe2da;
+  --meal-page-text: #242a26;
+  --meal-page-muted: #7e867f;
+
   position: fixed;
-  inset: 60px 0 0;
-  z-index: 40;
-  display: grid;
-  place-items: center;
-  padding: 10px 18px 18px;
-  background: rgba(20, 24, 32, 0.36);
+  inset: 0;
+  z-index: 200;
+  overflow: auto;
+  background: var(--meal-page-background);
 }
 
 .meal-slot-modal__panel {
-  width: min(1120px, calc(100vw - 36px));
-  height: min(860px, calc(100vh - 88px));
-  max-height: calc(100vh - 88px);
-  overflow: hidden;
+  width: 100%;
+  min-height: 100%;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  align-content: stretch;
-  gap: 8px;
-  padding: 14px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  box-shadow: 0 18px 60px rgba(20, 24, 32, 0.2);
+  align-content: start;
+  gap: clamp(18px, 3vw, 30px);
+  padding: clamp(18px, 3vw, 34px) clamp(18px, 4vw, 48px) 44px;
+  border: 0;
+  background: var(--meal-page-background);
 }
 
 .meal-slot-modal__header {
+  width: min(1220px, 100%);
+  margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  min-height: 32px;
+  gap: 16px;
+  min-height: 52px;
 }
 
 .meal-slot-modal__header h3 {
-  min-width: 0;
   margin: 0;
-  overflow-wrap: anywhere;
-  font-size: 0.98rem;
-  font-weight: 750;
+  color: var(--meal-page-text);
+  font-size: clamp(1.45rem, 2.3vw, 2rem);
+  font-weight: 720;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
 }
 
-.meal-slot-modal__headcount {
-  min-width: 34px;
+.meal-slot-modal__close {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-color: var(--meal-page-border) !important;
+  border-radius: 12px !important;
+  background: var(--meal-page-panel) !important;
+  color: #59635c !important;
+  box-shadow: 0 2px 8px rgba(52, 64, 56, 0.035);
+}
+
+.meal-slot-modal__close span {
+  font-size: 1.55rem;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.meal-slot-modal__title-block {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.meal-slot-modal__date {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
-  color: var(--color-primary);
-  font-size: 0.86rem;
-  font-weight: 750;
+  gap: 7px;
+  color: var(--meal-page-muted);
+  font-size: 0.64rem;
+  font-weight: 760;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .meal-slot-modal__header-actions {
   justify-self: end;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 18px;
 }
 
-.meal-slot-modal__header button {
-  width: 30px;
-  height: 30px;
-}
-
-.meal-slot-modal__members {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 8px;
-  padding: 0;
-}
-
-.meal-slot-modal__members :deep(.member-pill-list) {
-  flex: 1;
-}
-
-.meal-slot-modal__member-edit {
-  min-height: 30px;
+.meal-slot-modal__attendance {
   display: inline-flex;
-  flex-shrink: 0;
   align-items: center;
-  gap: 5px;
-  padding: 5px 9px;
-  color: var(--color-primary) !important;
+  gap: 7px;
+  color: #5f6962;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.meal-slot-modal__close:hover,
+.meal-slot-modal__close:focus-visible {
+  border-color: color-mix(in srgb, var(--meal-page-accent) 34%, var(--meal-page-border)) !important;
+  color: var(--meal-page-text) !important;
+}
+
+.meal-slot-modal__overview,
+.meal-slot-modal__subview,
+.meal-slot-modal__error {
+  width: min(1220px, 100%);
+  margin-inline: auto;
+}
+
+.meal-slot-modal__card {
+  min-width: 0;
+  align-self: start;
+  padding: clamp(18px, 2.4vw, 28px);
+  border: 1px solid var(--meal-page-border);
+  border-radius: 22px;
+  background: var(--meal-page-panel);
+  box-shadow: 0 14px 30px rgba(49, 62, 53, 0.055);
 }
 
 .meal-slot-modal__overview,
 .meal-slot-modal__subview {
   min-height: 0;
   display: grid;
-  gap: 10px;
+  gap: 18px;
 }
 
 .meal-slot-modal__overview {
-  align-content: start;
-  grid-auto-rows: max-content;
-  overflow-y: auto;
+  grid-template-columns: minmax(280px, 0.72fr) minmax(520px, 1.55fr);
+  align-items: start;
 }
 
 .meal-slot-modal__subview {
-  grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
+  align-self: start;
+  max-height: calc(100vh - 130px);
+  grid-template-rows: auto auto;
+  align-content: start;
+  padding: clamp(14px, 1.8vw, 20px);
+  border: 1px solid var(--meal-page-border);
+  border-radius: 22px;
+  background: var(--meal-page-panel);
+  box-shadow: 0 14px 30px rgba(49, 62, 53, 0.055);
+}
+
+.meal-slot-modal__people-card,
+.meal-slot-modal__menu-card {
+  display: grid;
+  gap: 18px;
+}
+
+.meal-slot-modal__card-header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.meal-slot-modal__card-header h4 {
+  margin: 0;
+  color: var(--meal-page-text);
+  font-size: clamp(1.12rem, 1.65vw, 1.42rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.meal-slot-modal__member-edit {
+  min-height: 34px;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-color: var(--meal-page-border) !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  color: #59665e !important;
+  font-size: 0.78rem !important;
+  font-weight: 650 !important;
+}
+
+.meal-slot-modal__item-count {
+  min-height: 25px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f0f3ed;
+  color: #747e76;
+  font-size: 0.7rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.meal-slot-modal__item-count > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--meal-page-accent);
+}
+
+.meal-slot-modal__people-card :deep(.member-pill-list) {
+  gap: 14px;
+}
+
+.meal-slot-modal__people-card :deep(.member-pill-list__type) {
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.meal-slot-modal__people-card :deep(.member-pill-list__type + .member-pill-list__type) {
+  padding-top: 15px;
+  border-top: 1px solid var(--meal-page-border);
+}
+
+.meal-slot-modal__people-card :deep(.member-pill-list__type > header strong),
+.meal-slot-modal__people-card :deep(.member-pill-list__age-label) {
+  color: #68726a;
+  font-size: 0.68rem;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+.meal-slot-modal__people-card :deep(.member-pill-list__type > header > span) {
+  background: #f0f1ed;
+  color: #858d87;
+}
+
+.meal-slot-modal__people-card :deep(.member-pill-list__ages) {
+  gap: 8px;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.meal-slot-modal__people-card :deep(.member-pill-list__age) {
+  grid-template-columns: 1fr;
+  gap: 5px;
+}
+
+.meal-slot-modal__people-card :deep(.member-pill-list__pill) {
+  font-size: 0.72rem;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
 }
 
 .meal-slot-modal__subview-header {
@@ -1182,6 +1407,8 @@ const addNote = (): void => {
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
+  border-color: var(--meal-page-border);
+  color: #59665e;
 }
 
 .meal-slot-modal__subview-header strong {
@@ -1196,8 +1423,9 @@ const addNote = (): void => {
 
 .meal-slot-modal__existing {
   display: grid;
-  gap: 8px;
-  padding: 0;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--meal-page-border);
 }
 
 .meal-slot-modal__existing p {
@@ -1208,10 +1436,9 @@ const addNote = (): void => {
 
 .meal-slot-modal__planned-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 170px);
-  grid-auto-rows: 238px;
-  gap: 8px;
-  justify-content: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(72px, auto);
+  gap: 10px;
 }
 
 .meal-slot-modal__planned-item {
@@ -1219,15 +1446,66 @@ const addNote = (): void => {
   min-width: 0;
   min-height: 0;
   cursor: pointer;
+  border-radius: 10px;
 }
 
 .meal-slot-modal__planned-item--active {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--meal-page-accent);
   outline-offset: 2px;
 }
 
 .meal-slot-modal__planned-item :deep(.meal-item) {
   height: 100%;
+}
+
+.meal-slot-modal__item-controls {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 2;
+  display: grid;
+  gap: 4px;
+}
+
+.meal-slot-modal__item-menu,
+.meal-slot-modal__item-preview {
+  width: 28px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: #879089 !important;
+  font-size: 1rem !important;
+  letter-spacing: 0.03em;
+  line-height: 1;
+}
+
+.meal-slot-modal__item-preview svg {
+  width: 16px;
+  height: 16px;
+}
+
+.meal-slot-modal__item-menu:hover,
+.meal-slot-modal__item-menu:focus-visible,
+.meal-slot-modal__item-menu.is-active,
+.meal-slot-modal__item-preview:hover,
+.meal-slot-modal__item-preview:focus-visible {
+  background: #eef1ec !important;
+  color: #526159 !important;
+}
+
+.meal-slot-modal__empty-menu {
+  min-height: 116px;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  border: 1px dashed var(--meal-page-border);
+  border-radius: 12px;
+  color: var(--meal-page-muted) !important;
+  text-align: center;
 }
 
 .meal-slot-modal__remove {
@@ -1258,47 +1536,109 @@ const addNote = (): void => {
 .meal-slot-modal__headcount-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 10px;
   align-items: end;
 }
 
 .meal-slot-modal__headcount-row button {
-  min-height: 34px;
-  padding: 6px 10px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-color: var(--meal-page-border);
+  color: #59665e;
 }
 
 .meal-slot-modal__actions {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .meal-slot-modal__actions button {
-  min-height: 32px;
-  display: inline-flex;
+  min-width: 0;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 7px 9px;
+  border-color: var(--meal-page-border);
+  border-radius: 9px;
+  background: #fffefb;
+  color: #4d5750;
+  font-size: 0.7rem;
+  font-weight: 650;
+  text-align: left;
 }
 
-.meal-slot-modal__actions button span {
-  font-size: 1rem;
-  font-weight: 800;
+.meal-slot-modal__actions button > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meal-slot-modal__action-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  font-size: 0.95rem;
+  font-weight: 750;
   line-height: 1;
 }
 
-.meal-slot-modal__actions button.is-active {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background: rgba(0, 122, 255, 0.08);
+.meal-slot-modal__action--sage .meal-slot-modal__action-icon {
+  background: #e7f0ea;
+  color: #5f7e6b;
+}
+
+.meal-slot-modal__action--rose .meal-slot-modal__action-icon {
+  background: #f7e9ee;
+  color: #b16f87;
+}
+
+.meal-slot-modal__action--amber .meal-slot-modal__action-icon {
+  background: #f8eddd;
+  color: #ae7839;
+}
+
+.meal-slot-modal__action--sky .meal-slot-modal__action-icon {
+  background: #e8f0f4;
+  color: #688594;
+}
+
+.meal-slot-modal__action--muted .meal-slot-modal__action-icon {
+  background: #efefec;
+  color: #a0a49f;
+}
+
+.meal-slot-modal__actions button:disabled {
+  background: #f7f7f3;
+  color: #a4a8a4;
+  cursor: not-allowed;
+  opacity: 0.74;
 }
 
 .meal-slot-modal__content,
 .meal-slot-modal__form {
   min-height: 0;
+  max-height: calc(100vh - 220px);
   overflow-y: auto;
   display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: 10px;
+}
+
+.meal-slot-modal__content :deep(.member-selector) {
+  align-self: start;
+  align-content: start;
+}
+
+.meal-slot-modal__content :deep(.member-selector__pills button) {
+  height: auto;
+  min-height: 34px;
+  align-self: start;
 }
 
 .meal-slot-modal__form--ingredient {
@@ -1335,6 +1675,12 @@ const addNote = (): void => {
   font-size: 0.92rem;
 }
 
+.meal-slot-modal__field input:focus,
+.meal-slot-modal__field textarea:focus,
+.meal-slot-modal__field select:focus {
+  border-color: var(--meal-page-accent);
+}
+
 .meal-slot-modal__field input,
 .meal-slot-modal__field select {
   min-height: 34px;
@@ -1347,6 +1693,8 @@ const addNote = (): void => {
 }
 
 .meal-slot-modal__field textarea {
+  min-height: 120px;
+  max-height: 240px;
   resize: vertical;
   padding: 8px;
 }
@@ -1358,12 +1706,13 @@ const addNote = (): void => {
 }
 
 .meal-slot-modal__submit {
+  height: auto;
   min-height: 34px;
   padding: 6px 10px;
   justify-self: end;
-  border-color: var(--color-primary);
+  border-color: var(--meal-page-accent);
   color: white;
-  background: var(--color-primary);
+  background: var(--meal-page-accent);
 }
 
 .meal-slot-modal__error {
@@ -1385,9 +1734,9 @@ const addNote = (): void => {
   gap: 8px;
   align-items: center;
   padding: 8px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-muted);
+  border: 1px solid var(--meal-page-border);
+  border-radius: 10px;
+  background: #f1f3ef;
 }
 
 .meal-slot-modal__item-actions button {
@@ -1568,37 +1917,97 @@ const addNote = (): void => {
   font-size: 0.72rem;
 }
 
-@media (max-width: 520px) {
-  .meal-slot-modal {
-    padding: 8px;
-  }
-
-  .meal-slot-modal__panel {
-    width: 100%;
-    height: calc(100vh - 76px);
-    max-height: calc(100vh - 76px);
-  }
-
-  .meal-slot__items,
-  .meal-slot-modal__actions,
-  .meal-slot-modal__inline-fields,
-  .meal-slot-modal__headcount-row,
-  .meal-slot-modal__item-actions {
+@media (max-width: 980px) {
+  .meal-slot-modal__overview {
     grid-template-columns: 1fr;
   }
 
-  .meal-slot-modal__header {
-    grid-template-columns: 1fr auto;
+  .meal-slot-modal__people-card :deep(.member-pill-list__age) {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .meal-slot-modal__panel {
+    gap: 18px;
+    padding: 16px 14px 28px;
   }
 
-  .meal-slot-modal__headcount {
-    grid-column: 1;
-    justify-self: start;
+  .meal-slot-modal__header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+
+  .meal-slot-modal__close {
+    width: 42px;
+    height: 42px;
   }
 
   .meal-slot-modal__header-actions {
-    grid-column: 2;
-    grid-row: 1 / span 2;
+    justify-self: end;
+    gap: 8px;
+  }
+
+  .meal-slot-modal__attendance {
+    font-size: 0.76rem;
+  }
+
+  .meal-slot-modal__card,
+  .meal-slot-modal__subview {
+    padding: 17px;
+    border-radius: 16px;
+  }
+
+  .meal-slot-modal__actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .meal-slot-modal__actions button:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .meal-slot-modal__planned-list,
+  .meal-slot-modal__inline-fields,
+  .meal-slot-modal__headcount-row {
+    grid-template-columns: 1fr;
+  }
+
+  .meal-slot-modal__headcount-row button {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 520px) {
+  .meal-slot__items {
+    grid-template-columns: 1fr;
+  }
+
+  .meal-slot-modal__people-card :deep(.member-pill-list__age) {
+    grid-template-columns: 1fr;
+  }
+
+  .meal-slot-modal__card-header {
+    align-items: flex-start;
+  }
+
+  .meal-slot-modal__item-actions {
+    align-items: stretch;
+  }
+
+  .meal-slot-modal__item-actions button {
+    flex: 1 1 100%;
+  }
+}
+
+@media (max-width: 340px) {
+  .meal-slot-modal__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .meal-slot-modal__actions button:last-child:nth-child(odd) {
+    grid-column: auto;
   }
 }
 </style>

@@ -1191,7 +1191,10 @@ const handleWishlistToggle = (): void => {
   }
 
   .recipe-detail__step-times {
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 14px;
+    justify-content: flex-start;
   }
 
   .recipe-detail__section {
@@ -1199,8 +1202,8 @@ const handleWishlistToggle = (): void => {
   }
 
   .recipe-detail__steps > li {
-    gap: 16px;
-    padding-block: 24px;
+    gap: 12px;
+    padding-block: 14px;
   }
 }
 </style>

@@ -408,11 +408,11 @@ onBeforeUnmount(() => {
             :key="ingredientPreparationId(ingredient, index)"
             :class="{ 'is-completed': progress.completed_ingredient_ids.includes(ingredientPreparationId(ingredient, index)) }"
           >
-            <label>
+            <label @click.stop>
               <input
                 type="checkbox"
                 :checked="progress.completed_ingredient_ids.includes(ingredientPreparationId(ingredient, index))"
-                @change="updateCompleted('completed_ingredient_ids', ingredientPreparationId(ingredient, index), ($event.target as HTMLInputElement).checked)"
+                @change.stop="updateCompleted('completed_ingredient_ids', ingredientPreparationId(ingredient, index), ($event.target as HTMLInputElement).checked)"
               />
               <span class="meal-preparation__check" aria-hidden="true">✓</span>
               <span class="meal-preparation__quantity">
@@ -448,11 +448,11 @@ onBeforeUnmount(() => {
             :key="equipmentPreparationId(equipment, index)"
             :class="{ 'is-completed': progress.completed_equipment_ids.includes(equipmentPreparationId(equipment, index)) }"
           >
-            <label>
+            <label @click.stop>
               <input
                 type="checkbox"
                 :checked="progress.completed_equipment_ids.includes(equipmentPreparationId(equipment, index))"
-                @change="updateCompleted('completed_equipment_ids', equipmentPreparationId(equipment, index), ($event.target as HTMLInputElement).checked)"
+                @change.stop="updateCompleted('completed_equipment_ids', equipmentPreparationId(equipment, index), ($event.target as HTMLInputElement).checked)"
               />
               <span class="meal-preparation__check" aria-hidden="true">✓</span>
               <span class="meal-preparation__quantity"><strong>{{ equipment.quantity ?? 1 }}×</strong></span>
@@ -490,11 +490,11 @@ onBeforeUnmount(() => {
             }"
           >
             <div class="meal-preparation__step-main">
-              <label class="meal-preparation__step-check">
+              <label class="meal-preparation__step-check" @click.stop>
                 <input
                   type="checkbox"
                   :checked="progress.completed_step_ids.includes(stepPreparationId(step, index))"
-                  @change="updateCompleted('completed_step_ids', stepPreparationId(step, index), ($event.target as HTMLInputElement).checked)"
+                  @change.stop="updateCompleted('completed_step_ids', stepPreparationId(step, index), ($event.target as HTMLInputElement).checked)"
                 />
                 <span class="meal-preparation__check" aria-hidden="true">✓</span>
                 <span class="meal-preparation__step-number">{{ index + 1 }}</span>
@@ -799,6 +799,7 @@ onBeforeUnmount(() => {
   align-items: center;
   padding: 9px 4px;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .meal-preparation__checklist input,
@@ -858,6 +859,7 @@ input:checked + .meal-preparation__check {
   gap: 13px;
   align-items: start;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .meal-preparation__step-number {

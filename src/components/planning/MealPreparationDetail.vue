@@ -80,6 +80,13 @@ const updateCompleted = (
   persist({ ...progress.value, [field]: [...current] })
 }
 
+const toggleCompleted = (
+  field: 'completed_ingredient_ids' | 'completed_equipment_ids' | 'completed_step_ids',
+  id: string,
+): void => {
+  updateCompleted(field, id, !progress.value[field].includes(id))
+}
+
 const setAllCompleted = (
   field: 'completed_ingredient_ids' | 'completed_equipment_ids' | 'completed_step_ids',
   ids: string[],
@@ -408,11 +415,13 @@ onBeforeUnmount(() => {
             :key="ingredientPreparationId(ingredient, index)"
             :class="{ 'is-completed': progress.completed_ingredient_ids.includes(ingredientPreparationId(ingredient, index)) }"
           >
-            <label @click.stop>
+            <label
+              @pointerdown.stop
+              @click.stop.prevent="toggleCompleted('completed_ingredient_ids', ingredientPreparationId(ingredient, index))"
+            >
               <input
                 type="checkbox"
                 :checked="progress.completed_ingredient_ids.includes(ingredientPreparationId(ingredient, index))"
-                @change.stop="updateCompleted('completed_ingredient_ids', ingredientPreparationId(ingredient, index), ($event.target as HTMLInputElement).checked)"
               />
               <span class="meal-preparation__check" aria-hidden="true">✓</span>
               <span class="meal-preparation__quantity">
@@ -448,11 +457,13 @@ onBeforeUnmount(() => {
             :key="equipmentPreparationId(equipment, index)"
             :class="{ 'is-completed': progress.completed_equipment_ids.includes(equipmentPreparationId(equipment, index)) }"
           >
-            <label @click.stop>
+            <label
+              @pointerdown.stop
+              @click.stop.prevent="toggleCompleted('completed_equipment_ids', equipmentPreparationId(equipment, index))"
+            >
               <input
                 type="checkbox"
                 :checked="progress.completed_equipment_ids.includes(equipmentPreparationId(equipment, index))"
-                @change.stop="updateCompleted('completed_equipment_ids', equipmentPreparationId(equipment, index), ($event.target as HTMLInputElement).checked)"
               />
               <span class="meal-preparation__check" aria-hidden="true">✓</span>
               <span class="meal-preparation__quantity"><strong>{{ equipment.quantity ?? 1 }}×</strong></span>
@@ -490,11 +501,14 @@ onBeforeUnmount(() => {
             }"
           >
             <div class="meal-preparation__step-main">
-              <label class="meal-preparation__step-check" @click.stop>
+              <label
+                class="meal-preparation__step-check"
+                @pointerdown.stop
+                @click.stop.prevent="toggleCompleted('completed_step_ids', stepPreparationId(step, index))"
+              >
                 <input
                   type="checkbox"
                   :checked="progress.completed_step_ids.includes(stepPreparationId(step, index))"
-                  @change.stop="updateCompleted('completed_step_ids', stepPreparationId(step, index), ($event.target as HTMLInputElement).checked)"
                 />
                 <span class="meal-preparation__check" aria-hidden="true">✓</span>
                 <span class="meal-preparation__step-number">{{ index + 1 }}</span>
@@ -506,12 +520,6 @@ onBeforeUnmount(() => {
             </div>
 
             <div v-if="timerDefinitionsFor(step, index).length" class="meal-preparation__timers">
-              <header class="meal-preparation__timers-header">
-                <strong>Minuteurs</strong>
-                <span>
-                  {{ timerDefinitionsFor(step, index).length }} minuteur{{ timerDefinitionsFor(step, index).length > 1 ? 's' : '' }}
-                </span>
-              </header>
               <article
                 v-for="timer in timerDefinitionsFor(step, index)"
                 :key="timer.id"
@@ -765,7 +773,13 @@ onBeforeUnmount(() => {
   background: #fffdfa;
 }
 
-.meal-preparation__section--steps { grid-column: 1 / -1; }
+.meal-preparation__section--steps {
+  grid-column: 1 / -1;
+  padding-inline: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
 .meal-preparation__section-header {
   display: flex;
   align-items: center;
@@ -885,22 +899,6 @@ input:checked + .meal-preparation__check {
   background: #fffdfa;
 }
 
-.meal-preparation__timers-header {
-  min-height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 7px 11px;
-  border-bottom: 1px solid #e5dfd6;
-  color: var(--color-text-secondary);
-  font-size: 0.62rem;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.meal-preparation__timers-header strong { color: var(--color-text-primary); }
-.meal-preparation__timers-header span { letter-spacing: 0; text-transform: none; }
 .meal-preparation__timer + .meal-preparation__timer { border-top: 1px solid #e5dfd6; }
 
 .meal-preparation__timer {
@@ -1051,6 +1049,7 @@ input:checked + .meal-preparation__check {
   .meal-preparation__media { min-height: 190px; border-radius: 20px; }
   .meal-preparation__assignment,
   .meal-preparation__section { border-radius: 18px; }
+  .meal-preparation__section--steps { border-radius: 0; }
   .meal-preparation__section-header { align-items: flex-start; }
   .meal-preparation__checklist label { grid-template-columns: 28px 74px minmax(0, 1fr); gap: 9px; }
   .meal-preparation__step-check {

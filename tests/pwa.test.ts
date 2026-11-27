@@ -40,3 +40,20 @@ test('declares PWA metadata in the document and never caches API responses', asy
   assert.match(index, /rel="apple-touch-icon"/)
   assert.match(serviceWorker, /url\.pathname\.startsWith\('\/api\/'\)/)
 })
+
+test('serves the manifest as JSON and always revalidates PWA control files', async () => {
+  const nginx = await readFile(new URL('../nginx.conf', import.meta.url), 'utf8')
+
+  assert.match(
+    nginx,
+    /location = \/manifest\.webmanifest \{[\s\S]*default_type application\/manifest\+json;/,
+  )
+  assert.match(
+    nginx,
+    /location = \/manifest\.webmanifest \{[\s\S]*add_header Cache-Control "no-cache";/,
+  )
+  assert.match(
+    nginx,
+    /location = \/sw\.js \{[\s\S]*add_header Cache-Control "no-cache";/,
+  )
+})
